@@ -6,6 +6,9 @@ import type { Usuario } from "../../types";
 
 type Props = { perfil: Usuario };
 
+const appBasePath = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+const appHref = (path: string) => `${appBasePath}${path}` || path;
+
 type Agendamento = {
   id: string;
   data_agenda: string | null;
@@ -1401,9 +1404,9 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
           <p style={descStyle}>Gestão preventiva de cargas futuras por fornecedor, transportadora e status de confirmação.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <a href="/recebimento/importar-agenda-futura" style={buttonSecondaryStyle}>Importar agenda futura</a>
-          <a href="/recebimento/fornecedores" style={buttonSecondaryStyle}>Fornecedores</a>
-          <a href="/recebimento/transportadoras" style={buttonSecondaryStyle}>Transportadoras</a>
+          <a href={appHref("/recebimento/importar-agenda-futura")} style={buttonSecondaryStyle}>Importar agenda futura</a>
+          <a href={appHref("/recebimento/fornecedores")} style={buttonSecondaryStyle}>Fornecedores</a>
+          <a href={appHref("/recebimento/transportadoras")} style={buttonSecondaryStyle}>Transportadoras</a>
           <button type="button" style={buttonSecondaryStyle} onClick={() => void carregar()} disabled={loading}>Atualizar</button>
         </div>
       </div>
@@ -1560,9 +1563,9 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                  <a href={`/recebimento/fornecedores?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}`} style={buttonSecondaryStyle}>Cadastrar fornecedor</a>
-                  <a href={`/recebimento/fornecedores?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}&acao=editar`} style={buttonSecondaryStyle}>Editar fornecedor</a>
-                  <a href={`/recebimento/transportadoras?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}&transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}&acao=vincular`} style={buttonSecondaryStyle}>Vincular transportadora</a>
+                  <a href={appHref(`/recebimento/fornecedores?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}`)} style={buttonSecondaryStyle}>Cadastrar fornecedor</a>
+                  <a href={appHref(`/recebimento/fornecedores?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}&acao=editar`)} style={buttonSecondaryStyle}>Editar fornecedor</a>
+                  <a href={appHref(`/recebimento/transportadoras?fornecedor_id=${encodeURIComponent(selecionada.fornecedor_id ?? "")}&fornecedor_nome=${encodeURIComponent(selecionada.fornecedor_nome ?? "")}&transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}&acao=vincular`)} style={buttonSecondaryStyle}>Vincular transportadora</a>
                 </div>
               </div>
               <div style={cardStyle}>
@@ -1596,9 +1599,9 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                  <a href={`/recebimento/transportadoras?transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}`} style={buttonSecondaryStyle}>Cadastrar transportadora</a>
-                  <a href={`/recebimento/transportadoras?transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}&acao=editar`} style={buttonSecondaryStyle}>Editar transportadora</a>
-                  <a href="/recebimento/transportadoras" style={buttonSecondaryStyle}>Todas transportadoras</a>
+                  <a href={appHref(`/recebimento/transportadoras?transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}`)} style={buttonSecondaryStyle}>Cadastrar transportadora</a>
+                  <a href={appHref(`/recebimento/transportadoras?transportadora_id=${encodeURIComponent(selecionada.transportadora_id ?? "")}&transportadora_nome=${encodeURIComponent(selecionada.transportadora_nome ?? "")}&acao=editar`)} style={buttonSecondaryStyle}>Editar transportadora</a>
+                  <a href={appHref("/recebimento/transportadoras")} style={buttonSecondaryStyle}>Todas transportadoras</a>
                 </div>
               </div>
               <div style={cardStyle}>
@@ -3440,7 +3443,7 @@ export function RecebimentoImportarAgendaFutura({ perfil: _perfil }: Props) {
           <h1 style={titleStyle}>Importar Agenda Futura</h1>
           <p style={descStyle}>Importa a planilha de gestao de confirmacao de agenda para a tabela recebimento.gestao_agenda.</p>
         </div>
-        <a href="/recebimento/confirmacao-agenda" style={buttonSecondaryStyle}>Voltar para confirmacao</a>
+        <a href={appHref("/recebimento/confirmacao-agenda")} style={buttonSecondaryStyle}>Voltar para confirmacao</a>
       </div>
 
       <div style={{ ...cardStyle, display: "grid", gap: 12 }}>

@@ -295,8 +295,18 @@ const RECEBIMENTO_ROUTES: Partial<Record<MenuKey, string>> = {
   "recebimento-relatorios": "/recebimento/relatorios",
 };
 
+const appBasePath = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+const toAppPath = (path: string) => `${appBasePath}${path}` || path;
+const stripAppBase = (path: string) => {
+  if (appBasePath && path.startsWith(`${appBasePath}/`)) {
+    return path.slice(appBasePath.length);
+  }
+  return path;
+};
+
 const menuFromPath = (path: string): MenuKey | null => {
-  const found = Object.entries(RECEBIMENTO_ROUTES).find(([, route]) => route === path);
+  const normalizedPath = stripAppBase(path);
+  const found = Object.entries(RECEBIMENTO_ROUTES).find(([, route]) => route === normalizedPath);
   return (found?.[0] as MenuKey | undefined) ?? null;
 };
 
@@ -349,7 +359,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     setMenu(key);
     const route = RECEBIMENTO_ROUTES[key];
     if (route && typeof window !== "undefined") {
-      window.history.pushState(null, "", route);
+      window.history.pushState(null, "", toAppPath(route));
     }
   };
 
