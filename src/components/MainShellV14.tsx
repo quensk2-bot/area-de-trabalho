@@ -38,6 +38,7 @@ type MenuKey =
   | "rotinas"
   | "agenda"
   | "kpi"
+  | "kpi-setor"
   | "kpi-auditoria"
   | "rotinas-ativas"
   | "execucao"
@@ -407,6 +408,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["rotinas", "Rotinas & Execucao"],
         ["agenda", "Agenda do dia"],
         ["kpi", "KPI"],
+        ["kpi-setor", "KPI Setor"],
         ["kpi-auditoria", "KPI Auditoria"],
         ["rotinas-ativas", "Rotinas ativas"],
         ["execucao", "Execucao ao vivo"],
@@ -419,6 +421,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["rotinas", "Rotinas & Execucao"],
         ["agenda", "Agenda do dia"],
         ["kpi", "KPI"],
+        ["kpi-setor", "KPI Setor"],
         ["kpi-auditoria", "KPI Auditoria"],
         ["rotinas-ativas", "Rotinas ativas"],
         ["execucao", "Execucao ao vivo"],
@@ -429,6 +432,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       ["rotinas", "Rotinas & Execucao"],
       ["agenda", "Agenda do dia"],
       ["kpi", "KPI"],
+      ["kpi-setor", "KPI Setor"],
       ["kpi-auditoria", "KPI Auditoria"],
       ["rotinas-ativas", "Rotinas ativas"],
       ["execucao", "Execucao ao vivo"],
@@ -518,6 +522,79 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     <div style={gridSingleN3}>
       <div style={cardStyleN3}>
         <KpiPageV14 perfil={perfil} />
+      </div>
+    </div>
+  );
+
+  const renderKpiSetor = () => (
+    <div style={gridSingleN3}>
+      <div style={cardStyleN3}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <h1
+              style={{
+                margin: 0,
+                color: theme.colors.neonOrange ?? "#fb923c",
+                fontSize: 24,
+                fontWeight: 800,
+              }}
+            >
+              KPI Setor
+            </h1>
+            <p
+              style={{
+                margin: "6px 0 0",
+                color: theme.colors.textMuted ?? "#9ca3af",
+                fontSize: 13,
+              }}
+            >
+              Indicadores operacionais por setor para acompanhamento de rotina, execucao, aderencia e pendencias.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {[
+              ["Rotinas do setor", "0"],
+              ["Finalizadas", "0"],
+              ["Pendentes", "0"],
+              ["Aderencia", "0%"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                style={{
+                  border: `1px solid ${theme.colors.borderSoft ?? "#334155"}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  background: "rgba(2, 6, 23, 0.45)",
+                }}
+              >
+                <div style={{ color: theme.colors.textMuted ?? "#9ca3af", fontSize: 12 }}>{label}</div>
+                <div style={{ color: theme.colors.text ?? "#fff", fontSize: 26, fontWeight: 800, marginTop: 8 }}>
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              border: `1px solid ${theme.colors.borderSoft ?? "#334155"}`,
+              borderRadius: 12,
+              padding: 16,
+              background: "rgba(15, 23, 42, 0.72)",
+              color: theme.colors.textSoft ?? "#e5e7eb",
+              fontSize: 13,
+            }}
+          >
+            Base criada para a proxima etapa: aqui vamos encaixar os filtros por setor, regional, usuario e periodo.
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -722,6 +799,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         {menu === "rotinas" && renderRotinas()}
         {menu === "agenda" && renderAgenda()}
         {menu === "kpi" && renderKpi()}
+        {menu === "kpi-setor" && renderKpiSetor()}
         {menu === "kpi-auditoria" && renderKpiAuditoria()}
         {menu === "rotinas-ativas" && renderRotinasAtivas()}
         {menu === "execucao" && renderExecucaoAoVivo()}
