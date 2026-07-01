@@ -338,10 +338,11 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     return "agenda";
   });
   const [gruposMenuAbertos, setGruposMenuAbertos] = useState({
-    supply: true,
+    supply: false,
+    kpiSetor: false,
     recebimento: false,
     recebimentoConfirmacao: false,
-    recebimentoPlanejamento: true,
+    recebimentoPlanejamento: false,
   });
 
   useEffect(() => {
@@ -349,7 +350,9 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     window.localStorage.setItem(STORAGE_MENU_KEY, menu);
   }, [menu]);
 
-  const toggleGrupoMenu = (grupo: "supply" | "recebimento" | "recebimentoConfirmacao" | "recebimentoPlanejamento") => {
+  const toggleGrupoMenu = (
+    grupo: "supply" | "kpiSetor" | "recebimento" | "recebimentoConfirmacao" | "recebimentoPlanejamento"
+  ) => {
     setGruposMenuAbertos((prev) => ({
       ...prev,
       [grupo]: !prev[grupo],
@@ -408,7 +411,6 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["rotinas", "Rotinas & Execucao"],
         ["agenda", "Agenda do dia"],
         ["kpi", "KPI"],
-        ["kpi-setor", "KPI Setor"],
         ["kpi-auditoria", "KPI Auditoria"],
         ["rotinas-ativas", "Rotinas ativas"],
         ["execucao", "Execucao ao vivo"],
@@ -421,7 +423,6 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["rotinas", "Rotinas & Execucao"],
         ["agenda", "Agenda do dia"],
         ["kpi", "KPI"],
-        ["kpi-setor", "KPI Setor"],
         ["kpi-auditoria", "KPI Auditoria"],
         ["rotinas-ativas", "Rotinas ativas"],
         ["execucao", "Execucao ao vivo"],
@@ -432,12 +433,16 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       ["rotinas", "Rotinas & Execucao"],
       ["agenda", "Agenda do dia"],
       ["kpi", "KPI"],
-      ["kpi-setor", "KPI Setor"],
       ["kpi-auditoria", "KPI Auditoria"],
       ["rotinas-ativas", "Rotinas ativas"],
       ["execucao", "Execucao ao vivo"],
     ] as [MenuKey, string][];
   }, [perfil.nivel]);
+
+  const kpiSetorItems = useMemo(
+    () => [["kpi-setor", "KPI Setor"]] as [MenuKey, string][],
+    []
+  );
 
   const recebimentoConfirmacaoItems = useMemo(
     () =>
@@ -461,20 +466,6 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       ] as [MenuKey, string][],
     []
   );
-
-  useEffect(() => {
-    if (menu.startsWith("recebimento-")) {
-      const isConfirmacao = recebimentoConfirmacaoItems.some(([key]) => key === menu);
-      const isPlanejamento = recebimentoItems.some(([key]) => key === menu);
-      setGruposMenuAbertos((prev) => ({
-        ...prev,
-        recebimento: true,
-        recebimentoConfirmacao: isConfirmacao ? true : prev.recebimentoConfirmacao,
-        recebimentoPlanejamento: isPlanejamento ? true : prev.recebimentoPlanejamento,
-      }));
-    }
-  }, [menu, recebimentoConfirmacaoItems, recebimentoItems]);
-
 
   const renderRotinas = () => {
     if (perfil.nivel === "N1") {
@@ -700,6 +691,37 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
               </button>
               {gruposMenuAbertos.supply &&
                 menuItems.map(([key, label]) => {
+                  const active = menu === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => navegarMenu(key)}
+                      style={{
+                        ...shellStyles.menuButton,
+                        ...(active ? shellStyles.menuButtonActive : {}),
+                      }}
+                    >
+                      <span style={shellStyles.menuButtonLeft}>
+                        <span style={shellStyles.menuBullet} />
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div style={shellStyles.menuGroup}>
+              <button
+                type="button"
+                onClick={() => toggleGrupoMenu("kpiSetor")}
+                style={shellStyles.menuGroupTitle}
+              >
+                <span>KPI Setor</span>
+                <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.kpiSetor ? "-" : "+"}</span>
+              </button>
+              {gruposMenuAbertos.kpiSetor &&
+                kpiSetorItems.map(([key, label]) => {
                   const active = menu === key;
                   return (
                     <button
