@@ -1,0 +1,1115 @@
+// Cronômetro estável + execução de rotina
+// Reescrito com reancoragem do tempo a cada salvamento
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
+import { theme } from "../styles";
+import type { Rotina, Usuario } from "../types";
+
+type Props = {
+  open: boolean;
+  rotina: Rotina | null;
+  perfil: Usuario;
+  onClose: () => void;
+  onFinalizada?: () => void;
+};
+
+type ChecklistItemExec = {
+  id?: number | null;
+  ordem: number;
+  descricao: string;
+  valor: string;
+  concluido: boolean;
+  exige_anexo?: boolean;
+  checklist_execucao_id?: number | null;
+};
+
+type Anexo = {
+  id: number;
+  storage_path: string;
+  nome_arquivo: string | null;
+  criado_em: string;
+};
+
+type ChecklistAnexo = {
+  id: number;
+  checklist_execucao_id: number;
+  storage_path: string;
+  criado_em: string;
+};
+
+const neon = theme.colors.neonGreen ?? "#22c55e";
+const borderSoft = theme.colors.borderSoft ?? "rgba(148,163,184,0.25)";
+const textMuted = theme.colors.textMuted ?? "#9ca3af";
+const text = theme.colors.text ?? "#f9fafb";
+
+const overlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,0.96)",
+  zIndex: 50,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+};
+
+const modalStyle: React.CSSProperties = {
+  width: "96%",
+  maxWidth: 1200,
+  maxHeight: "92vh",
+  background: "rgba(15,23,42,1)",
+  borderRadius: 24,
+  border: `1px solid ${neon}`,
+  boxShadow: "0 0 40px rgba(34,197,94,0.3)",
+  padding: 20,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
+const headerRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 12,
+};
+
+const bodyGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1fr)",
+  gap: 16,
+  flex: 1,
+  minHeight: 0,
+};
+
+const colunaStyle: React.CSSProperties = {
+  background: "rgba(15,23,42,0.9)",
+  borderRadius: 16,
+  border: `1px solid ${borderSoft}`,
+  padding: 14,
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+};
+
+const footerRowStyle: React.CSSProperties = {
+  marginTop: 12,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const badgeBase: React.CSSProperties = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  border: `1px solid ${borderSoft}`,
+};
+
+const tituloStyle: React.CSSProperties = { fontSize: 20, fontWeight: 700 };
+const rotinaIdStyle: React.CSSProperties = { fontSize: 11, color: textMuted };
+const headerRightStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const cronometroStyle: React.CSSProperties = {
+  fontFamily: "monospace",
+  fontSize: 20,
+  fontWeight: 700,
+};
+
+const btnNeonStyle: React.CSSProperties = {
+  borderRadius: 999,
+  border: "none",
+  padding: "6px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const formatSeconds = (total: number) => {
+  const t = Math.max(0, Math.floor(total));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
+const getFileNameFromPath = (path: string) => {
+  const parts = path.split("/");
+  return parts[parts.length - 1] || "arquivo";
+};
+
+export function RotinaExecucaoContainer({ open, rotina, perfil, onClose, onFinalizada }: Props) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isFinalizada, setIsFinalizada] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [observacoes, setObservacoes] = useState("");
+  const [checklist, setChecklist] = useState<ChecklistItemExec[]>([]);
+  const [execucaoId, setExecucaoId] = useState<number | null>(null);
+  const [executorId, setExecutorId] = useState<string | null>(null);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [erroUpload, setErroUpload] = useState<string | null>(null);
+  const [checklistAnexos, setChecklistAnexos] = useState<Record<number, ChecklistAnexo[]>>({});
+  const [uploadingChecklistId, setUploadingChecklistId] = useState<number | null>(null);
+  const [erroChecklistUpload, setErroChecklistUpload] = useState<Record<number, string>>({});
+  const [loadingInicial, setLoadingInicial] = useState(false);
+  const [erroInicial, setErroInicial] = useState<string | null>(null);
+
+  // cronômetro: base acumulada (s) + início do trecho corrido (ISO)
+  const baseAcumuladaRef = useRef(0);
+  const inicioRodandoRef = useRef<string | null>(null);
+  const tickTimerRef = useRef<number | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const canView = useMemo(() => {
+    if (!rotina) return false;
+    if (perfil.nivel === "N3") return rotina.responsavel_id === perfil.id;
+    if (perfil.nivel === "N2") {
+      const okDep = perfil.departamento_id == null || rotina.departamento_id === perfil.departamento_id;
+      const okSet = perfil.setor_id == null || rotina.setor_id === perfil.setor_id;
+      const okReg = perfil.regional_id == null || rotina.regional_id === perfil.regional_id;
+      return okDep && okSet && okReg;
+    }
+    // N1
+    const okDep = perfil.departamento_id == null || rotina.departamento_id === perfil.departamento_id;
+    const okSet = perfil.setor_id == null || rotina.setor_id === perfil.setor_id;
+    return okDep && okSet;
+  }, [perfil, rotina]);
+
+  const canEdit = useMemo(() => {
+    if (!rotina) return false;
+    return rotina.responsavel_id === perfil.id;
+  }, [rotina, perfil.id]);
+
+  const isReadOnly = useMemo(() => !canEdit, [canEdit]);
+
+  const computeTotalSeconds = () => {
+    const base = baseAcumuladaRef.current || 0;
+    const startISO = inicioRodandoRef.current;
+    if (!startISO) return base;
+    const startMs = new Date(startISO).getTime();
+    if (Number.isNaN(startMs)) return base;
+    const diff = Math.floor((Date.now() - startMs) / 1000);
+    return base + Math.max(0, diff);
+  };
+
+  const recalcElapsed = () => {
+    const total = computeTotalSeconds();
+    setElapsedSeconds(total);
+    return total;
+  };
+
+  const salvarChecklistExecucao = async (itens: ChecklistItemExec[] = checklist) => {
+    if (!rotina || !executorId || isReadOnly) return;
+
+    for (const item of itens) {
+      if (!item.checklist_execucao_id) continue;
+      const { error } = await supabase
+        .from("rotina_checklist_execucao")
+        .update({
+          concluido: item.concluido,
+          valor_texto: item.valor || null,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", item.checklist_execucao_id);
+
+      if (error) {
+        console.error("Erro ao salvar checklist da execucao:", error);
+      }
+    }
+  };
+
+  const startTicker = () => {
+    if (tickTimerRef.current != null) window.clearInterval(tickTimerRef.current);
+    tickTimerRef.current = window.setInterval(() => {
+      if (!open || isFinalizada || isPaused) return;
+      setElapsedSeconds(computeTotalSeconds());
+    }, 1000);
+  };
+
+  const stopTicker = () => {
+    if (tickTimerRef.current != null) window.clearInterval(tickTimerRef.current);
+    tickTimerRef.current = null;
+  };
+
+  // liga/desliga ticker conforme estado
+  useEffect(() => {
+    if (!open) {
+      stopTicker();
+      return;
+    }
+    if (isPaused || isFinalizada) {
+      stopTicker();
+      return;
+    }
+    startTicker();
+    return () => stopTicker();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isPaused, isFinalizada]);
+
+  // init
+  useEffect(() => {
+    if (!open || !rotina) return;
+
+    const init = async () => {
+      setIsMinimized(false);
+      setErroInicial(null);
+      setLoadingInicial(true);
+      setExecucaoId(null);
+      setExecutorId(null);
+      setIsPaused(false);
+      setIsFinalizada(false);
+      setElapsedSeconds(0);
+      setObservacoes("");
+      setChecklist([]);
+      setAnexos([]);
+      setChecklistAnexos({});
+      setUploadingChecklistId(null);
+      setErroChecklistUpload({});
+      baseAcumuladaRef.current = 0;
+      inicioRodandoRef.current = null;
+
+      if (!canView) {
+        setErroInicial("Sem permissão para visualizar esta execução.");
+        setLoadingInicial(false);
+        return;
+      }
+
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData?.user) {
+          setErroInicial("Não foi possível carregar o usuário atual.");
+          return;
+        }
+        const uid = userData.user.id;
+        setExecutorId(uid);
+
+        // checklist base
+        const { data: itensChecklist, error: checklistErr } = await supabase
+          .from("rotina_checklist")
+          .select("id, ordem, descricao, exige_anexo")
+          .eq("rotina_id", rotina.id)
+          .order("ordem", { ascending: true });
+
+        if (checklistErr) {
+          setErroInicial("Erro ao carregar checklist da rotina.");
+          return;
+        }
+
+        let baseChecklist: ChecklistItemExec[] = [];
+        if (itensChecklist && itensChecklist.length > 0) {
+          baseChecklist = itensChecklist.map((item: any) => ({
+            id: item.id,
+            ordem: item.ordem,
+            descricao: item.descricao ?? "",
+            valor: "",
+            concluido: false,
+            exige_anexo: !!item.exige_anexo,
+          }));
+        } else {
+          baseChecklist = [{ id: null, ordem: 1, descricao: rotina.titulo ?? "Etapa principal", valor: "", concluido: false, exige_anexo: false }];
+        }
+
+        // execução do dia
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const di = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        const df = tomorrow.toISOString();
+
+        let execRow: any | null = null;
+
+        if (isReadOnly) {
+          const { data: execsRO } = await supabase
+            .from("rotina_execucoes")
+            .select("id, inicio_em, pausado_em, finalizado_em, duracao_total_segundos, observacao")
+            .eq("rotina_id", rotina.id)
+            .gte("created_at", di)
+            .lt("created_at", df)
+            .order("id", { ascending: false })
+            .limit(1);
+          execRow = execsRO?.[0] ?? null;
+        } else {
+          const { data: execs } = await supabase
+            .from("rotina_execucoes")
+            .select("id, inicio_em, pausado_em, finalizado_em, duracao_total_segundos, observacao")
+            .eq("rotina_id", rotina.id)
+            .eq("executor_id", uid)
+            .gte("created_at", di)
+            .lt("created_at", df)
+            .order("id", { ascending: false })
+            .limit(1);
+          execRow = execs?.[0] ?? null;
+
+          if (!execRow) {
+            const nowISO = new Date().toISOString();
+            const { data: created } = await supabase
+              .from("rotina_execucoes")
+              .insert({
+                rotina_id: rotina.id,
+                executor_id: uid,
+                inicio_em: nowISO,
+                pausado_em: null,
+                finalizado_em: null,
+                duracao_total_segundos: 0,
+                observacao: null,
+              })
+              .select("id, inicio_em, pausado_em, finalizado_em, duracao_total_segundos, observacao")
+              .single();
+            execRow = created;
+          }
+        }
+
+        if (execRow?.id) setExecucaoId(execRow.id);
+
+        const finalizada = !!execRow?.finalizado_em;
+        const pausada = !!execRow?.pausado_em;
+        setIsFinalizada(finalizada);
+        setIsPaused(finalizada ? true : pausada);
+
+        const baseAcum = typeof execRow?.duracao_total_segundos === "number" ? execRow.duracao_total_segundos : 0;
+        baseAcumuladaRef.current = baseAcum;
+
+        if (!finalizada && !pausada && execRow?.inicio_em) {
+          inicioRodandoRef.current = execRow.inicio_em;
+        } else {
+          inicioRodandoRef.current = null;
+        }
+
+        recalcElapsed();
+
+        const checklistExecucaoIds: Record<number, number> = {};
+        if (execRow?.id && baseChecklist.length > 0) {
+          const payload = baseChecklist
+            .filter((item) => item.id)
+            .map((item) => ({
+              rotina_id: rotina.id,
+              checklist_id: item.id,
+              executor_id: uid,
+            }));
+
+          if (!isReadOnly && payload.length > 0) {
+            await supabase
+              .from("rotina_checklist_execucao")
+              .upsert(payload, { onConflict: "checklist_id,executor_id" });
+          }
+
+          const { data: execChecklistRows } = await supabase
+            .from("rotina_checklist_execucao")
+            .select("id, checklist_id, valor_texto, concluido")
+            .eq("rotina_id", rotina.id)
+            .eq("executor_id", uid);
+
+          if (execChecklistRows) {
+            (execChecklistRows as { id: number; checklist_id: number; valor_texto: string | null; concluido: boolean }[]).forEach((row) => {
+              checklistExecucaoIds[row.checklist_id] = row.id;
+            });
+          }
+        }
+
+        setObservacoes(execRow?.observacao ?? "");
+        const checklistRowsById = new Map<number, any>();
+        if (execRow?.id && baseChecklist.length > 0) {
+          const { data: rows } = await supabase
+            .from("rotina_checklist_execucao")
+            .select("id, checklist_id, valor_texto, concluido")
+            .eq("rotina_id", rotina.id)
+            .eq("executor_id", uid);
+          (rows ?? []).forEach((row: any) => checklistRowsById.set(Number(row.checklist_id), row));
+        }
+
+        const checklistExec: ChecklistItemExec[] = baseChecklist.map((item) => {
+          const row = item.id ? checklistRowsById.get(Number(item.id)) : null;
+          return {
+            ...item,
+            valor: row?.valor_texto ?? item.valor,
+            concluido: row?.concluido ?? item.concluido,
+          };
+        });
+        setChecklist(
+          checklistExec.map((item) => ({
+            ...item,
+            checklist_execucao_id: item.id ? checklistExecucaoIds[item.id] ?? null : null,
+          }))
+        );
+
+        if (execRow?.id) {
+          const { data: anexoRows } = await supabase
+            .from("rotina_anexos")
+            .select("id, storage_path, nome_arquivo, criado_em")
+            .eq("rotina_id", rotina.id)
+            .eq("execucao_id", execRow.id)
+            .order("criado_em", { ascending: false });
+          if (anexoRows) setAnexos(anexoRows as Anexo[]);
+
+          const { data: checklistAnexoRows } = await supabase
+            .from("rotina_checklist_anexos")
+            .select("id, checklist_execucao_id, storage_path, criado_em")
+            .eq("rotina_id", rotina.id)
+            .order("criado_em", { ascending: false });
+          if (checklistAnexoRows) {
+            const byChecklist: Record<number, ChecklistAnexo[]> = {};
+            (checklistAnexoRows as ChecklistAnexo[]).forEach((row) => {
+              if (!byChecklist[row.checklist_execucao_id]) byChecklist[row.checklist_execucao_id] = [];
+              byChecklist[row.checklist_execucao_id].push(row);
+            });
+            setChecklistAnexos(byChecklist);
+          }
+        }
+      } catch (e: any) {
+        console.error("Erro inesperado na inicialização da execução:", e);
+        setErroInicial("Erro inesperado ao iniciar execução.");
+      } finally {
+        setLoadingInicial(false);
+      }
+    };
+
+    void init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, rotina?.id, perfil.id, isReadOnly, canView]);
+
+  // salva tempo contínuo (a cada 5s) reancorando quando está rodando
+  useEffect(() => {
+    if (!execucaoId || isReadOnly) return;
+
+    const interval = setInterval(async () => {
+      const nowISO = new Date().toISOString();
+
+      if (!isPaused && !isFinalizada) {
+        const total = computeTotalSeconds();
+        baseAcumuladaRef.current = total;
+        inicioRodandoRef.current = nowISO;
+        setElapsedSeconds(total);
+
+        const { error } = await supabase
+          .from("rotina_execucoes")
+          .update({ duracao_total_segundos: total, inicio_em: nowISO })
+          .eq("id", execucaoId);
+
+        if (error) console.error("Erro ao salvar tempo contínuo:", error);
+        return;
+      }
+
+      const { error: errSave } = await supabase
+        .from("rotina_execucoes")
+        .update({ duracao_total_segundos: elapsedSeconds })
+        .eq("id", execucaoId);
+
+      if (errSave) console.error("Erro ao salvar tempo contínuo (pausada/finalizada):", errSave);
+    }, 5000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [execucaoId, isReadOnly, isPaused, isFinalizada, elapsedSeconds]);
+
+  // persistência ao desmontar
+  useEffect(() => {
+    return () => {
+      if (execucaoId && !isFinalizada && !isReadOnly) {
+        const total = !isPaused && !isFinalizada ? computeTotalSeconds() : elapsedSeconds;
+        void supabase
+          .from("rotina_execucoes")
+          .update({
+            duracao_total_segundos: total,
+            observacao: observacoes || null,
+          })
+          .eq("id", execucaoId);
+        void salvarChecklistExecucao();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [execucaoId, isFinalizada, isReadOnly, isPaused, elapsedSeconds, observacoes, checklist]);
+
+  useEffect(() => {
+    if (!execucaoId || isReadOnly || isFinalizada) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistEstadoParcial();
+    }, 800);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checklist, observacoes]);
+
+  const persistEstadoParcial = async (extra: Record<string, any> = {}) => {
+    if (!execucaoId || isReadOnly) return;
+
+    if (!isPaused && !isFinalizada) {
+      const total = computeTotalSeconds();
+      const nowISO = new Date().toISOString();
+      baseAcumuladaRef.current = total;
+      inicioRodandoRef.current = nowISO;
+      setElapsedSeconds(total);
+
+      const { error } = await supabase
+        .from("rotina_execucoes")
+        .update({
+          duracao_total_segundos: total,
+          inicio_em: nowISO,
+          observacao: observacoes || null,
+          ...extra,
+        })
+        .eq("id", execucaoId);
+
+      if (error) console.error("Erro ao salvar estado parcial:", error);
+      await salvarChecklistExecucao();
+      return;
+    }
+
+    const itensComAnexoObrigatorio = checklist.filter((item) => item.exige_anexo && item.checklist_execucao_id);
+    if (itensComAnexoObrigatorio.length > 0) {
+      const pendentes = itensComAnexoObrigatorio.filter((item) => {
+        const anexosItem = checklistAnexos[item.checklist_execucao_id as number] ?? [];
+        return anexosItem.length === 0;
+      });
+      if (pendentes.length > 0) {
+        alert("Checklist com anexo obrigatorio: envie arquivos nos itens marcados como obrigatorios.");
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("rotina_execucoes")
+      .update({
+        duracao_total_segundos: elapsedSeconds,
+        observacao: observacoes || null,
+        ...extra,
+      })
+      .eq("id", execucaoId);
+
+    if (error) console.error("Erro ao salvar estado parcial:", error);
+    await salvarChecklistExecucao();
+  };
+
+  const handlePausar = async () => {
+    if (!execucaoId || isReadOnly) return;
+
+    const total = computeTotalSeconds();
+    setElapsedSeconds(total);
+
+    const novoPausado = !isPaused;
+    setIsPaused(novoPausado);
+
+    if (novoPausado) {
+      baseAcumuladaRef.current = total;
+      inicioRodandoRef.current = null;
+
+      await persistEstadoParcial({
+        duracao_total_segundos: total,
+        pausado_em: new Date().toISOString(),
+      });
+    } else {
+      const nowISO = new Date().toISOString();
+      inicioRodandoRef.current = nowISO;
+
+      await persistEstadoParcial({
+        inicio_em: nowISO,
+        pausado_em: null,
+        duracao_total_segundos: baseAcumuladaRef.current,
+      });
+    }
+  };
+
+  const handleMinimizar = async () => {
+    await persistEstadoParcial();
+    setIsMinimized(true);
+  };
+
+  const handleFechar = async () => {
+    await persistEstadoParcial();
+    onClose();
+  };
+
+  useEffect(() => {
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (!execucaoId || isReadOnly || isFinalizada) return;
+      void persistEstadoParcial();
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [execucaoId, isReadOnly, isFinalizada, observacoes, checklist, elapsedSeconds]);
+
+  const handleFinalizar = async () => {
+    if (!execucaoId || isReadOnly) return;
+
+    const total = computeTotalSeconds();
+    setElapsedSeconds(total);
+
+    if ((rotina as any)?.tem_anexo) {
+      if (!anexos || anexos.length < 1) {
+        alert("Esta rotina exige anexo de comprovação. Envie pelo menos 1 arquivo antes de finalizar.");
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("rotina_execucoes")
+      .update({
+        finalizado_em: new Date().toISOString(),
+        duracao_total_segundos: total,
+        observacao: observacoes || null,
+        pausado_em: null,
+      })
+      .eq("id", execucaoId);
+
+    if (error) {
+      console.error("Erro ao finalizar rotina:", error);
+      alert("Erro ao finalizar rotina. Tente novamente.");
+      return;
+    }
+    await salvarChecklistExecucao();
+
+    if ((rotina as any)?.tipo === "avulsa") {
+      const { error: rotinaError } = await supabase
+        .from("rotinas")
+        .update({ status: "finalizada" })
+        .eq("id", rotina.id);
+
+      if (rotinaError) {
+        console.error("Erro ao finalizar rotina (rotinas):", rotinaError);
+        alert("Erro ao finalizar rotina. Tente novamente.");
+        return;
+      }
+    }
+
+    setIsFinalizada(true);
+    setIsPaused(true);
+    baseAcumuladaRef.current = total;
+    inicioRodandoRef.current = null;
+
+    if (onFinalizada) onFinalizada();
+  };
+
+  if (!open || !rotina) return null;
+
+  const statusBadge = () => {
+    if (!execucaoId && isReadOnly) {
+      return <span style={{ ...badgeBase, background: "rgba(56,189,248,0.10)", color: "#7dd3fc" }}>Sem execução</span>;
+    }
+    if (isFinalizada) {
+      return <span style={{ ...badgeBase, background: "rgba(34,197,94,0.18)", color: "#4ade80" }}>Finalizada</span>;
+    }
+    if (isPaused) {
+      return <span style={{ ...badgeBase, background: "rgba(234,179,8,0.15)", color: "#facc15" }}>Pausada</span>;
+    }
+    return <span style={{ ...badgeBase, background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>Em execução</span>;
+  };
+
+  const handleToggleChecklistItem = (ordem: number) => {
+    if (isFinalizada || isReadOnly) return;
+    setChecklist((prev) => prev.map((i) => (i.ordem === ordem ? { ...i, concluido: !i.concluido } : i)));
+  };
+
+  const handleUpdateValor = (ordem: number, valor: string) => {
+    if (isFinalizada || isReadOnly) return;
+    setChecklist((prev) => prev.map((i) => (i.ordem === ordem ? { ...i, valor } : i)));
+  };
+
+  const handleUploadAnexos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!execucaoId || !rotina || !executorId || isReadOnly) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setErroUpload(null);
+
+    const bucket = "rotina-anexos";
+    const novos: Anexo[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `rotinas/${rotina.id}/execucoes/${execucaoId}/${Date.now()}-${i}.${ext}`;
+
+        const { error: upError } = await supabase.storage.from(bucket).upload(path, file);
+        if (upError) {
+          setErroUpload("Erro ao enviar um dos anexos.");
+          continue;
+        }
+
+        const { data: inserted, error: insErr } = await supabase
+          .from("rotina_anexos")
+          .insert({
+            rotina_id: rotina.id,
+            execucao_id: execucaoId,
+            usuario_id: executorId,
+            storage_path: path,
+            nome_arquivo: file.name,
+          })
+          .select("id, storage_path, nome_arquivo, criado_em")
+          .single();
+
+        if (!insErr && inserted) novos.push(inserted as Anexo);
+      }
+
+      if (novos.length > 0) setAnexos((prev) => [...novos, ...prev]);
+    } catch (err: any) {
+      setErroUpload("Erro inesperado ao enviar anexos.");
+    } finally {
+      setUploading(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleUploadChecklistAnexos = async (checklistExecucaoId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!execucaoId || !rotina || !executorId || isReadOnly) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingChecklistId(checklistExecucaoId);
+    setErroChecklistUpload((prev) => ({ ...prev, [checklistExecucaoId]: "" }));
+
+    const bucket = "rotina-anexos";
+    const novos: ChecklistAnexo[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `rotinas/${rotina.id}/execucoes/${execucaoId}/checklist/${checklistExecucaoId}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: upError } = await supabase.storage.from(bucket).upload(path, file);
+        if (upError) {
+          setErroChecklistUpload((prev) => ({ ...prev, [checklistExecucaoId]: "Erro ao enviar um dos anexos do checklist." }));
+          continue;
+        }
+
+        const { data: inserted, error: insErr } = await supabase
+          .from("rotina_checklist_anexos")
+          .insert({
+            rotina_id: rotina.id,
+            checklist_execucao_id: checklistExecucaoId,
+            storage_path: path,
+            usuario_id: executorId,
+            nome_arquivo: file.name,
+          })
+          .select("id, checklist_execucao_id, storage_path, criado_em")
+          .single();
+
+        if (!insErr && inserted) novos.push(inserted as ChecklistAnexo);
+      }
+
+      if (novos.length > 0) {
+        setChecklistAnexos((prev) => ({
+          ...prev,
+          [checklistExecucaoId]: [...novos, ...(prev[checklistExecucaoId] ?? [])],
+        }));
+      }
+    } catch (err: any) {
+      setErroChecklistUpload((prev) => ({ ...prev, [checklistExecucaoId]: "Erro inesperado ao enviar anexos do checklist." }));
+    } finally {
+      setUploadingChecklistId(null);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const modal = !isMinimized && (
+    <div style={overlayStyle}>
+      <div style={modalStyle}>
+        <header style={headerRowStyle}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{rotina.titulo}</div>
+            <div style={{ fontSize: 11, color: textMuted }}>
+              ID: {rotina.id} • Duração planejada: {rotina.duracao_minutos ?? 0} min
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {isReadOnly && <span style={{ ...badgeBase, background: "rgba(148,163,184,0.15)", color: "#e5e7eb" }}>Somente leitura</span>}
+            {statusBadge()}
+            <span style={{ fontFamily: "monospace", fontSize: 20, fontWeight: 700 }}>{formatSeconds(elapsedSeconds)}</span>
+
+            <button type="button" style={{ ...btnNeonStyle, background: "transparent", border: `1px solid ${neon}`, color: neon }} onClick={handleMinimizar}>
+              Minimizar
+            </button>
+
+            <button type="button" style={{ ...btnNeonStyle, background: "#991b1b", color: "#fee2e2" }} onClick={handleFechar}>
+              Fechar
+            </button>
+          </div>
+        </header>
+
+        {erroInicial ? (
+          <div style={{ padding: 12, borderRadius: 12, background: "rgba(220,38,38,0.18)", color: "#fecaca", fontSize: 13 }}>{erroInicial}</div>
+        ) : loadingInicial ? (
+          <div style={{ color: "#e5e7eb", fontSize: 13 }}>Carregando dados da execução...</div>
+        ) : (
+          <>
+            <div style={bodyGridStyle}>
+              <div style={colunaStyle}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Checklist da execução</div>
+                <div style={{ fontSize: 11, color: textMuted, marginBottom: 6 }}>
+                  {isReadOnly ? "Visualização do checklist (somente leitura)." : "Marque o item concluído e registre o valor da conferência."}
+                </div>
+
+                {rotina?.arquivo_modelo_url && (
+                  <a href={rotina.arquivo_modelo_url} target="_blank" rel="noreferrer" style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: neon, textDecoration: "none",
+                    border: `1px solid ${borderSoft}`, padding: "6px 10px", borderRadius: 10,
+                  }}>
+                    📄 Baixar anexo da rotina {rotina.arquivo_modelo_nome ? `(${rotina.arquivo_modelo_nome})` : ""}
+                  </a>
+                )}
+
+                <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+                  {checklist.map((item) => (
+                    <div
+                      key={item.ordem}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "24px minmax(0, 1.6fr) minmax(0, 0.8fr)",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 8,
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.concluido}
+                        disabled={isFinalizada || isReadOnly}
+                        onChange={() => handleToggleChecklistItem(item.ordem)}
+                      />
+                      <div
+                        style={{
+                          background: "rgba(15,23,42,1)",
+                          borderRadius: 10,
+                          border: `1px solid ${borderSoft}`,
+                          padding: "6px 8px",
+                          color: text,
+                          fontSize: 13,
+                        }}
+                      >
+                        {item.descricao || <span style={{ color: "#64748b" }}>(sem descrição)</span>}
+                      </div>
+                      <input
+                        type="text"
+                        style={{
+                          background: "rgba(15,23,42,1)",
+                          borderRadius: 10,
+                          border: `1px solid ${borderSoft}`,
+                          padding: "6px 8px",
+                          color: text,
+                          fontSize: 13,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                        placeholder="Valor / Qtd"
+                        value={item.valor}
+                        disabled={isFinalizada || isReadOnly}
+                        onChange={(e) => handleUpdateValor(item.ordem, e.target.value)}
+                      />
+
+                      {item.checklist_execucao_id ? (
+                        <div style={{ gridColumn: "2 / 4", paddingLeft: 2, paddingBottom: 6 }}>
+                          <div style={{ fontSize: 11, color: textMuted, marginBottom: 4 }}>
+                            {item.exige_anexo ? "Anexo obrigatorio para este item." : "Anexos opcionais do item."}
+                          </div>
+
+                          {!isReadOnly && (
+                            <input
+                              type="file"
+                              multiple
+                              disabled={isFinalizada || uploadingChecklistId === item.checklist_execucao_id}
+                              onChange={(e) => handleUploadChecklistAnexos(item.checklist_execucao_id as number, e)}
+                              style={{ fontSize: 12, marginBottom: 4 }}
+                            />
+                          )}
+
+                          {erroChecklistUpload[item.checklist_execucao_id] && (
+                            <div style={{ fontSize: 11, color: "#fecaca", marginBottom: 4 }}>{erroChecklistUpload[item.checklist_execucao_id]}</div>
+                          )}
+                          {uploadingChecklistId === item.checklist_execucao_id && (
+                            <div style={{ fontSize: 11, color: "#e5e7eb", marginBottom: 4 }}>Enviando anexos do checklist...</div>
+                          )}
+
+                          <div style={{ marginTop: 6, maxHeight: 120, overflowY: "auto", fontSize: 12 }}>
+                            {(checklistAnexos[item.checklist_execucao_id] ?? []).length === 0 && (
+                              <div style={{ fontSize: 12, color: textMuted }}>Nenhum anexo enviado para este item.</div>
+                            )}
+                            {(checklistAnexos[item.checklist_execucao_id] ?? []).map((a) => {
+                              const publicUrl = supabase.storage.from("rotina-anexos").getPublicUrl(a.storage_path).data.publicUrl ?? "#";
+                              return (
+                                <div
+                                  key={a.id}
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    padding: "4px 0",
+                                    borderBottom: `1px solid ${borderSoft}`,
+                                  }}
+                                >
+                                  <a href={publicUrl} target="_blank" rel="noreferrer" style={{ color: neon, textDecoration: "none" }}>
+                                    {getFileNameFromPath(a.storage_path)}
+                                  </a>
+                                  <span style={{ fontSize: 10, color: textMuted }}>{new Date(a.criado_em).toLocaleString()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+
+                  {checklist.length === 0 && <div style={{ fontSize: 12, color: textMuted }}>Esta rotina não possui checklist cadastrado.</div>}
+                </div>
+              </div>
+
+              <div style={colunaStyle}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Observações</div>
+                <textarea
+                  style={{
+                    flex: 1,
+                    background: "rgba(15,23,42,1)",
+                    borderRadius: 12,
+                    border: `1px solid ${borderSoft}`,
+                    padding: 10,
+                    color: text,
+                    fontSize: 13,
+                    resize: "none",
+                    minHeight: 120,
+                  }}
+                  placeholder="Registre divergências, ocorrências, observações importantes..."
+                  value={observacoes}
+                  disabled={isFinalizada || isReadOnly}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                />
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Anexos da execução</div>
+                  <div style={{ fontSize: 11, color: textMuted, marginBottom: 4 }}>
+                    {isReadOnly
+                      ? "Visualização de anexos (somente leitura)."
+                      : (rotina as any)?.tem_anexo
+                        ? "⚠️ Anexo obrigatório: envie pelo menos 1 arquivo para conseguir finalizar. (Múltiplos permitidos)"
+                        : "Envie fotos, prints ou documentos. Múltiplos arquivos são permitidos."}
+                  </div>
+
+                  <input
+                    type="file"
+                    multiple
+                    disabled={isFinalizada || uploading || isReadOnly}
+                    onChange={handleUploadAnexos}
+                    style={{ fontSize: 12, marginBottom: 4 }}
+                  />
+
+                  {erroUpload && <div style={{ fontSize: 11, color: "#fecaca", marginBottom: 4 }}>{erroUpload}</div>}
+                  {uploading && <div style={{ fontSize: 11, color: "#e5e7eb", marginBottom: 4 }}>Enviando anexos...</div>}
+
+                  <div style={{ marginTop: 8, maxHeight: 130, overflowY: "auto", fontSize: 12 }}>
+                    {anexos.length === 0 && <div style={{ fontSize: 12, color: textMuted }}>Nenhum anexo enviado ainda.</div>}
+
+                    {anexos.map((a) => {
+                      const publicUrl = supabase.storage.from("rotina-anexos").getPublicUrl(a.storage_path).data.publicUrl ?? "#";
+                      return (
+                        <div
+                          key={a.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "4px 0",
+                            borderBottom: `1px solid ${borderSoft}`,
+                          }}
+                        >
+                          <a href={publicUrl} target="_blank" rel="noreferrer" style={{ color: neon, textDecoration: "none" }}>
+                            ⬇ {a.nome_arquivo ?? "arquivo"}
+                          </a>
+                          <span style={{ fontSize: 10, color: textMuted }}>{new Date(a.criado_em).toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer style={footerRowStyle}>
+              <div style={{ fontSize: 12, color: textMuted }}>
+                {isReadOnly
+                  ? "Modo somente leitura: você pode visualizar checklist, tempo e anexos dentro da sua hierarquia."
+                  : "O cronômetro registra o tempo total. Você pode pausar/minimizar sem perder o tempo. Ao finalizar, tudo fica salvo para auditoria."}
+              </div>
+
+              {!isReadOnly && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!isFinalizada && (
+                    <button type="button" style={{ ...btnNeonStyle, background: "#f97316", color: "#111827" }} onClick={handlePausar}>
+                      {isPaused ? "Retomar" : "Pausar"}
+                    </button>
+                  )}
+                  {!isFinalizada && (
+                    <button type="button" style={{ ...btnNeonStyle, background: "#dc2626", color: "#fee2e2" }} onClick={handleFinalizar}>
+                      Finalizar rotina
+                    </button>
+                  )}
+                </div>
+              )}
+            </footer>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const floating = isMinimized && (
+    <div
+      style={{
+        position: "fixed",
+        right: 20,
+        bottom: 20,
+        width: 320,
+        background: "rgba(15,23,42,0.98)",
+        borderRadius: 16,
+        border: `1px solid ${neon}`,
+        boxShadow: "0 0 25px rgba(34,197,94,0.35)",
+        padding: 12,
+        zIndex: 40,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+        {isReadOnly ? "Visualizando: " : "Em execução: "}
+        <span style={{ color: neon }}>{rotina.titulo}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontFamily: "monospace", fontSize: 14 }}>{formatSeconds(elapsedSeconds)}</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" style={{ ...btnNeonStyle, padding: "4px 10px", background: neon, color: "#000" }} onClick={() => setIsMinimized(false)}>
+            Maximizar
+          </button>
+          {!isReadOnly && !isFinalizada && (
+            <button type="button" style={{ ...btnNeonStyle, padding: "4px 10px", background: "#dc2626", color: "#fee2e2" }} onClick={handleFinalizar}>
+              Finalizar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {modal}
+      {floating}
+    </>
+  );
+}

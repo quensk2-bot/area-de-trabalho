@@ -1,0 +1,30 @@
+name: Importação Ruptura (ETL)
+
+on:
+  workflow_dispatch: # botão manual
+  schedule:
+    - cron: "0 9 * * *" # todo dia às 09:00 UTC (06:00 Brasil)
+
+jobs:
+  ruptura:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar importação de ruptura
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          npx ts-node src/ruptura/importRuptura.ts
