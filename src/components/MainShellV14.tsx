@@ -27,6 +27,14 @@ import {
   RecebimentoPlaceholder,
   RecebimentoTransportadoras,
 } from "./recebimento/RecebimentoPages";
+import {
+  PontoExtraAcompanhamento,
+  PontoExtraCubagem,
+  PontoExtraDashboard,
+  PontoExtraImportacao,
+  PontoExtraProcessamento,
+  PontoExtraRelatorio,
+} from "./loja/PontoExtraPages";
 
 type Props = {
   perfil: Usuario;
@@ -51,7 +59,13 @@ type MenuKey =
   | "recebimento-importar-agenda-futura"
   | "recebimento-ocorrencias"
   | "recebimento-relatorios"
-  | "recebimento-confirmacao-agenda";
+  | "recebimento-confirmacao-agenda"
+  | "loja-ponto-dashboard"
+  | "loja-ponto-importacao"
+  | "loja-ponto-cubagem"
+  | "loja-ponto-processamento"
+  | "loja-ponto-acompanhamento"
+  | "loja-ponto-relatorio";
 
 type Rotina = {
   id: string;
@@ -296,6 +310,15 @@ const RECEBIMENTO_ROUTES: Partial<Record<MenuKey, string>> = {
   "recebimento-relatorios": "/recebimento/relatorios",
 };
 
+const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
+  "loja-ponto-dashboard": "/loja/ponto-extra",
+  "loja-ponto-importacao": "/loja/ponto-extra/importacao",
+  "loja-ponto-cubagem": "/loja/ponto-extra/cubagem",
+  "loja-ponto-processamento": "/loja/ponto-extra/processamento",
+  "loja-ponto-acompanhamento": "/loja/ponto-extra/acompanhamento",
+  "loja-ponto-relatorio": "/loja/ponto-extra/relatorio",
+};
+
 const appBasePath = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 const toAppPath = (path: string) => `${appBasePath}${path}` || path;
 const stripAppBase = (path: string) => {
@@ -307,7 +330,7 @@ const stripAppBase = (path: string) => {
 
 const menuFromPath = (path: string): MenuKey | null => {
   const normalizedPath = stripAppBase(path);
-  const found = Object.entries(RECEBIMENTO_ROUTES).find(([, route]) => route === normalizedPath);
+  const found = [...Object.entries(RECEBIMENTO_ROUTES), ...Object.entries(LOJA_ROUTES)].find(([, route]) => route === normalizedPath);
   return (found?.[0] as MenuKey | undefined) ?? null;
 };
 
@@ -343,6 +366,8 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     recebimento: false,
     recebimentoConfirmacao: false,
     recebimentoPlanejamento: false,
+    loja: false,
+    lojaPontoExtra: false,
   });
 
   useEffect(() => {
@@ -351,7 +376,14 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
   }, [menu]);
 
   const toggleGrupoMenu = (
-    grupo: "supply" | "kpiSetor" | "recebimento" | "recebimentoConfirmacao" | "recebimentoPlanejamento"
+    grupo:
+      | "supply"
+      | "kpiSetor"
+      | "recebimento"
+      | "recebimentoConfirmacao"
+      | "recebimentoPlanejamento"
+      | "loja"
+      | "lojaPontoExtra"
   ) => {
     setGruposMenuAbertos((prev) => ({
       ...prev,
@@ -362,8 +394,9 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
   const navegarMenu = (key: MenuKey) => {
     setMenu(key);
     const route = RECEBIMENTO_ROUTES[key];
-    if (route && typeof window !== "undefined") {
-      window.history.pushState(null, "", toAppPath(route));
+    const lojaRoute = LOJA_ROUTES[key];
+    if ((route || lojaRoute) && typeof window !== "undefined") {
+      window.history.pushState(null, "", toAppPath(route || lojaRoute || "/"));
     }
   };
 
@@ -463,6 +496,19 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["recebimento-importacao", "Importação Recebimento"],
         ["recebimento-ocorrencias", "Ocorrencias"],
         ["recebimento-relatorios", "Relatorios"],
+      ] as [MenuKey, string][],
+    []
+  );
+
+  const lojaPontoExtraItems = useMemo(
+    () =>
+      [
+        ["loja-ponto-dashboard", "Dashboard Ponto Extra"],
+        ["loja-ponto-importacao", "Importar Bases"],
+        ["loja-ponto-cubagem", "Cubagem"],
+        ["loja-ponto-processamento", "Processar Ponto Extra"],
+        ["loja-ponto-acompanhamento", "Acompanhamento"],
+        ["loja-ponto-relatorio", "Relatorio Comercial"],
       ] as [MenuKey, string][],
     []
   );
@@ -656,6 +702,29 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     );
   };
 
+  const renderLoja = () => {
+    let content: React.ReactNode;
+    if (menu === "loja-ponto-importacao") {
+      content = <PontoExtraImportacao perfil={perfil} />;
+    } else if (menu === "loja-ponto-cubagem") {
+      content = <PontoExtraCubagem />;
+    } else if (menu === "loja-ponto-processamento") {
+      content = <PontoExtraProcessamento />;
+    } else if (menu === "loja-ponto-acompanhamento") {
+      content = <PontoExtraAcompanhamento />;
+    } else if (menu === "loja-ponto-relatorio") {
+      content = <PontoExtraRelatorio />;
+    } else {
+      content = <PontoExtraDashboard />;
+    }
+
+    return (
+      <div style={gridSingleN3}>
+        <div style={cardStyleN3}>{content}</div>
+      </div>
+    );
+  };
+
   return (
     <div style={shellStyles.root}>
       <aside style={shellStyles.sidebar}>
@@ -813,6 +882,49 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
                 </>
               )}
             </div>
+
+            <div style={shellStyles.menuGroup}>
+              <button
+                type="button"
+                onClick={() => toggleGrupoMenu("loja")}
+                style={shellStyles.menuGroupTitle}
+              >
+                <span>Loja</span>
+                <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.loja ? "-" : "+"}</span>
+              </button>
+              {gruposMenuAbertos.loja && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupoMenu("lojaPontoExtra")}
+                    style={shellStyles.menuSubGroupTitle}
+                  >
+                    <span>01 Ponto Extra</span>
+                    <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.lojaPontoExtra ? "-" : "+"}</span>
+                  </button>
+                  {gruposMenuAbertos.lojaPontoExtra &&
+                    lojaPontoExtraItems.map(([key, label]) => {
+                      const active = menu === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => navegarMenu(key)}
+                          style={{
+                            ...shellStyles.menuButton,
+                            ...(active ? shellStyles.menuButtonActive : {}),
+                          }}
+                        >
+                          <span style={shellStyles.menuButtonLeft}>
+                            <span style={shellStyles.menuBullet} />
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -827,6 +939,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         {menu === "execucao" && renderExecucaoAoVivo()}
         {menu === "modelos" && perfil.nivel === "N1" && renderModelos()}
         {menu.startsWith("recebimento-") && renderRecebimento()}
+        {menu.startsWith("loja-") && renderLoja()}
 
         <RotinaExecucaoContainer
           open={execOpen}
