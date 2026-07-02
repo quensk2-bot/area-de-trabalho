@@ -171,13 +171,16 @@ export function LoginScreen() {
     setErrorMsg(null);
 
     try {
+      const emailNormalizado = email.trim().toLowerCase();
+      const senhaNormalizada = senha.trim();
+
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: senha,
+        email: emailNormalizado,
+        password: senhaNormalizada,
       });
 
       if (error) {
-        console.error("Erro no login:", error.message);
+        console.error("Erro no login:", error.message, error);
         setErrorMsg("E-mail ou senha inválidos.");
       }
     } catch (err) {
