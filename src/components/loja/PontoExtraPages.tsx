@@ -358,13 +358,13 @@ export function PontoExtraImportacao({ perfil }: Props) {
           .map((row) => ({
             importacao_id: importacao.id,
             loja: String(row.LOJA ?? row.CODIGO_LOJA ?? row.EMPRESA ?? ""),
-            codigo_produto: String(row.CODIGO_PRODUTO ?? row.CODIGO ?? "").trim(),
-            descricao_produto: String(row.DESCRICAO_PRODUTO ?? row.PRODUTO ?? row.DESCRICAO ?? ""),
-            codigo_fornecedor: String(row.CODIGO_FORNECEDOR ?? row.COD_FORNECEDOR ?? ""),
-            fornecedor: String(row.FORNECEDOR ?? ""),
+            codigo_produto: String(row.CODIGO_PRODUTO ?? row.SEQPRODUTO ?? row.CODPRODUTO ?? row.CODIGO ?? "").trim(),
+            descricao_produto: String(row.DESCRICAO_PRODUTO ?? row.DESCCOMPLETA ?? row.PRODUTO ?? row.DESCRICAO ?? ""),
+            codigo_fornecedor: String(row.CODIGO_FORNECEDOR ?? row.COD_FORNECEDOR ?? row.CODFORN ?? ""),
+            fornecedor: String(row.FORNECEDOR ?? row.RAZAO ?? ""),
             status: String(row.STATUS ?? ""),
-            media_venda_un_dia: toNumber(row.MEDIA_VENDA_UN_DIA ?? row.MEDIA_VENDA ?? row.MEDIA),
-            media_venda_gp: toNumber(row.MEDIA_VENDA_GP),
+            media_venda_un_dia: toNumber(row.MEDIA_VENDA_UN_DIA ?? row.MEDIAVENDAUNDIA ?? row.MEDIA_VENDA ?? row.MEDIA),
+            media_venda_gp: toNumber(row.MEDIA_VENDA_GP ?? row.MEDIAVENDAGP),
             estoque: toNumber(row.ESTOQUE),
             par_min: toNumber(row.PAR_MIN),
             par_max: toNumber(row.PAR_MAX),
@@ -384,7 +384,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
           .filter((row) => row.codigo_produto);
 
         if (payload.length === 0) {
-          setErro("Nenhuma linha valida de media de venda encontrada. Confira se existe CODIGO_PRODUTO.");
+          setErro("Nenhuma linha valida de media de venda encontrada. Confira se existe SEQPRODUTO ou CODIGO_PRODUTO.");
           return;
         }
 
