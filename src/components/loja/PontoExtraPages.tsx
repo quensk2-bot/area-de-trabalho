@@ -1162,7 +1162,271 @@ export function PontoExtraCubagem() {
 }
 
 export function PontoExtraProcessamento() {
-  return <Placeholder titulo="Processar Ponto Extra" descricao="Motor de calculo para destrinchar codigos, cruzar media de venda, estoque CD e cubagem." />;
+  const [loading, setLoading] = useState(false);
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<Record<string, any>[]>([]);
+  const [resumo, setResumo] = useState({
+    produtosBase: 0,
+    processados: 0,
+    semMedia: 0,
+    semCubagem: 0,
+    semEstoque: 0,
+  });
+
+  async function carregarResultado() {
+    const { data, error } = await lojaDb
+      .from("ponta_processada")
+      .select("*")
+      .order("loja", { ascending: true })
+      .order("tipo_ponta", { ascending: true })
+      .limit(200);
+    if (error) throw error;
+    setResultado((data ?? []) as Record<string, any>[]);
+  }
+
+  useEffect(() => {
+    void carregarResultado().catch((err) => {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao carregar processamento.");
+    });
+  }, []);
+
+  async function carregarTabela<T = Record<string, any>>(tabela: string, select = "*") {
+    const pageSize = 1000;
+    const allRows: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await lojaDb
+        .from(tabela)
+        .select(select)
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      allRows.push(...((data ?? []) as T[]));
+      if (!data || data.length < pageSize) break;
+    }
+    return allRows;
+  }
+
+  function chaveTexto(...partes: unknown[]) {
+    return partes.map((parte) => String(parte ?? "").trim().toUpperCase()).join("|");
+  }
+
+  async function processar() {
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const [produtos, medias, estoques, cubagens, cadastros] = await Promise.all([
+        carregarTabela<any>("ponta_produtos"),
+        carregarTabela<any>("ponta_media_venda"),
+        carregarTabela<any>("ponta_estoque_cd"),
+        carregarTabela<any>("ponta_cubagem"),
+        carregarTabela<any>("ponta_cadastros"),
+      ]);
+
+      const mediaPorLojaCodigo = new Map<string, any>();
+      const mediaPorCodigo = new Map<string, any>();
+      for (const media of medias) {
+        const codigo = String(media.codigo_produto ?? "").trim();
+        if (!codigo) continue;
+        const loja = String(media.loja ?? "").trim();
+        if (loja) mediaPorLojaCodigo.set(chaveTexto(loja, codigo), media);
+        if (!mediaPorCodigo.has(chaveTexto(codigo))) mediaPorCodigo.set(chaveTexto(codigo), media);
+      }
+
+      const estoquePorCodigo = new Map<string, number>();
+      for (const estoque of estoques) {
+        const codigo = String(estoque.codigo_produto ?? "").trim();
+        if (!codigo) continue;
+        estoquePorCodigo.set(chaveTexto(codigo), Math.max(estoquePorCodigo.get(chaveTexto(codigo)) ?? 0, toNumber(estoque.estoque_disponivel)));
+      }
+
+      const cubagemPorTipo = new Map<string, any>();
+      for (const cubagem of cubagens) {
+        const tipo = String(cubagem.tipo_ponta ?? "").trim();
+        if (tipo && toNumber(cubagem.total_m3) > 0) cubagemPorTipo.set(chaveTexto(tipo), cubagem);
+      }
+
+      const cadastroPorPonta = new Map<string, any>();
+      for (const cadastro of cadastros) {
+        const tipo = String(cadastro.tipo_ponta ?? "").trim();
+        const setor = String(cadastro.setor ?? "").trim();
+        if (!tipo) continue;
+        cadastroPorPonta.set(chaveTexto(tipo, setor), cadastro);
+        if (!cadastroPorPonta.has(chaveTexto(tipo))) cadastroPorPonta.set(chaveTexto(tipo), cadastro);
+      }
+
+      const baseCalculada = produtos.map((produto) => {
+        const codigo = String(produto.codigo_produto ?? "").trim();
+        const loja = String(produto.loja ?? "").trim();
+        const tipoPonta = String(produto.tipo_ponta ?? "").trim().toUpperCase();
+        const secao = String(produto.secao ?? "").trim();
+        const categoria = String(produto.categoria ?? "").trim();
+        const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo)) ?? mediaPorCodigo.get(chaveTexto(codigo));
+        const cubagem = cubagemPorTipo.get(chaveTexto(tipoPonta));
+        const estoqueCd = estoquePorCodigo.get(chaveTexto(codigo)) ?? 0;
+        const cadastro = cadastroPorPonta.get(chaveTexto(tipoPonta, secao)) ?? cadastroPorPonta.get(chaveTexto(tipoPonta));
+        return {
+          produto,
+          media,
+          cubagem,
+          cadastro,
+          codigo,
+          loja,
+          tipoPonta,
+          secao,
+          categoria,
+          estoqueCd,
+          mediaVenda: toNumber(media?.media_venda_un_dia),
+        };
+      });
+
+      const somaPorPonta = new Map<string, number>();
+      for (const item of baseCalculada) {
+        const grupo = chaveTexto(item.loja, item.tipoPonta, item.secao, item.categoria);
+        somaPorPonta.set(grupo, (somaPorPonta.get(grupo) ?? 0) + item.mediaVenda);
+      }
+
+      const payload = baseCalculada.map((item) => {
+        const somaMedia = somaPorPonta.get(chaveTexto(item.loja, item.tipoPonta, item.secao, item.categoria)) ?? 0;
+        const participacao = somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
+        const m3Ponta = toNumber(item.cubagem?.total_m3);
+        const m3Capacidade = m3Ponta * participacao;
+        const m3Unid = toNumber(item.media?.m3_unid);
+        const unidadeSugerida = m3Unid > 0 ? m3Capacidade / m3Unid : 0;
+        const qtdeEmbCompra = toNumber(item.media?.qtde_emb_compra);
+        const caixasSugeridas = qtdeEmbCompra > 0 ? unidadeSugerida / qtdeEmbCompra : 0;
+
+        return {
+          loja: item.loja,
+          quant_ponta: String(item.produto.quantidade ?? ""),
+          tipo_ponta: item.tipoPonta,
+          secao: item.secao,
+          categoria: item.categoria,
+          codigo_produto: item.codigo,
+          descricao_produto: item.media?.descricao_produto ?? "",
+          codigo_fornecedor: item.media?.codigo_fornecedor ?? "",
+          fornecedor: item.media?.fornecedor ?? "",
+          media_venda_un_dia: item.mediaVenda,
+          soma_media_ponta: somaMedia,
+          participacao,
+          m3_ponta: m3Ponta,
+          m3_capacidade: m3Capacidade,
+          m3_unid: m3Unid,
+          unidade_sugerida: unidadeSugerida,
+          qtde_emb_compra: qtdeEmbCompra,
+          caixas_sugeridas: caixasSugeridas,
+          estoque_cd: item.estoqueCd,
+          cod_ponta: item.cadastro?.codigo_ponta ?? "",
+          descricao_ponta: item.cadastro?.descricao ?? "",
+        };
+      });
+
+      const { error: deleteError } = await lojaDb.from("ponta_processada").delete().not("id", "is", null);
+      if (deleteError) throw deleteError;
+      if (payload.length) await insertInChunks("ponta_processada", payload, 600);
+
+      const novoResumo = {
+        produtosBase: produtos.length,
+        processados: payload.length,
+        semMedia: baseCalculada.filter((item) => !item.media).length,
+        semCubagem: baseCalculada.filter((item) => !item.cubagem).length,
+        semEstoque: baseCalculada.filter((item) => item.estoqueCd <= 0).length,
+      };
+      setResumo(novoResumo);
+      setResultado(payload.slice(0, 200));
+      setMensagem(`Processamento concluido: ${payload.length} produtos gravados.`);
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao processar Ponto Extra.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const preview = resultado.slice(0, 80);
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Processar Ponto Extra</h1>
+        <p style={descStyle}>
+          Cruza base ponta, media de venda, estoque CD e cubagem para gerar a sugestao de abastecimento.
+        </p>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => void processar()} disabled={loading} style={buttonStyle}>
+            {loading ? "Processando..." : "Processar Ponto Extra"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void carregarResultado()}
+            disabled={loading}
+            style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}
+          >
+            Recarregar resultado
+          </button>
+        </div>
+        {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+      </div>
+
+      <div style={gridStyle}>
+        <MetricCard label="Produtos base" value={resumo.produtosBase || resultado.length} />
+        <MetricCard label="Processados" value={resumo.processados || resultado.length} />
+        <MetricCard label="Sem media" value={resumo.semMedia} />
+        <MetricCard label="Sem cubagem" value={resumo.semCubagem} />
+        <MetricCard label="Sem estoque CD" value={resumo.semEstoque} />
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Resultado processado</h2>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {[
+                  "Loja",
+                  "Tipo ponta",
+                  "Categoria",
+                  "Codigo",
+                  "Descricao",
+                  "Media",
+                  "Participacao",
+                  "M3 capacidade",
+                  "Unid. sugerida",
+                  "Caixas sugeridas",
+                  "Estoque CD",
+                ].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.length === 0 && <tr><td style={tdStyle}>Nenhum resultado processado.</td></tr>}
+              {preview.map((item, index) => (
+                <tr key={`${item.codigo_produto}-${index}`}>
+                  <td style={tdStyle}>{item.loja || "-"}</td>
+                  <td style={tdStyle}>{item.tipo_ponta || "-"}</td>
+                  <td style={tdStyle}>{item.categoria || "-"}</td>
+                  <td style={tdStyle}>{item.codigo_produto || "-"}</td>
+                  <td style={tdStyle}>{item.descricao_produto || "-"}</td>
+                  <td style={tdStyle}>{formatNumber(item.media_venda_un_dia, 3)}</td>
+                  <td style={tdStyle}>{formatNumber(toNumber(item.participacao) * 100, 2)}%</td>
+                  <td style={tdStyle}>{formatNumber(item.m3_capacidade, 6)}</td>
+                  <td style={tdStyle}>{formatNumber(item.unidade_sugerida, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.caixas_sugeridas, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function PontoExtraAcompanhamento() {
