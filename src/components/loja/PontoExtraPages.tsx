@@ -1068,7 +1068,7 @@ export function PontoExtraCubagem() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                {["Tipo de ponta", "Prof.", "Frente", "Altura", "M3 area", "Reparticao", "% abastecimento", "Total M3", "Acoes"].map((header) => (
+                {["Acoes", "Tipo de ponta", "Prof.", "Frente", "Altura", "M3 area", "Reparticao", "% abastecimento", "Total M3"].map((header) => (
                   <th key={header} style={thStyle}>{header}</th>
                 ))}
               </tr>
@@ -1077,14 +1077,6 @@ export function PontoExtraCubagem() {
               {cubagensFiltradas.length === 0 && <tr><td style={tdStyle}>Nenhuma cubagem cadastrada.</td></tr>}
               {cubagensFiltradas.map((item) => (
                 <tr key={item.id}>
-                  <td style={tdStyle}>{item.tipo_ponta}</td>
-                  <td style={tdStyle}>{formatNumber(item.profundidade, 2)}</td>
-                  <td style={tdStyle}>{formatNumber(item.frente, 2)}</td>
-                  <td style={tdStyle}>{formatNumber(item.altura, 2)}</td>
-                  <td style={tdStyle}>{formatNumber(item.m3_area, 6)}</td>
-                  <td style={tdStyle}>{formatNumber(item.reparticao, 0)}</td>
-                  <td style={tdStyle}>{formatNumber(item.percentual_abastecimento ?? 100, 0)}%</td>
-                  <td style={tdStyle}>{formatNumber(item.total_m3, 6)}</td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button type="button" onClick={() => editarCubagem(item)} style={{ ...buttonStyle, padding: "6px 10px", background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>
@@ -1095,6 +1087,14 @@ export function PontoExtraCubagem() {
                       </button>
                     </div>
                   </td>
+                  <td style={tdStyle}>{item.tipo_ponta}</td>
+                  <td style={tdStyle}>{formatNumber(item.profundidade, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.frente, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.altura, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.m3_area, 6)}</td>
+                  <td style={tdStyle}>{formatNumber(item.reparticao, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.percentual_abastecimento ?? 100, 0)}%</td>
+                  <td style={tdStyle}>{formatNumber(item.total_m3, 6)}</td>
                 </tr>
               ))}
             </tbody>
