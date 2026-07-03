@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabaseClient";
 import { theme } from "../../styles";
@@ -1480,7 +1480,7 @@ export function PontoExtraProcessamento() {
             <tbody>
               {gruposPreview.length === 0 && <tr><td style={tdStyle}>Nenhum resultado processado.</td></tr>}
               {gruposPreview.map((grupo) => (
-                <React.Fragment key={grupo.chave}>
+                <Fragment key={grupo.chave}>
                   <tr>
                     <td
                       colSpan={13}
@@ -1512,7 +1512,7 @@ export function PontoExtraProcessamento() {
                       <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
                     </tr>
                   ))}
-                </React.Fragment>
+                </Fragment>
               ))}
             </tbody>
           </table>
