@@ -1175,14 +1175,33 @@ export function PontoExtraProcessamento() {
   });
 
   async function carregarResultado() {
-    const { data, error } = await lojaDb
+    const { data, error, count } = await lojaDb
       .from("ponta_processada")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("loja", { ascending: true })
       .order("tipo_ponta", { ascending: true })
       .limit(200);
     if (error) throw error;
     setResultado((data ?? []) as Record<string, any>[]);
+
+    const [produtosCount, mediaCount, estoqueCount, cubagemCount] = await Promise.all([
+      lojaDb.from("ponta_produtos").select("*", { count: "exact", head: true }),
+      lojaDb.from("ponta_media_venda").select("*", { count: "exact", head: true }),
+      lojaDb.from("ponta_estoque_cd").select("*", { count: "exact", head: true }),
+      lojaDb.from("ponta_cubagem").select("*", { count: "exact", head: true }),
+    ]);
+
+    const firstError = produtosCount.error ?? mediaCount.error ?? estoqueCount.error ?? cubagemCount.error;
+    if (firstError) throw firstError;
+
+    setResumo((prev) => ({
+      ...prev,
+      produtosBase: produtosCount.count ?? 0,
+      processados: count ?? data?.length ?? 0,
+      semMedia: mediaCount.count ? prev.semMedia : produtosCount.count ?? 0,
+      semCubagem: cubagemCount.count ? prev.semCubagem : produtosCount.count ?? 0,
+      semEstoque: estoqueCount.count ? prev.semEstoque : produtosCount.count ?? 0,
+    }));
   }
 
   useEffect(() => {
