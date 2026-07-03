@@ -725,6 +725,16 @@ function PontoExtraCubagemManualLegacy() {
 }
 
 export function PontoExtraCubagem() {
+  const emptyEditForm = {
+    tipo_ponta: "",
+    profundidade: "",
+    frente: "",
+    altura: "",
+    m3_area: "",
+    reparticao: "1",
+    percentual_abastecimento: "100",
+    total_m3: "",
+  };
   const colunasCubagem = [
     "TIPO DE PONTA",
     "PROF",
@@ -743,6 +753,8 @@ export function PontoExtraCubagem() {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(emptyEditForm);
 
   const preview = useMemo(() => rows.slice(0, 8), [rows]);
   const cubagensFiltradas = useMemo(
@@ -839,6 +851,98 @@ export function PontoExtraCubagem() {
     }
   }
 
+  function editarCubagem(item: PontaCubagemRow) {
+    setEditingId(item.id);
+    setRegionalId(item.regional_id ?? "");
+    setEditForm({
+      tipo_ponta: item.tipo_ponta ?? "",
+      profundidade: String(item.profundidade ?? ""),
+      frente: String(item.frente ?? ""),
+      altura: String(item.altura ?? ""),
+      m3_area: String(item.m3_area ?? ""),
+      reparticao: String(item.reparticao ?? "1"),
+      percentual_abastecimento: String(item.percentual_abastecimento ?? "100"),
+      total_m3: String(item.total_m3 ?? ""),
+    });
+    setMensagem(null);
+    setErro(null);
+  }
+
+  function cancelarEdicao() {
+    setEditingId(null);
+    setEditForm(emptyEditForm);
+  }
+
+  async function salvarEdicao() {
+    if (!editingId) return;
+    if (!regionalId) {
+      setErro("Selecione a regional antes de salvar.");
+      return;
+    }
+    const profundidade = toNumber(editForm.profundidade);
+    const frente = toNumber(editForm.frente);
+    const altura = toNumber(editForm.altura);
+    const m3Area = toNumber(editForm.m3_area) || profundidade * frente * altura;
+    const reparticao = toNumber(editForm.reparticao) || 1;
+    const percentual = toNumber(editForm.percentual_abastecimento) || 100;
+    const totalM3 = toNumber(editForm.total_m3) || m3Area * reparticao * (percentual / 100);
+
+    if (!editForm.tipo_ponta.trim()) {
+      setErro("Informe o tipo de ponta.");
+      return;
+    }
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const { error } = await lojaDb
+        .from("ponta_cubagem")
+        .update({
+          regional_id: regionalId,
+          tipo_ponta: editForm.tipo_ponta.trim().toUpperCase(),
+          profundidade,
+          frente,
+          altura,
+          m3_area: m3Area,
+          reparticao,
+          percentual_abastecimento: percentual,
+          total_m3: totalM3,
+          ativo: true,
+        })
+        .eq("id", editingId);
+      if (error) throw error;
+      setMensagem("Cubagem atualizada.");
+      cancelarEdicao();
+      await carregarBase();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao salvar cubagem.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function excluirCubagem(item: PontaCubagemRow) {
+    const confirmar = window.confirm(`Excluir a cubagem "${item.tipo_ponta}"?`);
+    if (!confirmar) return;
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const { error } = await lojaDb.from("ponta_cubagem").delete().eq("id", item.id);
+      if (error) throw error;
+      setMensagem("Cubagem excluida.");
+      if (editingId === item.id) cancelarEdicao();
+      await carregarBase();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao excluir cubagem.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <section style={pageStyle}>
       <div>
@@ -876,6 +980,58 @@ export function PontoExtraCubagem() {
         {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
       </div>
 
+      {editingId && (
+        <div style={cardStyle}>
+          <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Editar cubagem</h2>
+          <div style={{ ...gridStyle, alignItems: "end" }}>
+            <label>
+              <span style={descStyle}>Tipo de ponta</span>
+              <input
+                value={editForm.tipo_ponta}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, tipo_ponta: e.target.value }))}
+                style={inputStyle}
+              />
+            </label>
+            <label>
+              <span style={descStyle}>Prof.</span>
+              <input value={editForm.profundidade} onChange={(e) => setEditForm((prev) => ({ ...prev, profundidade: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>Frente</span>
+              <input value={editForm.frente} onChange={(e) => setEditForm((prev) => ({ ...prev, frente: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>Altura</span>
+              <input value={editForm.altura} onChange={(e) => setEditForm((prev) => ({ ...prev, altura: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>M3 area</span>
+              <input value={editForm.m3_area} onChange={(e) => setEditForm((prev) => ({ ...prev, m3_area: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>Reparticao</span>
+              <input value={editForm.reparticao} onChange={(e) => setEditForm((prev) => ({ ...prev, reparticao: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>% abastecimento</span>
+              <input value={editForm.percentual_abastecimento} onChange={(e) => setEditForm((prev) => ({ ...prev, percentual_abastecimento: e.target.value }))} style={inputStyle} />
+            </label>
+            <label>
+              <span style={descStyle}>Total M3</span>
+              <input value={editForm.total_m3} onChange={(e) => setEditForm((prev) => ({ ...prev, total_m3: e.target.value }))} style={inputStyle} />
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+            <button type="button" onClick={() => void salvarEdicao()} disabled={loading} style={buttonStyle}>
+              {loading ? "Salvando..." : "Salvar alteracao"}
+            </button>
+            <button type="button" onClick={cancelarEdicao} disabled={loading} style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={cardStyle}>
         <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Preview da importacao</h2>
         <div style={{ overflowX: "auto" }}>
@@ -912,7 +1068,7 @@ export function PontoExtraCubagem() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                {["Tipo de ponta", "Prof.", "Frente", "Altura", "M3 area", "Reparticao", "% abastecimento", "Total M3"].map((header) => (
+                {["Tipo de ponta", "Prof.", "Frente", "Altura", "M3 area", "Reparticao", "% abastecimento", "Total M3", "Acoes"].map((header) => (
                   <th key={header} style={thStyle}>{header}</th>
                 ))}
               </tr>
@@ -929,6 +1085,16 @@ export function PontoExtraCubagem() {
                   <td style={tdStyle}>{formatNumber(item.reparticao, 0)}</td>
                   <td style={tdStyle}>{formatNumber(item.percentual_abastecimento ?? 100, 0)}%</td>
                   <td style={tdStyle}>{formatNumber(item.total_m3, 6)}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={() => editarCubagem(item)} style={{ ...buttonStyle, padding: "6px 10px", background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>
+                        Editar
+                      </button>
+                      <button type="button" onClick={() => void excluirCubagem(item)} disabled={loading} style={{ ...buttonStyle, padding: "6px 10px", background: "#991b1b", color: "#fff" }}>
+                        Excluir
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
