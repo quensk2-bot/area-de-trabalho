@@ -156,33 +156,36 @@ function splitCodes(raw: unknown) {
     .filter((item) => item && !["-", "0", "A", "CIF", "LINHA", "LOJA", "TODA", "VARIANTES", "VARIAS"].includes(item.toUpperCase()));
 }
 
+function buildRowsFromMatrix(matrix: unknown[][]) {
+  const headerIndex = matrix.findIndex((line) => {
+    const headers = line.map(normalizeHeader);
+    return headers.includes("TIPO_DE_PONTA") || (headers.includes("PROF") && headers.includes("FRENTE"));
+  });
+  const effectiveHeaderIndex = headerIndex >= 0 ? headerIndex : 0;
+  const headers = (matrix[effectiveHeaderIndex] ?? []).map(normalizeHeader);
+
+  return matrix.slice(effectiveHeaderIndex + 1).map((line) => {
+    const row: Record<string, unknown> = {};
+    headers.forEach((header, index) => {
+      if (header) row[header] = line[index] ?? "";
+    });
+    return row;
+  }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim()));
+}
+
 async function readRows(file: File): Promise<Record<string, unknown>[]> {
   const buffer = await file.arrayBuffer();
   if (/\.(xlsx|xls)$/i.test(file.name)) {
     const workbook = XLSX.read(buffer, { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-    return rows.map((row) => {
-      const normalized: Record<string, unknown> = {};
-      Object.entries(row).forEach(([key, value]) => {
-        normalized[normalizeHeader(key)] = value;
-      });
-      return normalized;
-    });
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+    return buildRowsFromMatrix(matrix);
   }
 
   const text = new TextDecoder("windows-1252").decode(buffer);
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   const sep = lines[0]?.includes(";") ? ";" : "\t";
-  const headers = (lines.shift() ?? "").split(sep).map(normalizeHeader);
-  return lines.map((line) => {
-    const cols = line.split(sep);
-    const row: Record<string, unknown> = {};
-    headers.forEach((header, index) => {
-      row[header] = cols[index] ?? "";
-    });
-    return row;
-  });
+  return buildRowsFromMatrix(lines.map((line) => line.split(sep)));
 }
 
 function MetricCard({ label, value }: { label: string; value: string | number }) {
@@ -260,6 +263,10 @@ export function PontoExtraImportacao({ perfil }: Props) {
   async function importar() {
     if (!arquivo || rows.length === 0) {
       setErro("Selecione um arquivo valido para importar.");
+      return;
+    }
+    if (tipo === "cubagem") {
+      setErro("Cubagem deve ser importada em LOJA > 01 Ponto Extra > Cubagem, pois precisa selecionar a regional.");
       return;
     }
     setLoading(true);
