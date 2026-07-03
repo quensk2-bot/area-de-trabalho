@@ -390,7 +390,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
   );
 }
 
-export function PontoExtraCubagem() {
+function PontoExtraCubagemManualLegacy() {
   const [regionais, setRegionais] = useState<PontaRegional[]>([]);
   const [lojas, setLojas] = useState<PontaLoja[]>([]);
   const [pontas, setPontas] = useState<PontaCadastro[]>([]);
@@ -707,6 +707,208 @@ export function PontoExtraCubagem() {
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PontoExtraCubagem() {
+  const [regionais, setRegionais] = useState<PontaRegional[]>([]);
+  const [regionalId, setRegionalId] = useState("");
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [cubagens, setCubagens] = useState<PontaCubagemRow[]>([]);
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const preview = useMemo(() => rows.slice(0, 8), [rows]);
+  const cubagensFiltradas = useMemo(
+    () => cubagens.filter((item) => !regionalId || item.regional_id === regionalId),
+    [cubagens, regionalId],
+  );
+
+  async function carregarBase() {
+    setErro(null);
+    try {
+      const [regionaisResult, cubagensResult] = await Promise.all([
+        lojaDb.from("ponta_regionais").select("*").order("nome"),
+        lojaDb.from("ponta_cubagem").select("*").order("tipo_ponta"),
+      ]);
+      if (regionaisResult.error) throw regionaisResult.error;
+      if (cubagensResult.error) throw cubagensResult.error;
+      setRegionais((regionaisResult.data ?? []) as PontaRegional[]);
+      setCubagens((cubagensResult.data ?? []) as PontaCubagemRow[]);
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao carregar regionais e cubagens.");
+    }
+  }
+
+  useEffect(() => {
+    void carregarBase();
+  }, []);
+
+  async function selecionar(file: File | null) {
+    setArquivo(file);
+    setRows([]);
+    setMensagem(null);
+    setErro(null);
+    if (!file) return;
+    try {
+      setRows(await readRows(file));
+    } catch (err) {
+      console.error(err);
+      setErro("Nao foi possivel ler o arquivo de cubagem.");
+    }
+  }
+
+  async function importarCubagem() {
+    if (!regionalId) {
+      setErro("Selecione a regional antes de importar.");
+      return;
+    }
+    if (!arquivo || rows.length === 0) {
+      setErro("Selecione um arquivo valido para importar.");
+      return;
+    }
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const payload = rows
+        .map((row) => {
+          const profundidade = toNumber(row.PROF ?? row.PROFUNDIDADE);
+          const frente = toNumber(row.FRENTE);
+          const altura = toNumber(row.ALTURA);
+          const m3Area = toNumber(row.M3_AREA) || profundidade * frente * altura;
+          const reparticao = toNumber(row.REPARTICAO) || 1;
+          const percentual = toNumber(row.PERCETUAL_ABASTECIMENTO ?? row.PERCENTUAL_ABASTECIMENTO ?? row.PERC_ABASTECIMENTO) || 100;
+          const totalM3 = toNumber(row.TOTAL_M3) || m3Area * reparticao * (percentual / 100);
+          return {
+            regional_id: regionalId,
+            tipo_ponta: String(row.TIPO_DE_PONTA ?? row.TIPO_PONTA ?? "").trim().toUpperCase(),
+            profundidade,
+            frente,
+            altura,
+            m3_area: m3Area,
+            reparticao,
+            percentual_abastecimento: percentual,
+            total_m3: totalM3,
+            ativo: true,
+          };
+        })
+        .filter((row) => row.tipo_ponta);
+
+      if (payload.length === 0) {
+        setErro("Nenhuma linha valida encontrada. Confira se existe a coluna TIPO DE PONTA.");
+        return;
+      }
+
+      const { error } = await lojaDb.from("ponta_cubagem").upsert(payload, { onConflict: "regional_id,tipo_ponta" });
+      if (error) throw error;
+      setMensagem(`Cubagem importada: ${payload.length} tipos de ponta atualizados.`);
+      await carregarBase();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao importar cubagem.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Cubagem Ponto Extra</h1>
+        <p style={descStyle}>
+          Importe os tamanhos padrao por regional. Loja, setor e produtos serao tratados pelas bases de media/KPI.
+        </p>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ ...gridStyle, alignItems: "end" }}>
+          <label>
+            <span style={descStyle}>Regional</span>
+            <select value={regionalId} onChange={(e) => setRegionalId(e.target.value)} style={inputStyle}>
+              <option value="">Selecione a regional</option>
+              {regionais.map((regional) => (
+                <option key={regional.id} value={regional.id}>
+                  {regional.nome}{regional.uf ? ` - ${regional.uf}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={descStyle}>Arquivo de cubagem</span>
+            <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => void selecionar(e.target.files?.[0] ?? null)} style={inputStyle} />
+          </label>
+          <button type="button" onClick={() => void importarCubagem()} disabled={loading} style={buttonStyle}>
+            {loading ? "Importando..." : "Importar cubagem"}
+          </button>
+        </div>
+        {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Preview da importacao</h2>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["TIPO_DE_PONTA", "PROF", "FRENTE", "ALTURA", "M3_AREA", "REPARTICAO", "PERCENTUAL_ABASTECIMENTO", "TOTAL_M3"].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.length === 0 && <tr><td style={tdStyle}>Selecione um arquivo para visualizar.</td></tr>}
+              {preview.map((row, index) => (
+                <tr key={index}>
+                  <td style={tdStyle}>{String(row.TIPO_DE_PONTA ?? row.TIPO_PONTA ?? "")}</td>
+                  <td style={tdStyle}>{String(row.PROF ?? row.PROFUNDIDADE ?? "")}</td>
+                  <td style={tdStyle}>{String(row.FRENTE ?? "")}</td>
+                  <td style={tdStyle}>{String(row.ALTURA ?? "")}</td>
+                  <td style={tdStyle}>{String(row.M3_AREA ?? "")}</td>
+                  <td style={tdStyle}>{String(row.REPARTICAO ?? "")}</td>
+                  <td style={tdStyle}>{String(row.PERCETUAL_ABASTECIMENTO ?? row.PERCENTUAL_ABASTECIMENTO ?? "")}</td>
+                  <td style={tdStyle}>{String(row.TOTAL_M3 ?? "")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Cubagens cadastradas</h2>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["Tipo de ponta", "Prof.", "Frente", "Altura", "M3 area", "Reparticao", "% abastecimento", "Total M3"].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cubagensFiltradas.length === 0 && <tr><td style={tdStyle}>Nenhuma cubagem cadastrada.</td></tr>}
+              {cubagensFiltradas.map((item) => (
+                <tr key={item.id}>
+                  <td style={tdStyle}>{item.tipo_ponta}</td>
+                  <td style={tdStyle}>{formatNumber(item.profundidade, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.frente, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.altura, 2)}</td>
+                  <td style={tdStyle}>{formatNumber(item.m3_area, 6)}</td>
+                  <td style={tdStyle}>{formatNumber(item.reparticao, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.percentual_abastecimento ?? 100, 0)}%</td>
+                  <td style={tdStyle}>{formatNumber(item.total_m3, 6)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
