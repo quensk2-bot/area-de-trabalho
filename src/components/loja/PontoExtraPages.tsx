@@ -136,9 +136,37 @@ function normalizeHeader(value: unknown) {
 
 function toNumber(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const text = String(value ?? "").trim().replace(/\./g, "").replace(",", ".");
+  let text = String(value ?? "").trim();
+  if (!text) return 0;
+  text = text.replace(/%/g, "").replace(/\s/g, "");
+
+  const hasComma = text.includes(",");
+  const hasDot = text.includes(".");
+  if (hasComma) {
+    text = text.replace(/\./g, "").replace(",", ".");
+  } else if (hasDot) {
+    const parts = text.split(".");
+    const looksLikeThousands = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
+    if (looksLikeThousands) text = parts.join("");
+  }
+
   const n = Number(text);
   return Number.isFinite(n) ? n : 0;
+}
+
+function calcularTotalM3(m3Area: number, percentual: number) {
+  return m3Area * ((percentual || 100) / 100);
+}
+
+function totalM3Cubagem(cubagem: any) {
+  const profundidade = toNumber(cubagem?.profundidade);
+  const frente = toNumber(cubagem?.frente);
+  const altura = toNumber(cubagem?.altura);
+  const m3Area = toNumber(cubagem?.m3_area) || profundidade * frente * altura;
+  const percentual = toNumber(cubagem?.percentual_abastecimento) || 100;
+  const totalInformado = toNumber(cubagem?.total_m3);
+  const totalCalculado = calcularTotalM3(m3Area, percentual);
+  return totalInformado > 0 && totalInformado <= totalCalculado * 10 ? totalInformado : totalCalculado;
 }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -329,7 +357,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
         if (error) throw error;
 
         const produtoRows = (inserted ?? []).flatMap((base: any) =>
-          splitCodes(base.codigos_raw).slice(0, 7).map((codigo) => ({
+          splitCodes(base.codigos_raw).map((codigo) => ({
             ponta_base_id: base.id,
             loja: base.loja,
             quantidade: base.quantidade,
@@ -508,8 +536,8 @@ function PontoExtraCubagemManualLegacy() {
     [cubagemForm.altura, cubagemForm.frente, cubagemForm.profundidade],
   );
   const totalM3 = useMemo(
-    () => m3Area * toNumber(cubagemForm.reparticao || 1) * (toNumber(cubagemForm.percentual_abastecimento || 100) / 100),
-    [cubagemForm.percentual_abastecimento, cubagemForm.reparticao, m3Area],
+    () => calcularTotalM3(m3Area, toNumber(cubagemForm.percentual_abastecimento || 100)),
+    [cubagemForm.percentual_abastecimento, m3Area],
   );
 
   async function carregar() {
@@ -888,7 +916,7 @@ export function PontoExtraCubagem() {
           const m3Area = toNumber(row.M3_AREA) || profundidade * frente * altura;
           const reparticao = toNumber(row.REPARTICAO) || 1;
           const percentual = toNumber(row.PERCETUAL_ABASTECIMENTO ?? row.PERCENTUAL_ABASTECIMENTO ?? row.PERC_ABASTECIMENTO) || 100;
-          const totalM3 = toNumber(row.TOTAL_M3) || m3Area * reparticao * (percentual / 100);
+          const totalM3 = toNumber(row.TOTAL_M3) || calcularTotalM3(m3Area, percentual);
           return {
             regional_id: regionalId,
             tipo_ponta: String(row.TIPO_DE_PONTA ?? row.TIPO_PONTA ?? "").trim().toUpperCase(),
@@ -955,7 +983,7 @@ export function PontoExtraCubagem() {
     const m3Area = toNumber(editForm.m3_area) || profundidade * frente * altura;
     const reparticao = toNumber(editForm.reparticao) || 1;
     const percentual = toNumber(editForm.percentual_abastecimento) || 100;
-    const totalM3 = toNumber(editForm.total_m3) || m3Area * reparticao * (percentual / 100);
+    const totalM3 = toNumber(editForm.total_m3) || calcularTotalM3(m3Area, percentual);
 
     if (!editForm.tipo_ponta.trim()) {
       setErro("Informe o tipo de ponta.");
@@ -1180,6 +1208,7 @@ export function PontoExtraProcessamento() {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Record<string, any>[]>([]);
+  const [lojaFiltro, setLojaFiltro] = useState("");
   const [resumo, setResumo] = useState({
     produtosBase: 0,
     processados: 0,
@@ -1302,36 +1331,61 @@ export function PontoExtraProcessamento() {
         );
         produtosPorPonta.set(grupoPonta, [...(produtosPorPonta.get(grupoPonta) ?? []), produto]);
       }
-      const produtosLimitados = Array.from(produtosPorPonta.values()).flatMap((grupo) => grupo.slice(0, 7));
-      const skuIgnorados = produtos.length - produtosLimitados.length;
 
-      const baseCalculada = produtosLimitados.map((produto) => {
-        const codigo = String(produto.codigo_produto ?? "").trim();
-        const loja = String(produto.loja ?? "").trim();
-        const numeroPonta = String(produto.quantidade ?? "").trim();
-        const tipoPonta = String(produto.tipo_ponta ?? "").trim().toUpperCase();
-        const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo)) ?? mediaPorCodigo.get(chaveTexto(codigo));
-        const categoriaPath = splitCategoriaPath(media?.categoria);
-        const secao = categoriaPath.setor || String(produto.secao ?? "").trim();
-        const categoria = categoriaPath.categoria || String(produto.categoria ?? "").trim();
-        const cubagem = cubagemPorTipo.get(chaveTexto(tipoPonta));
-        const estoqueCd = estoquePorCodigo.get(chaveTexto(codigo)) ?? 0;
-        const cadastro = cadastroPorPonta.get(chaveTexto(tipoPonta, secao)) ?? cadastroPorPonta.get(chaveTexto(tipoPonta));
-        return {
-          produto,
-          media,
-          cubagem,
-          cadastro,
-          codigo,
-          loja,
-          numeroPonta,
-          tipoPonta,
-          secao,
-          categoria,
-          estoqueCd,
-          mediaVenda: toNumber(media?.media_venda_un_dia),
-        };
+      const candidatos = Array.from(produtosPorPonta.values()).flatMap((grupo) =>
+        grupo.map((produto) => {
+          const codigo = String(produto.codigo_produto ?? "").trim();
+          const loja = String(produto.loja ?? "").trim();
+          const numeroPonta = String(produto.quantidade ?? "").trim();
+          const tipoPonta = String(produto.tipo_ponta ?? "").trim().toUpperCase();
+          const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo)) ?? mediaPorCodigo.get(chaveTexto(codigo));
+          const categoriaPath = splitCategoriaPath(media?.categoria);
+          const secao = categoriaPath.setor || String(produto.secao ?? "").trim();
+          const categoria = categoriaPath.categoria || String(produto.categoria ?? "").trim();
+          const cubagem = cubagemPorTipo.get(chaveTexto(tipoPonta));
+          const estoqueCd = estoquePorCodigo.get(chaveTexto(codigo)) ?? 0;
+          const cadastro = cadastroPorPonta.get(chaveTexto(tipoPonta, secao)) ?? cadastroPorPonta.get(chaveTexto(tipoPonta));
+          return {
+            produto,
+            media,
+            cubagem,
+            cadastro,
+            codigo,
+            loja,
+            numeroPonta,
+            tipoPonta,
+            secao,
+            categoria,
+            estoqueCd,
+            mediaVenda: toNumber(media?.media_venda_un_dia),
+          };
+        }),
+      );
+
+      const candidatosPorPonta = new Map<string, typeof candidatos>();
+      for (const item of candidatos) {
+        const grupo = chaveTexto(
+          item.produto.ponta_base_id ?? "",
+          item.loja,
+          item.numeroPonta,
+          item.tipoPonta,
+          item.produto.secao,
+          item.produto.categoria,
+        );
+        candidatosPorPonta.set(grupo, [...(candidatosPorPonta.get(grupo) ?? []), item]);
+      }
+
+      const baseCalculada = Array.from(candidatosPorPonta.values()).flatMap((grupo) => {
+        const limiteSku = Math.max(1, Math.floor(toNumber(grupo[0]?.cubagem?.reparticao) || 7));
+        return grupo
+          .sort((a, b) => {
+            const estoqueDiff = Number(b.estoqueCd > 0) - Number(a.estoqueCd > 0);
+            if (estoqueDiff !== 0) return estoqueDiff;
+            return b.mediaVenda - a.mediaVenda;
+          })
+          .slice(0, limiteSku);
       });
+      const skuIgnorados = produtos.length - baseCalculada.length;
 
       const somaPorPonta = new Map<string, number>();
       for (const item of baseCalculada) {
@@ -1342,7 +1396,7 @@ export function PontoExtraProcessamento() {
       const payload = baseCalculada.map((item) => {
         const somaMedia = somaPorPonta.get(chaveTexto(item.loja, item.numeroPonta, item.secao)) ?? 0;
         const participacao = somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
-        const m3Ponta = toNumber(item.cubagem?.total_m3);
+        const m3Ponta = totalM3Cubagem(item.cubagem);
         const m3Capacidade = m3Ponta * participacao;
         const m3Unid = toNumber(item.media?.m3_unid);
         const unidadeSugerida = m3Unid > 0 ? m3Capacidade / m3Unid : 0;
@@ -1397,7 +1451,8 @@ export function PontoExtraProcessamento() {
     }
   }
 
-  const preview = resultado.slice(0, 120);
+  const resultadoFiltrado = useMemo(() => resultado.filter((item) => !lojaFiltro.trim() || String(item.loja ?? "").includes(lojaFiltro.trim())), [lojaFiltro, resultado]);
+  const preview = resultadoFiltrado.slice(0, 120);
   const gruposPreview = useMemo(() => {
     const grupos = new Map<string, Record<string, any>[]>();
     for (const item of preview) {
@@ -1449,11 +1504,14 @@ export function PontoExtraProcessamento() {
         <MetricCard label="Sem media" value={resumo.semMedia} />
         <MetricCard label="Sem cubagem" value={resumo.semCubagem} />
         <MetricCard label="Sem estoque CD" value={resumo.semEstoque} />
-        <MetricCard label="SKU ignorados acima de 7" value={resumo.skuIgnorados} />
+        <MetricCard label="SKU fora da reparticao" value={resumo.skuIgnorados} />
       </div>
 
       <div style={cardStyle}>
-        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Resultado processado</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Resultado processado</h2>
+          <input value={lojaFiltro} onChange={(e) => setLojaFiltro(e.target.value)} placeholder="Filtrar loja" style={{ ...inputStyle, maxWidth: 220 }} />
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={tableStyle}>
             <thead>
@@ -1529,3 +1587,4 @@ export function PontoExtraAcompanhamento() {
 export function PontoExtraRelatorio() {
   return <Placeholder titulo="Relatorio Comercial" descricao="Visao consolidada para validar loja, ponta, categoria, codigo e sugestao de abastecimento." />;
 }
+
