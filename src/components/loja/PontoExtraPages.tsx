@@ -149,6 +149,20 @@ function formatNumber(value: unknown, digits = 3) {
   });
 }
 
+function splitCategoriaPath(value: unknown) {
+  const parts = String(value ?? "")
+    .split(/[\\/>|]+/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return {
+    categoria: parts[0] ?? "",
+    setor: parts[1] ?? "",
+    grupo: parts[2] ?? "",
+    subgrupo: parts[3] ?? "",
+    tipo: parts[4] ?? "",
+  };
+}
+
 async function insertInChunks(tableName: string, payload: Record<string, unknown>[], chunkSize = 800) {
   for (let index = 0; index < payload.length; index += chunkSize) {
     const chunk = payload.slice(index, index + chunkSize);
@@ -315,7 +329,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
         if (error) throw error;
 
         const produtoRows = (inserted ?? []).flatMap((base: any) =>
-          splitCodes(base.codigos_raw).map((codigo) => ({
+          splitCodes(base.codigos_raw).slice(0, 7).map((codigo) => ({
             ponta_base_id: base.id,
             loja: base.loja,
             quantidade: base.quantidade,
@@ -1172,6 +1186,7 @@ export function PontoExtraProcessamento() {
     semMedia: 0,
     semCubagem: 0,
     semEstoque: 0,
+    skuIgnorados: 0,
   });
 
   async function carregarResultado() {
@@ -1275,13 +1290,30 @@ export function PontoExtraProcessamento() {
         if (!cadastroPorPonta.has(chaveTexto(tipo))) cadastroPorPonta.set(chaveTexto(tipo), cadastro);
       }
 
-      const baseCalculada = produtos.map((produto) => {
+      const produtosPorPonta = new Map<string, any[]>();
+      for (const produto of produtos) {
+        const grupoPonta = chaveTexto(
+          produto.ponta_base_id ?? "",
+          produto.loja,
+          produto.quantidade,
+          produto.tipo_ponta,
+          produto.secao,
+          produto.categoria,
+        );
+        produtosPorPonta.set(grupoPonta, [...(produtosPorPonta.get(grupoPonta) ?? []), produto]);
+      }
+      const produtosLimitados = Array.from(produtosPorPonta.values()).flatMap((grupo) => grupo.slice(0, 7));
+      const skuIgnorados = produtos.length - produtosLimitados.length;
+
+      const baseCalculada = produtosLimitados.map((produto) => {
         const codigo = String(produto.codigo_produto ?? "").trim();
         const loja = String(produto.loja ?? "").trim();
+        const numeroPonta = String(produto.quantidade ?? "").trim();
         const tipoPonta = String(produto.tipo_ponta ?? "").trim().toUpperCase();
-        const secao = String(produto.secao ?? "").trim();
-        const categoria = String(produto.categoria ?? "").trim();
         const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo)) ?? mediaPorCodigo.get(chaveTexto(codigo));
+        const categoriaPath = splitCategoriaPath(media?.categoria);
+        const secao = categoriaPath.setor || String(produto.secao ?? "").trim();
+        const categoria = categoriaPath.categoria || String(produto.categoria ?? "").trim();
         const cubagem = cubagemPorTipo.get(chaveTexto(tipoPonta));
         const estoqueCd = estoquePorCodigo.get(chaveTexto(codigo)) ?? 0;
         const cadastro = cadastroPorPonta.get(chaveTexto(tipoPonta, secao)) ?? cadastroPorPonta.get(chaveTexto(tipoPonta));
@@ -1292,6 +1324,7 @@ export function PontoExtraProcessamento() {
           cadastro,
           codigo,
           loja,
+          numeroPonta,
           tipoPonta,
           secao,
           categoria,
@@ -1302,12 +1335,12 @@ export function PontoExtraProcessamento() {
 
       const somaPorPonta = new Map<string, number>();
       for (const item of baseCalculada) {
-        const grupo = chaveTexto(item.loja, item.tipoPonta, item.secao, item.categoria);
+        const grupo = chaveTexto(item.loja, item.numeroPonta, item.secao);
         somaPorPonta.set(grupo, (somaPorPonta.get(grupo) ?? 0) + item.mediaVenda);
       }
 
       const payload = baseCalculada.map((item) => {
-        const somaMedia = somaPorPonta.get(chaveTexto(item.loja, item.tipoPonta, item.secao, item.categoria)) ?? 0;
+        const somaMedia = somaPorPonta.get(chaveTexto(item.loja, item.numeroPonta, item.secao)) ?? 0;
         const participacao = somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
         const m3Ponta = toNumber(item.cubagem?.total_m3);
         const m3Capacidade = m3Ponta * participacao;
@@ -1318,7 +1351,7 @@ export function PontoExtraProcessamento() {
 
         return {
           loja: item.loja,
-          quant_ponta: String(item.produto.quantidade ?? ""),
+          quant_ponta: item.numeroPonta,
           tipo_ponta: item.tipoPonta,
           secao: item.secao,
           categoria: item.categoria,
@@ -1351,6 +1384,7 @@ export function PontoExtraProcessamento() {
         semMedia: baseCalculada.filter((item) => !item.media).length,
         semCubagem: baseCalculada.filter((item) => !item.cubagem).length,
         semEstoque: baseCalculada.filter((item) => item.estoqueCd <= 0).length,
+        skuIgnorados,
       };
       setResumo(novoResumo);
       setResultado(payload.slice(0, 200));
@@ -1363,7 +1397,24 @@ export function PontoExtraProcessamento() {
     }
   }
 
-  const preview = resultado.slice(0, 80);
+  const preview = resultado.slice(0, 120);
+  const gruposPreview = useMemo(() => {
+    const grupos = new Map<string, Record<string, any>[]>();
+    for (const item of preview) {
+      const chave = chaveTexto(item.loja, item.quant_ponta, item.secao);
+      grupos.set(chave, [...(grupos.get(chave) ?? []), item]);
+    }
+    return Array.from(grupos.entries()).map(([chave, itens]) => ({
+      chave,
+      loja: itens[0]?.loja ?? "-",
+      ponta: itens[0]?.quant_ponta ?? "-",
+      setor: itens[0]?.secao ?? "-",
+      tipoPonta: itens[0]?.tipo_ponta ?? "-",
+      itens,
+      somaMedia: itens.reduce((sum, item) => sum + toNumber(item.media_venda_un_dia), 0),
+      estoqueCd: itens.reduce((sum, item) => sum + toNumber(item.estoque_cd), 0),
+    }));
+  }, [preview]);
 
   return (
     <section style={pageStyle}>
@@ -1398,6 +1449,7 @@ export function PontoExtraProcessamento() {
         <MetricCard label="Sem media" value={resumo.semMedia} />
         <MetricCard label="Sem cubagem" value={resumo.semCubagem} />
         <MetricCard label="Sem estoque CD" value={resumo.semEstoque} />
+        <MetricCard label="SKU ignorados acima de 7" value={resumo.skuIgnorados} />
       </div>
 
       <div style={cardStyle}>
@@ -1408,6 +1460,8 @@ export function PontoExtraProcessamento() {
               <tr>
                 {[
                   "Loja",
+                  "Ponta",
+                  "Setor",
                   "Tipo ponta",
                   "Categoria",
                   "Codigo",
@@ -1424,21 +1478,41 @@ export function PontoExtraProcessamento() {
               </tr>
             </thead>
             <tbody>
-              {preview.length === 0 && <tr><td style={tdStyle}>Nenhum resultado processado.</td></tr>}
-              {preview.map((item, index) => (
-                <tr key={`${item.codigo_produto}-${index}`}>
-                  <td style={tdStyle}>{item.loja || "-"}</td>
-                  <td style={tdStyle}>{item.tipo_ponta || "-"}</td>
-                  <td style={tdStyle}>{item.categoria || "-"}</td>
-                  <td style={tdStyle}>{item.codigo_produto || "-"}</td>
-                  <td style={tdStyle}>{item.descricao_produto || "-"}</td>
-                  <td style={tdStyle}>{formatNumber(item.media_venda_un_dia, 3)}</td>
-                  <td style={tdStyle}>{formatNumber(toNumber(item.participacao) * 100, 2)}%</td>
-                  <td style={tdStyle}>{formatNumber(item.m3_capacidade, 6)}</td>
-                  <td style={tdStyle}>{formatNumber(item.unidade_sugerida, 2)}</td>
-                  <td style={tdStyle}>{formatNumber(item.caixas_sugeridas, 2)}</td>
-                  <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
-                </tr>
+              {gruposPreview.length === 0 && <tr><td style={tdStyle}>Nenhum resultado processado.</td></tr>}
+              {gruposPreview.map((grupo) => (
+                <React.Fragment key={grupo.chave}>
+                  <tr>
+                    <td
+                      colSpan={13}
+                      style={{
+                        ...tdStyle,
+                        background: "rgba(0,0,0,0.38)",
+                        color: theme.colors.neonGreen,
+                        fontWeight: 900,
+                        fontSize: 13,
+                      }}
+                    >
+                      Loja {grupo.loja} | Ponta {grupo.ponta} | Setor {grupo.setor} | {grupo.tipoPonta} | {grupo.itens.length} SKU
+                    </td>
+                  </tr>
+                  {grupo.itens.map((item, index) => (
+                    <tr key={`${grupo.chave}-${item.codigo_produto}-${index}`}>
+                      <td style={tdStyle}>{item.loja || "-"}</td>
+                      <td style={tdStyle}>{item.quant_ponta || "-"}</td>
+                      <td style={tdStyle}>{item.secao || "-"}</td>
+                      <td style={tdStyle}>{item.tipo_ponta || "-"}</td>
+                      <td style={tdStyle}>{item.categoria || "-"}</td>
+                      <td style={tdStyle}>{item.codigo_produto || "-"}</td>
+                      <td style={tdStyle}>{item.descricao_produto || "-"}</td>
+                      <td style={tdStyle}>{formatNumber(item.media_venda_un_dia, 3)}</td>
+                      <td style={tdStyle}>{formatNumber(toNumber(item.participacao) * 100, 2)}%</td>
+                      <td style={tdStyle}>{formatNumber(item.m3_capacidade, 6)}</td>
+                      <td style={tdStyle}>{formatNumber(item.unidade_sugerida, 2)}</td>
+                      <td style={tdStyle}>{formatNumber(item.caixas_sugeridas, 2)}</td>
+                      <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
