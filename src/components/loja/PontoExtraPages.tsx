@@ -342,7 +342,10 @@ export function PontoExtraImportacao({ perfil }: Props) {
     <section style={pageStyle}>
       <div>
         <h1 style={titleStyle}>Importar Bases do Ponto Extra</h1>
-        <p style={descStyle}>Importe a base comercial, cubagem, estoque CD e media de venda usados no Power Query.</p>
+        <p style={descStyle}>
+          Importe a base comercial, estoque CD e media de venda usados no Power Query. A cubagem deve ser importada na
+          tela Cubagem, pois depende da regional.
+        </p>
       </div>
       <div style={cardStyle}>
         <div style={{ ...gridStyle, alignItems: "end" }}>
@@ -350,7 +353,6 @@ export function PontoExtraImportacao({ perfil }: Props) {
             <span style={descStyle}>Tipo da base</span>
             <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={inputStyle}>
               <option value="base_ponta">Base Ponta</option>
-              <option value="cubagem">Cubagem</option>
               <option value="estoque_cd">Estoque CDs</option>
               <option value="media_venda">Media de venda</option>
             </select>
@@ -716,6 +718,16 @@ function PontoExtraCubagemManualLegacy() {
 }
 
 export function PontoExtraCubagem() {
+  const colunasCubagem = [
+    "TIPO DE PONTA",
+    "PROF",
+    "FRENTE",
+    "ALTURA",
+    "M3 AREA",
+    "REPARTICAO",
+    "PERCETUAL ABASTECIMENTO",
+    "TOTAL M3",
+  ];
   const [regionais, setRegionais] = useState<PontaRegional[]>([]);
   const [regionalId, setRegionalId] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -827,6 +839,9 @@ export function PontoExtraCubagem() {
         <p style={descStyle}>
           Importe os tamanhos padrao por regional. Loja, setor e produtos serao tratados pelas bases de media/KPI.
         </p>
+        <p style={descStyle}>
+          Cabecalho esperado: {colunasCubagem.join(" | ")}.
+        </p>
       </div>
 
       <div style={cardStyle}>
@@ -860,7 +875,7 @@ export function PontoExtraCubagem() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                {["TIPO_DE_PONTA", "PROF", "FRENTE", "ALTURA", "M3_AREA", "REPARTICAO", "PERCENTUAL_ABASTECIMENTO", "TOTAL_M3"].map((header) => (
+                {colunasCubagem.map((header) => (
                   <th key={header} style={thStyle}>{header}</th>
                 ))}
               </tr>
