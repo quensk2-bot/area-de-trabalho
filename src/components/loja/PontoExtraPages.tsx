@@ -149,6 +149,14 @@ function formatNumber(value: unknown, digits = 3) {
   });
 }
 
+async function insertInChunks(tableName: string, payload: Record<string, unknown>[], chunkSize = 800) {
+  for (let index = 0; index < payload.length; index += chunkSize) {
+    const chunk = payload.slice(index, index + chunkSize);
+    const { error } = await lojaDb.from(tableName).insert(chunk);
+    if (error) throw error;
+  }
+}
+
 function splitCodes(raw: unknown) {
   return String(raw ?? "")
     .split(/[\n\r\t\s/,;]+/g)
@@ -265,7 +273,11 @@ export function PontoExtraImportacao({ perfil }: Props) {
       setErro("Selecione um arquivo valido para importar.");
       return;
     }
-    if (tipo === "cubagem") {
+    const firstRow = rows[0] ?? {};
+    const isEstoqueCd = Boolean(firstRow.CODIGO_PRODUTO && (firstRow.QUANTIDADE_EM_ESTOQUE || firstRow.ESTOQUE || firstRow.ESTOQUE_DISPONIVEL));
+    const effectiveTipo = tipo === "base_ponta" && isEstoqueCd ? "estoque_cd" : tipo;
+
+    if (effectiveTipo === "cubagem") {
       setErro("Cubagem deve ser importada em LOJA > 01 Ponto Extra > Cubagem, pois precisa selecionar a regional.");
       return;
     }
@@ -276,7 +288,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
       const { data: importacao, error: importError } = await lojaDb
         .from("ponta_importacoes")
         .insert({
-          tipo,
+          tipo: effectiveTipo,
           nome_arquivo: arquivo.name,
           total_linhas: rows.length,
           usuario_id: perfil.id,
@@ -286,7 +298,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
 
       if (importError) throw importError;
 
-      if (tipo === "base_ponta") {
+      if (effectiveTipo === "base_ponta") {
         const baseRows = rows.map((row) => ({
           importacao_id: importacao.id,
           loja: String(row.LOJA ?? row.MAPEAMENTO ?? ""),
@@ -319,23 +331,67 @@ export function PontoExtraImportacao({ perfil }: Props) {
           if (prodError) throw prodError;
         }
         setMensagem(`Base de ponta importada: ${baseRows.length} linhas e ${produtoRows.length} codigos.`);
-      } else if (tipo === "cubagem") {
+      } else if (effectiveTipo === "estoque_cd") {
+        const payload = rows
+          .map((row) => {
+            const estoque = toNumber(row.QUANTIDADE_EM_ESTOQUE ?? row.ESTOQUE ?? row.ESTOQUE_DISPONIVEL);
+            const reservado = toNumber(row.QUANTIDADE_RESERVADA);
+            return {
+              importacao_id: importacao.id,
+              codigo_produto: String(row.CODIGO_PRODUTO ?? row.CODIGO ?? "").trim(),
+              estoque_disponivel: Math.max(estoque - reservado, 0),
+              payload: row,
+            };
+          })
+          .filter((row) => row.codigo_produto);
+
+        if (payload.length === 0) {
+          setErro("Nenhuma linha valida de estoque encontrada. Confira se existe CODIGO_PRODUTO.");
+          return;
+        }
+
+        await insertInChunks("ponta_estoque_cd", payload);
+        const avisoTipo = tipo !== effectiveTipo ? " Arquivo identificado como Estoque CDs." : "";
+        setMensagem(`Estoque CD importado: ${payload.length} produtos gravados.${avisoTipo}`);
+      } else if (effectiveTipo === "media_venda") {
         const payload = rows
           .map((row) => ({
-            tipo_ponta: String(row.TIPO_DE_PONTA ?? "").trim(),
-            profundidade: toNumber(row.PROF),
-            frente: toNumber(row.FRENTE),
-            altura: toNumber(row.ALTURA),
-            m3_area: toNumber(row.M3_AREA),
-            reparticao: toNumber(row.REPARTICAO),
-            total_m3: toNumber(row.TOTAL_M3),
+            importacao_id: importacao.id,
+            loja: String(row.LOJA ?? row.CODIGO_LOJA ?? row.EMPRESA ?? ""),
+            codigo_produto: String(row.CODIGO_PRODUTO ?? row.CODIGO ?? "").trim(),
+            descricao_produto: String(row.DESCRICAO_PRODUTO ?? row.PRODUTO ?? row.DESCRICAO ?? ""),
+            codigo_fornecedor: String(row.CODIGO_FORNECEDOR ?? row.COD_FORNECEDOR ?? ""),
+            fornecedor: String(row.FORNECEDOR ?? ""),
+            status: String(row.STATUS ?? ""),
+            media_venda_un_dia: toNumber(row.MEDIA_VENDA_UN_DIA ?? row.MEDIA_VENDA ?? row.MEDIA),
+            media_venda_gp: toNumber(row.MEDIA_VENDA_GP),
+            estoque: toNumber(row.ESTOQUE),
+            par_min: toNumber(row.PAR_MIN),
+            par_max: toNumber(row.PAR_MAX),
+            pend_compra: toNumber(row.PEND_COMPRA),
+            qtde_emb_compra: toNumber(row.QTDE_EMB_COMPRA ?? row.QTD_EMB_COMPRA),
+            embalagem_compra: String(row.EMBALAGEM_COMPRA ?? ""),
+            categoria: String(row.CATEGORIA ?? ""),
+            setor: String(row.SETOR ?? row.SECAO ?? ""),
+            grupo: String(row.GRUPO ?? ""),
+            custo_liquido: toNumber(row.CUSTO_LIQUIDO),
+            peso_unid: toNumber(row.PESO_UNID),
+            m3_unid: toNumber(row.M3_UNID),
+            peso_cx: toNumber(row.PESO_CX),
+            m3_cx: toNumber(row.M3_CX),
+            payload: row,
           }))
-          .filter((row) => row.tipo_ponta);
-        const { error } = await lojaDb.from("ponta_cubagem").upsert(payload, { onConflict: "tipo_ponta" });
-        if (error) throw error;
-        setMensagem(`Cubagem importada: ${payload.length} tipos de ponta.`);
+          .filter((row) => row.codigo_produto);
+
+        if (payload.length === 0) {
+          setErro("Nenhuma linha valida de media de venda encontrada. Confira se existe CODIGO_PRODUTO.");
+          return;
+        }
+
+        await insertInChunks("ponta_media_venda", payload);
+        setMensagem(`Media de venda importada: ${payload.length} produtos gravados.`);
       } else {
-        setMensagem(`Importacao ${tipo} registrada. A carga detalhada sera ativada no proximo bloco.`);
+        setMensagem(`Importacao ${effectiveTipo} registrada. A carga detalhada sera ativada no proximo bloco.`);
       }
     } catch (err: any) {
       console.error(err);
