@@ -1,5 +1,4 @@
-import type React from "react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabaseClient";
 import { theme } from "../../styles";
@@ -34,6 +33,8 @@ type PontaCadastro = {
   setor: string;
   tipo_ponta: string;
   descricao: string | null;
+  loja?: string | null;
+  mes?: string | null;
   ativo: boolean;
 };
 
@@ -48,6 +49,17 @@ type PontaCubagemRow = {
   reparticao: number | string | null;
   percentual_abastecimento: number | string | null;
   total_m3: number | string | null;
+  ativo: boolean;
+};
+
+type PontaCodigoPonta = {
+  id: string;
+  loja: string;
+  setor_codigo: string;
+  setor_nome: string;
+  mes_vigencia: string;
+  descricao_ponta: string | null;
+  cod_ponta: string | null;
   ativo: boolean;
 };
 
@@ -104,6 +116,18 @@ const gridStyle: React.CSSProperties = {
   gap: 12,
 };
 
+const CAPA_TODAS_LOJAS = "TODAS";
+
+const PONTO_EXTRA_IMPORT_CONFIG = [
+  { tipo: "base_ponta", label: "Base Ponta", tabela: "ponta_base" },
+  { tipo: "estoque_cd", label: "Estoque CDs", tabela: "ponta_estoque_cd" },
+  { tipo: "media_venda", label: "Media de venda", tabela: "ponta_media_venda" },
+  { tipo: "codigo_pontas", label: "Codigo das Pontas", tabela: "ponta_codigo_pontas" },
+] as const;
+
+const PONTO_EXTRA_IMPORT_TYPES = PONTO_EXTRA_IMPORT_CONFIG.map((item) => item.tipo);
+type PontoExtraImportTipo = (typeof PONTO_EXTRA_IMPORT_CONFIG)[number]["tipo"];
+
 const tableStyle: React.CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
@@ -134,6 +158,14 @@ function normalizeHeader(value: unknown) {
     .replace(/[^A-Z0-9_]/g, "");
 }
 
+function getRowValue(row: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+    if (value != null && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+
 function toNumber(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   let text = String(value ?? "").trim();
@@ -146,7 +178,7 @@ function toNumber(value: unknown) {
     text = text.replace(/\./g, "").replace(",", ".");
   } else if (hasDot) {
     const parts = text.split(".");
-    const looksLikeThousands = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
+    const looksLikeThousands = parts.length > 2 && parts.slice(1).every((part) => part.length === 3);
     if (looksLikeThousands) text = parts.join("");
   }
 
@@ -154,19 +186,24 @@ function toNumber(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizarPercentual(value: unknown) {
+  const percentual = toNumber(value);
+  if (!percentual) return 100;
+  if (percentual > 0 && percentual <= 2) return percentual * 100;
+  return percentual;
+}
+
+function calcularM3Area(profundidade: number, frente: number, altura: number) {
+  const m3 = profundidade * frente * altura;
+  return Number.isFinite(m3) ? m3 : 0;
+}
+
 function calcularTotalM3(m3Area: number, percentual: number) {
   return m3Area * ((percentual || 100) / 100);
 }
 
 function totalM3Cubagem(cubagem: any) {
-  const profundidade = toNumber(cubagem?.profundidade);
-  const frente = toNumber(cubagem?.frente);
-  const altura = toNumber(cubagem?.altura);
-  const m3Area = toNumber(cubagem?.m3_area) || profundidade * frente * altura;
-  const percentual = toNumber(cubagem?.percentual_abastecimento) || 100;
-  const totalInformado = toNumber(cubagem?.total_m3);
-  const totalCalculado = calcularTotalM3(m3Area, percentual);
-  return totalInformado > 0 && totalInformado <= totalCalculado * 10 ? totalInformado : totalCalculado;
+  return toNumber(cubagem?.total_m3);
 }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -175,6 +212,10 @@ function formatNumber(value: unknown, digits = 3) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function formatPercent(value: unknown, digits = 2) {
+  return `${formatNumber(toNumber(value) * 100, digits)}%`;
 }
 
 function splitCategoriaPath(value: unknown) {
@@ -189,6 +230,204 @@ function splitCategoriaPath(value: unknown) {
     subgrupo: parts[3] ?? "",
     tipo: parts[4] ?? "",
   };
+}
+
+function parseCategoriaMedia(value: unknown) {
+  const path = splitCategoriaPath(value);
+  const setorN2 = path.setor || "";
+  const match = setorN2.match(/^\s*(\d+)\s*[-\u2013]\s*(.+)$/);
+  const setorCodigo = match?.[1]?.trim() || (setorN2 ? normalizeHeader(setorN2).slice(0, 20) : "SEM_SETOR") || "SEM_SETOR";
+  const setorNome = (match?.[2] || setorN2 || "SEM SETOR").trim().toUpperCase();
+
+  return {
+    categoria_n1: path.categoria,
+    setor_n2: setorN2,
+    grupo_n3: path.grupo,
+    subgrupo_n4: path.subgrupo,
+    tipo_n5: path.tipo,
+    setor_codigo: setorCodigo,
+    setor_nome: setorNome,
+  };
+}
+
+const MESES_PT = [
+  "JANEIRO",
+  "FEVEREIRO",
+  "MARCO",
+  "ABRIL",
+  "MAIO",
+  "JUNHO",
+  "JULHO",
+  "AGOSTO",
+  "SETEMBRO",
+  "OUTUBRO",
+  "NOVEMBRO",
+  "DEZEMBRO",
+];
+
+function currentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function monthLabel(monthKey: string) {
+  const [year, month] = String(monthKey || currentMonthKey()).split("-").map(Number);
+  return `${MESES_PT[(month || 1) - 1] ?? ""} ${year || new Date().getFullYear()}`.trim();
+}
+
+function monthStart(monthKey: string) {
+  const [year, month] = String(monthKey || currentMonthKey()).split("-").map(Number);
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+function monthEnd(monthKey: string) {
+  const [year, month] = String(monthKey || currentMonthKey()).split("-").map(Number);
+  return new Date(year, month, 0).toISOString().slice(0, 10);
+}
+
+function parseSetorInfo(raw: unknown, fallback?: unknown) {
+  const path = splitCategoriaPath(raw);
+  const source = path.setor || String(fallback ?? "").trim() || path.categoria;
+  const match = source.match(/^\s*(\d+)\s*[-–]\s*(.+)$/);
+  const codigo = match?.[1]?.trim() || normalizeHeader(source || "SEM_SETOR").slice(0, 20) || "SEM_SETOR";
+  const nome = (match?.[2] || source || path.categoria || "SEM SETOR").trim().toUpperCase();
+  return {
+    codigo,
+    nome,
+    categoria: path.categoria || nome,
+    grupo: path.grupo,
+    subgrupo: path.subgrupo,
+    tipo: path.tipo,
+  };
+}
+
+function descricaoCapaPonta(mesVigencia: string, setorCodigo: string, setorNome: string) {
+  return `PT MT ${monthLabel(mesVigencia)} SETOR ${setorCodigo} ${setorNome}`.trim();
+}
+
+function parseSetorInfoOperacional(raw: unknown, fallback?: unknown) {
+  const path = splitCategoriaPath(raw);
+  const candidates = [path.setor, path.categoria, path.grupo, path.subgrupo, path.tipo, String(fallback ?? "").trim()].filter(Boolean);
+  const source = candidates.find((part) => /^\s*\d+\s*[-–]\s*.+$/.test(part)) || candidates[0] || "SEM SETOR";
+  const match = source.match(/^\s*(\d+)\s*[-–]\s*(.+)$/);
+  const codigo = match?.[1]?.trim() || normalizeHeader(source || "SEM_SETOR").slice(0, 20) || "SEM_SETOR";
+  const nome = (match?.[2] || source || path.categoria || "SEM SETOR").trim().toUpperCase();
+  return {
+    codigo,
+    nome,
+    categoria: path.categoria || nome,
+    grupo: path.grupo,
+    subgrupo: path.subgrupo,
+    tipo: path.tipo,
+  };
+}
+
+function parseSetorCapa(raw: unknown, fallback?: unknown) {
+  const path = splitCategoriaPath(raw);
+  const candidates = [path.setor, path.categoria, path.grupo, path.subgrupo, path.tipo, String(fallback ?? "").trim()].filter(Boolean);
+  const source = candidates.find((part) => /^\s*\d+\s*[-–]\s*.+$/.test(part));
+  if (!source) {
+    return {
+      codigo: "SEM_SETOR",
+      nome: "SEM SETOR",
+      categoria: path.categoria || "SEM SETOR",
+      grupo: path.grupo,
+      subgrupo: path.subgrupo,
+      tipo: path.tipo,
+    };
+  }
+  const match = source.match(/^\s*(\d+)\s*[-–]\s*(.+)$/);
+  return {
+    codigo: match?.[1]?.trim() || "SEM_SETOR",
+    nome: (match?.[2] || "SEM SETOR").trim().toUpperCase(),
+    categoria: path.categoria || match?.[2]?.trim().toUpperCase() || "SEM SETOR",
+    grupo: path.grupo,
+    subgrupo: path.subgrupo,
+    tipo: path.tipo,
+  };
+}
+
+function parseSetorInfoMedia(raw: unknown) {
+  const path = parseCategoriaMedia(raw);
+  return {
+    codigo: path.setor_codigo,
+    nome: path.setor_nome,
+    categoria: path.categoria_n1 || "SEM CATEGORIA",
+    grupo: path.grupo_n3,
+    subgrupo: path.subgrupo_n4,
+    tipo: path.tipo_n5,
+    categoria_n1: path.categoria_n1,
+    setor_n2: path.setor_n2,
+    grupo_n3: path.grupo_n3,
+    subgrupo_n4: path.subgrupo_n4,
+    tipo_n5: path.tipo_n5,
+  };
+}
+
+function parseSetorInput(value: unknown) {
+  const text = String(value ?? "").trim();
+  const match = text.match(/^\s*([^-\u2013]+?)\s*[-\u2013]\s*(.+)$/);
+  if (!match) {
+    const codigo = text.toUpperCase();
+    return { codigo, nome: "" };
+  }
+  return {
+    codigo: String(match[1] ?? "").trim().toUpperCase(),
+    nome: String(match[2] ?? "").trim().toUpperCase(),
+  };
+}
+
+function normalizarBuscaCapa(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+}
+
+function chaveTexto(...partes: unknown[]) {
+  return partes.map((parte) => String(parte ?? "").trim().toUpperCase()).join("|");
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: Record<string, unknown>[]) {
+  const content = [
+    headers.join(";"),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(";")),
+  ].join("\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function alertasPontoExtra(item: Record<string, any>) {
+  const alertas = Array.isArray(item.alertas) ? [...item.alertas] : [];
+  const add = (alerta: string, condition: boolean) => {
+    if (condition && !alertas.includes(alerta)) alertas.push(alerta);
+  };
+  add("produto sem M3_UNID", toNumber(item.m3_unid) <= 0);
+  add("unidade sugerida muito alta", toNumber(item.unidade_sugerida) > 1000);
+  add("caixa sugerida zerada", toNumber(item.unidade_sugerida) > 0 && toNumber(item.caixas_sugeridas) <= 0);
+  add("sem estoque CD", toNumber(item.estoque_cd) <= 0);
+  add("sem codigo da ponta", !String(item.cod_ponta ?? "").trim());
+  add("sem cubagem", toNumber(item.m3_ponta) <= 0);
+  add("sem media", toNumber(item.media_venda_un_dia) <= 0);
+  add("fora da reparticao", Boolean(item.fora_reparticao));
+  add("m3 capacidade maior que total da ponta", toNumber(item.m3_capacidade) > toNumber(item.m3_ponta) && toNumber(item.m3_ponta) > 0);
+  add("M3 unitario invalido", toNumber(item.m3_unid) <= 0);
+  add("embalagem compra invalida", Boolean(item.embalagem_invalida) || toNumber(item.qtde_emb_compra) <= 0);
+  add("produto com cadastro inconsistente", !String(item.codigo_produto ?? "").trim() || !String(item.descricao_produto ?? "").trim());
+  return alertas;
 }
 
 async function insertInChunks(tableName: string, payload: Record<string, unknown>[], chunkSize = 800) {
@@ -289,12 +528,47 @@ export function PontoExtraImportacao({ perfil }: Props) {
   const [tipo, setTipo] = useState("base_ponta");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [historico, setHistorico] = useState<Record<string, any>[]>([]);
+  const [orfaos, setOrfaos] = useState<Record<string, number>>({});
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const preview = useMemo(() => rows.slice(0, 8), [rows]);
   const headers = useMemo(() => Object.keys(preview[0] ?? {}).slice(0, 8), [preview]);
+
+  async function carregarHistorico() {
+    const [historicoResult, baseOrfa, estoqueOrfa, mediaOrfa, codigoOrfa] = await Promise.all([
+      lojaDb
+        .from("ponta_importacoes")
+        .select("id, tipo, nome_arquivo, total_linhas, usuario_id, created_at")
+        .in("tipo", ["base_ponta", "estoque_cd", "media_venda", "codigo_pontas"])
+        .order("created_at", { ascending: false })
+        .limit(80),
+      lojaDb.from("ponta_base").select("id", { count: "exact", head: true }).is("importacao_id", null),
+      lojaDb.from("ponta_estoque_cd").select("id", { count: "exact", head: true }).is("importacao_id", null),
+      lojaDb.from("ponta_media_venda").select("id", { count: "exact", head: true }).is("importacao_id", null),
+      lojaDb.from("ponta_codigo_pontas").select("id", { count: "exact", head: true }).is("importacao_id", null),
+    ]);
+    const { data, error } = historicoResult;
+    if (error) throw error;
+    const countError = baseOrfa.error ?? estoqueOrfa.error ?? mediaOrfa.error ?? codigoOrfa.error;
+    if (countError) throw countError;
+    setHistorico((data ?? []) as Record<string, any>[]);
+    setOrfaos({
+      base_ponta: baseOrfa.count ?? 0,
+      estoque_cd: estoqueOrfa.count ?? 0,
+      media_venda: mediaOrfa.count ?? 0,
+      codigo_pontas: codigoOrfa.count ?? 0,
+    });
+  }
+
+  useEffect(() => {
+    void carregarHistorico().catch((err) => {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao carregar historico de importacoes.");
+    });
+  }, []);
 
   async function selecionar(file: File | null) {
     setArquivo(file);
@@ -343,12 +617,12 @@ export function PontoExtraImportacao({ perfil }: Props) {
       if (effectiveTipo === "base_ponta") {
         const baseRows = rows.map((row) => ({
           importacao_id: importacao.id,
-          loja: String(row.LOJA ?? row.MAPEAMENTO ?? ""),
-          quantidade: toNumber(row.QUANTIDADE ?? row.QTDE),
-          tipo_ponta: String(row.TIPO_DE_PONTA ?? ""),
-          secao: String(row.SECAO ?? ""),
-          categoria: String(row.CATEGORIA ?? ""),
-          codigos_raw: String(row.CODIGOS_PRODUTOS ?? row.CODIGO ?? ""),
+          loja: String(getRowValue(row, "LOJA", "MAPEAMENTO", "LOJA_FISCAL", "CODIGO_LOJA")),
+          quantidade: toNumber(getRowValue(row, "QUANTIDADE", "QTDE", "QUANTIDADE_DE_PONTA_NA_LOJA")),
+          tipo_ponta: String(getRowValue(row, "TIPO_DE_PONTA", "TIPO_PONTA", "TIPO")),
+          secao: String(getRowValue(row, "SECAO", "SETOR", "DEPARTAMENTO")),
+          categoria: String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR")),
+          codigos_raw: String(getRowValue(row, "CODIGOS_PRODUTOS", "CODIGO", "CÓDIGO", "CODIGOS", "COD")),
         }));
         const { data: inserted, error } = await lojaDb
           .from("ponta_base")
@@ -376,11 +650,11 @@ export function PontoExtraImportacao({ perfil }: Props) {
       } else if (effectiveTipo === "estoque_cd") {
         const payload = rows
           .map((row) => {
-            const estoque = toNumber(row.QUANTIDADE_EM_ESTOQUE ?? row.ESTOQUE ?? row.ESTOQUE_DISPONIVEL);
-            const reservado = toNumber(row.QUANTIDADE_RESERVADA);
+            const estoque = toNumber(getRowValue(row, "QUANTIDADE_EM_ESTOQUE", "ESTOQUE", "ESTOQUE_DISPONIVEL", "QUANTIDADE"));
+            const reservado = toNumber(getRowValue(row, "QUANTIDADE_RESERVADA", "RESERVADO", "QUANTIDADE_RESERVADA"));
             return {
               importacao_id: importacao.id,
-              codigo_produto: String(row.CODIGO_PRODUTO ?? row.CODIGO ?? "").trim(),
+              codigo_produto: String(getRowValue(row, "CODIGO_PRODUTO", "CODIGO", "SEQPRODUTO", "COD" )).trim(),
               estoque_disponivel: Math.max(estoque - reservado, 0),
               payload: row,
             };
@@ -397,32 +671,43 @@ export function PontoExtraImportacao({ perfil }: Props) {
         setMensagem(`Estoque CD importado: ${payload.length} produtos gravados.${avisoTipo}`);
       } else if (effectiveTipo === "media_venda") {
         const payload = rows
-          .map((row) => ({
-            importacao_id: importacao.id,
-            loja: String(row.LOJA ?? row.CODIGO_LOJA ?? row.EMPRESA ?? ""),
-            codigo_produto: String(row.CODIGO_PRODUTO ?? row.SEQPRODUTO ?? row.CODPRODUTO ?? row.CODIGO ?? "").trim(),
-            descricao_produto: String(row.DESCRICAO_PRODUTO ?? row.DESCCOMPLETA ?? row.PRODUTO ?? row.DESCRICAO ?? ""),
-            codigo_fornecedor: String(row.CODIGO_FORNECEDOR ?? row.COD_FORNECEDOR ?? row.CODFORN ?? ""),
-            fornecedor: String(row.FORNECEDOR ?? row.RAZAO ?? ""),
-            status: String(row.STATUS ?? ""),
-            media_venda_un_dia: toNumber(row.MEDIA_VENDA_UN_DIA ?? row.MEDIAVENDAUNDIA ?? row.MEDIA_VENDA ?? row.MEDIA),
-            media_venda_gp: toNumber(row.MEDIA_VENDA_GP ?? row.MEDIAVENDAGP),
-            estoque: toNumber(row.ESTOQUE),
-            par_min: toNumber(row.PAR_MIN),
-            par_max: toNumber(row.PAR_MAX),
-            pend_compra: toNumber(row.PEND_COMPRA),
-            qtde_emb_compra: toNumber(row.QTDE_EMB_COMPRA ?? row.QTD_EMB_COMPRA),
-            embalagem_compra: String(row.EMBALAGEM_COMPRA ?? ""),
-            categoria: String(row.CATEGORIA ?? ""),
-            setor: String(row.SETOR ?? row.SECAO ?? ""),
-            grupo: String(row.GRUPO ?? ""),
-            custo_liquido: toNumber(row.CUSTO_LIQUIDO),
-            peso_unid: toNumber(row.PESO_UNID),
-            m3_unid: toNumber(row.M3_UNID),
-            peso_cx: toNumber(row.PESO_CX),
-            m3_cx: toNumber(row.M3_CX),
-            payload: row,
-          }))
+          .map((row) => {
+            const categoriaRaw = String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR"));
+            const categoriaParsed = parseCategoriaMedia(categoriaRaw);
+            return {
+              importacao_id: importacao.id,
+              loja: String(getRowValue(row, "LOJA", "CODIGO_LOJA", "EMPRESA")),
+              codigo_produto: String(getRowValue(row, "CODIGO_PRODUTO", "SEQPRODUTO", "CODPRODUTO", "CODIGO", "COD")).trim(),
+              descricao_produto: String(getRowValue(row, "DESCRICAO_PRODUTO", "DESCCOMPLETA", "PRODUTO", "DESCRICAO")),
+              codigo_fornecedor: String(getRowValue(row, "CODIGO_FORNECEDOR", "COD_FORNECEDOR", "CODFORN")),
+              fornecedor: String(getRowValue(row, "FORNECEDOR", "RAZAO")),
+              status: String(getRowValue(row, "STATUS")),
+              media_venda_un_dia: toNumber(getRowValue(row, "MEDIA_VENDA_UN_DIA", "MEDIAVENDAUNDIA", "MEDIA_VENDA", "MEDIA")),
+              media_venda_gp: toNumber(getRowValue(row, "MEDIA_VENDA_GP", "MEDIAVENDAGP")),
+              estoque: toNumber(getRowValue(row, "ESTOQUE")),
+              par_min: toNumber(getRowValue(row, "PAR_MIN", "PARMIN")),
+              par_max: toNumber(getRowValue(row, "PAR_MAX", "PARMAX")),
+              pend_compra: toNumber(getRowValue(row, "PEND_COMPRA", "PENDCPA")),
+              qtde_emb_compra: toNumber(getRowValue(row, "QTDE_EMBCPA", "QTDE_EMB_COMPRA", "QTD_EMB_COMPRA", "EMBCPA", "EMBALAGEM_COMPRA")),
+              embalagem_compra: String(getRowValue(row, "EMBALAGEM_COMPRA", "EMBCPA")),
+              categoria: categoriaRaw,
+              setor: String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2")),
+              grupo: String(getRowValue(row, "GRUPO", "GRUPO_N3")),
+              custo_liquido: toNumber(getRowValue(row, "CUSTO_LIQUIDO")),
+              peso_unid: toNumber(getRowValue(row, "PESO_UNID", "PESOUNID")),
+              m3_unid: toNumber(getRowValue(row, "M3_UNID", "M3_CX")),
+              peso_cx: toNumber(getRowValue(row, "PESO_CX", "PESOCX")),
+              m3_cx: toNumber(getRowValue(row, "M3_CX", "M3CX")),
+              categoria_n1: categoriaParsed.categoria_n1,
+              setor_n2: categoriaParsed.setor_n2,
+              grupo_n3: categoriaParsed.grupo_n3,
+              subgrupo_n4: categoriaParsed.subgrupo_n4,
+              tipo_n5: categoriaParsed.tipo_n5,
+              setor_codigo: Number.isFinite(Number(categoriaParsed.setor_codigo)) ? Number(categoriaParsed.setor_codigo) : null,
+              setor_nome: categoriaParsed.setor_nome,
+              payload: row,
+            };
+          })
           .filter((row) => row.codigo_produto);
 
         if (payload.length === 0) {
@@ -432,12 +717,116 @@ export function PontoExtraImportacao({ perfil }: Props) {
 
         await insertInChunks("ponta_media_venda", payload);
         setMensagem(`Media de venda importada: ${payload.length} produtos gravados.`);
+      } else if (effectiveTipo === "codigo_pontas") {
+        const payload = rows
+          .map((row) => {
+            const setor = parseSetorInfoOperacional(row.SETOR ?? row.SECAO ?? row.CATEGORIA ?? row.SETOR_NOME);
+            const mes = String(row.MES_VIGENCIA ?? row.MES ?? row.MES_REFERENCIA ?? row.MES_REF ?? currentMonthKey()).trim();
+            return {
+              loja: String(row.LOJA ?? row.CODIGO_LOJA ?? row.EMPRESA ?? "").trim(),
+              setor_codigo: String(row.SETOR_CODIGO ?? row.COD_SETOR ?? setor.codigo).trim(),
+              setor_nome: String(row.SETOR_NOME ?? setor.nome).trim().toUpperCase(),
+            mes_vigencia: /^\d{4}-\d{2}$/.test(mes) ? mes : currentMonthKey(),
+            descricao_ponta: String(row.DESCRICAO_PONTA ?? row.DESCRICAO ?? row.DESCRICAO_DA_PONTA ?? "").trim(),
+            cod_ponta: String(row.COD_PONTA ?? row.CODIGO_PONTA ?? row.PONTA ?? "").trim().toUpperCase(),
+            ativo: true,
+            importacao_id: importacao.id,
+          };
+        })
+          .filter((row) => row.loja && row.setor_codigo);
+
+        if (payload.length === 0) {
+          setErro("Nenhuma linha valida de Codigo das Pontas encontrada. Confira LOJA, SETOR e COD_PONTA.");
+          return;
+        }
+
+        const { error } = await lojaDb
+          .from("ponta_codigo_pontas")
+          .upsert(payload, { onConflict: "loja,setor_codigo,mes_vigencia" });
+        if (error) throw error;
+        setMensagem(`Codigo das Pontas importado: ${payload.length} vinculos gravados.`);
       } else {
         setMensagem(`Importacao ${effectiveTipo} registrada. A carga detalhada sera ativada no proximo bloco.`);
       }
+      await carregarHistorico();
     } catch (err: any) {
       console.error(err);
       setErro(err?.message ?? "Erro ao importar arquivo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function excluirImportacao(item: Record<string, any>) {
+    const nome = item.nome_arquivo || item.tipo;
+    const confirmado = window.confirm(
+      `Excluir a importacao "${nome}"?\n\nSomente os registros ligados a este arquivo serao removidos do Supabase. Esta acao nao apaga outras bases.`,
+    );
+    if (!confirmado) return;
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const id = String(item.id);
+      if (item.tipo === "base_ponta") {
+        const { error } = await lojaDb.from("ponta_base").delete().eq("importacao_id", id);
+        if (error) throw error;
+      } else if (item.tipo === "estoque_cd") {
+        const { error } = await lojaDb.from("ponta_estoque_cd").delete().eq("importacao_id", id);
+        if (error) throw error;
+      } else if (item.tipo === "media_venda") {
+        const { error } = await lojaDb.from("ponta_media_venda").delete().eq("importacao_id", id);
+        if (error) throw error;
+      } else if (item.tipo === "codigo_pontas") {
+        const { error } = await lojaDb.from("ponta_codigo_pontas").delete().eq("importacao_id", id);
+        if (error) throw error;
+      }
+
+      const { error: importError } = await lojaDb.from("ponta_importacoes").delete().eq("id", id);
+      if (importError) throw importError;
+
+      setMensagem(`Importacao "${nome}" excluida. Reprocesse o Ponto Extra para atualizar os resultados.`);
+      await carregarHistorico();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao excluir importacao.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function limparOrfaos(tipoOrfao: string) {
+    const labels: Record<string, string> = {
+      base_ponta: "Base Ponta",
+      estoque_cd: "Estoque CDs",
+      media_venda: "Media de venda",
+      codigo_pontas: "Codigo das Pontas",
+    };
+    const tabelas: Record<string, string> = {
+      base_ponta: "ponta_base",
+      estoque_cd: "ponta_estoque_cd",
+      media_venda: "ponta_media_venda",
+      codigo_pontas: "ponta_codigo_pontas",
+    };
+    const total = orfaos[tipoOrfao] ?? 0;
+    if (total <= 0) return;
+    const confirmado = window.confirm(
+      `Limpar ${total} registros sem importacao vinculada de ${labels[tipoOrfao]}?\n\nEsta acao apaga apenas registros com importacao_id vazio e nao mexe nas importacoes ativas.`,
+    );
+    if (!confirmado) return;
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const { error } = await lojaDb.from(tabelas[tipoOrfao]).delete().is("importacao_id", null);
+      if (error) throw error;
+      setMensagem(`${labels[tipoOrfao]}: ${total} registros orfaos removidos.`);
+      await carregarHistorico();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao limpar registros orfaos.");
     } finally {
       setLoading(false);
     }
@@ -460,6 +849,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
               <option value="base_ponta">Base Ponta</option>
               <option value="estoque_cd">Estoque CDs</option>
               <option value="media_venda">Media de venda</option>
+              <option value="codigo_pontas">Codigo das Pontas</option>
             </select>
           </label>
           <label>
@@ -487,6 +877,73 @@ export function PontoExtraImportacao({ perfil }: Props) {
               {preview.map((row, index) => (
                 <tr key={index}>
                   {headers.map((header) => <td key={header} style={tdStyle}>{String(row[header] ?? "")}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Bases importadas</h2>
+          <button
+            type="button"
+            onClick={() => void carregarHistorico()}
+            disabled={loading}
+            style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}
+          >
+            Atualizar historico
+          </button>
+        </div>
+        <div style={{ ...gridStyle, marginBottom: 16 }}>
+          {[
+            ["base_ponta", "Base Ponta"],
+            ["estoque_cd", "Estoque CDs"],
+            ["media_venda", "Media de venda"],
+            ["codigo_pontas", "Codigo das Pontas"],
+          ].map(([key, label]) => (
+            <div key={key} style={{ ...cardStyle, margin: 0, padding: 14 }}>
+              <div style={descStyle}>Orfaos - {label}</div>
+              <strong style={{ display: "block", fontSize: 24, margin: "8px 0" }}>{formatNumber(orfaos[key] ?? 0, 0)}</strong>
+              <button
+                type="button"
+                onClick={() => void limparOrfaos(key)}
+                disabled={loading || (orfaos[key] ?? 0) === 0}
+                style={{ ...buttonStyle, padding: "6px 10px", background: "#991b1b", color: "#fff" }}
+              >
+                Limpar orfaos
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["Tipo", "Arquivo", "Linhas", "Data/hora", "Usuario", "Acoes"].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {historico.length === 0 && <tr><td style={tdStyle}>Nenhuma base importada encontrada.</td></tr>}
+              {historico.map((item) => (
+                <tr key={item.id}>
+                  <td style={tdStyle}>{String(item.tipo ?? "").replace(/_/g, " ").toUpperCase()}</td>
+                  <td style={tdStyle}>{item.nome_arquivo || "-"}</td>
+                  <td style={tdStyle}>{formatNumber(item.total_linhas, 0)}</td>
+                  <td style={tdStyle}>{item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-"}</td>
+                  <td style={tdStyle}>{item.usuario_id || "-"}</td>
+                  <td style={tdStyle}>
+                    <button
+                      type="button"
+                      onClick={() => void excluirImportacao(item)}
+                      disabled={loading}
+                      style={{ ...buttonStyle, padding: "6px 10px", background: "#991b1b", color: "#fff" }}
+                    >
+                      Excluir importacao
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -913,10 +1370,11 @@ export function PontoExtraCubagem() {
           const profundidade = toNumber(row.PROF ?? row.PROFUNDIDADE);
           const frente = toNumber(row.FRENTE);
           const altura = toNumber(row.ALTURA);
-          const m3Area = toNumber(row.M3_AREA) || profundidade * frente * altura;
+          const m3AreaCalculado = calcularM3Area(profundidade, frente, altura);
+          const m3Area = m3AreaCalculado || toNumber(row.M3_AREA);
           const reparticao = toNumber(row.REPARTICAO) || 1;
-          const percentual = toNumber(row.PERCETUAL_ABASTECIMENTO ?? row.PERCENTUAL_ABASTECIMENTO ?? row.PERC_ABASTECIMENTO) || 100;
-          const totalM3 = toNumber(row.TOTAL_M3) || calcularTotalM3(m3Area, percentual);
+          const percentual = normalizarPercentual(row.PERCETUAL_ABASTECIMENTO ?? row.PERCENTUAL_ABASTECIMENTO ?? row.PERC_ABASTECIMENTO);
+          const totalM3 = m3Area ? calcularTotalM3(m3Area, percentual) : toNumber(row.TOTAL_M3);
           return {
             regional_id: regionalId,
             tipo_ponta: String(row.TIPO_DE_PONTA ?? row.TIPO_PONTA ?? "").trim().toUpperCase(),
@@ -980,10 +1438,11 @@ export function PontoExtraCubagem() {
     const profundidade = toNumber(editForm.profundidade);
     const frente = toNumber(editForm.frente);
     const altura = toNumber(editForm.altura);
-    const m3Area = toNumber(editForm.m3_area) || profundidade * frente * altura;
+    const m3AreaCalculado = calcularM3Area(profundidade, frente, altura);
+    const m3Area = m3AreaCalculado || toNumber(editForm.m3_area);
     const reparticao = toNumber(editForm.reparticao) || 1;
-    const percentual = toNumber(editForm.percentual_abastecimento) || 100;
-    const totalM3 = toNumber(editForm.total_m3) || calcularTotalM3(m3Area, percentual);
+    const percentual = normalizarPercentual(editForm.percentual_abastecimento);
+    const totalM3 = m3Area ? calcularTotalM3(m3Area, percentual) : toNumber(editForm.total_m3);
 
     if (!editForm.tipo_ponta.trim()) {
       setErro("Informe o tipo de ponta.");
@@ -1203,27 +1662,474 @@ export function PontoExtraCubagem() {
   );
 }
 
+export function PontoExtraCapas() {
+  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
+  const [linhas, setLinhas] = useState<PontaCodigoPonta[]>([]);
+  const [geradas, setGeradas] = useState<PontaCodigoPonta[]>([]);
+  const [filtroLoja, setFiltroLoja] = useState("");
+  const [filtroSetor, setFiltroSetor] = useState("");
+  const [filtroCodigoPonta, setFiltroCodigoPonta] = useState("");
+  const [setorOpcoes, setSetorOpcoes] = useState<Array<{ codigo: string; nome: string }>>([]);
+  const [novaCapa, setNovaCapa] = useState({
+    loja: "",
+    setor_codigo: "",
+    setor_nome: "",
+    descricao_ponta: "",
+  });
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function carregarCapas() {
+    setErro(null);
+    const [{ data: bases, error: baseError }, { data: produtos, error: prodError }, { data: medias, error: mediaError }, { data: capas, error: capaError }] = await Promise.all([
+      lojaDb.from("ponta_base").select("id, loja, quantidade, tipo_ponta, secao, categoria"),
+      lojaDb.from("ponta_produtos").select("ponta_base_id, loja, codigo_produto, categoria, secao"),
+      lojaDb.from("ponta_media_venda").select("loja, codigo_produto, categoria, setor"),
+      lojaDb.from("ponta_codigo_pontas").select("*").eq("mes_vigencia", mesVigencia).order("loja", { ascending: true }),
+    ]);
+    const firstError = baseError ?? prodError ?? mediaError ?? capaError;
+    if (firstError) throw firstError;
+
+    const mediaMap = new Map<string, any>();
+    for (const media of medias ?? []) {
+      mediaMap.set(`${String(media.loja ?? "").trim()}|${String(media.codigo_produto ?? "").trim()}`, media);
+    }
+
+    const setoresDaMedia = new Map<string, { codigo: string; nome: string }>();
+    for (const media of medias ?? []) {
+      const setor = parseSetorInfoOperacional(media.categoria, media.setor);
+      if (!setor.codigo || setor.codigo === "SEM_SETOR") continue;
+      setoresDaMedia.set(setor.codigo, { codigo: setor.codigo, nome: setor.nome });
+    }
+    setSetorOpcoes(
+      Array.from(setoresDaMedia.values()).sort((a, b) =>
+        `${a.codigo} ${a.nome}`.localeCompare(`${b.codigo} ${b.nome}`, "pt-BR", { numeric: true }),
+      ),
+    );
+
+    const produtosPorBase = new Map<string, any[]>();
+    for (const produto of produtos ?? []) {
+      const baseId = String(produto.ponta_base_id ?? "").trim();
+      if (!baseId) continue;
+      produtosPorBase.set(baseId, [...(produtosPorBase.get(baseId) ?? []), produto]);
+    }
+
+    const existentes = new Map<string, PontaCodigoPonta>();
+    for (const capa of (capas ?? []) as PontaCodigoPonta[]) {
+      existentes.set(`${capa.loja}|${capa.setor_codigo}|${capa.mes_vigencia}`, capa);
+    }
+
+    const base = new Map<string, PontaCodigoPonta>();
+    for (const capa of (capas ?? []) as PontaCodigoPonta[]) {
+      const loja = String(capa.loja ?? "").trim() || CAPA_TODAS_LOJAS;
+      const setorCodigo = String(capa.setor_codigo ?? "").trim().toUpperCase() || "SEM_SETOR";
+      const setorNome = String(capa.setor_nome ?? "").trim().toUpperCase() || "SEM SETOR";
+      const chave = `${loja}|${setorCodigo}|${capa.mes_vigencia}`;
+      base.set(chave, {
+        ...capa,
+        loja,
+        setor_codigo: setorCodigo,
+        setor_nome: setorNome,
+        descricao_ponta: capa.descricao_ponta || descricaoCapaPonta(mesVigencia, setorCodigo, setorNome),
+        cod_ponta: capa.cod_ponta ?? "",
+        ativo: capa.ativo ?? true,
+      });
+    }
+
+    for (const ponta of bases ?? []) {
+      const loja = String(ponta.loja ?? "").trim();
+      const produtosDaPonta = produtosPorBase.get(String(ponta.id ?? "").trim()) ?? [];
+      const produtoComSetor = produtosDaPonta.find((produto) => {
+        const codigo = String(produto.codigo_produto ?? "").trim();
+        const media = mediaMap.get(`${loja}|${codigo}`);
+        const setor = parseSetorCapa(media?.categoria, media?.setor || produto.secao || produto.categoria);
+        return setor.codigo !== "SEM_SETOR";
+      }) ?? produtosDaPonta[0];
+      const codigo = String(produtoComSetor?.codigo_produto ?? "").trim();
+      const media = mediaMap.get(`${loja}|${codigo}`);
+      const setor = parseSetorCapa(media?.categoria, media?.setor || ponta.secao || ponta.categoria);
+      if (!loja || !setor.codigo) continue;
+      const chave = `${loja}|${setor.codigo}|${mesVigencia}`;
+      const existente = existentes.get(chave);
+      base.set(chave, {
+        id: existente?.id ?? chave,
+        loja,
+        setor_codigo: setor.codigo,
+        setor_nome: setor.nome,
+        mes_vigencia: mesVigencia,
+        descricao_ponta: existente?.descricao_ponta || descricaoCapaPonta(mesVigencia, setor.codigo, setor.nome),
+        cod_ponta: existente?.cod_ponta ?? "",
+        ativo: existente?.ativo ?? true,
+      });
+    }
+
+    const lista = Array.from(base.values()).sort((a, b) =>
+      `${a.loja}|${a.setor_codigo}`.localeCompare(`${b.loja}|${b.setor_codigo}`, "pt-BR", { numeric: true }),
+    );
+    setLinhas(lista);
+    setGeradas(lista);
+  }
+
+  useEffect(() => {
+    void carregarCapas().catch((err) => {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao carregar capas de ponta.");
+    });
+  }, [mesVigencia]);
+
+  async function salvarTodas() {
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const payloadMap = new Map<string, {
+        loja: string;
+        setor_codigo: string;
+        setor_nome: string;
+        mes_vigencia: string;
+        descricao_ponta: string | null | undefined;
+        cod_ponta: string | null | undefined;
+        ativo: boolean | null | undefined;
+        updated_at: string;
+      }>();
+      const now = new Date().toISOString();
+      for (const linha of linhas) {
+        const registro = {
+          loja: String(linha.loja ?? "").trim().toUpperCase() || CAPA_TODAS_LOJAS,
+          setor_codigo: String(linha.setor_codigo ?? "").trim().toUpperCase() || "SEM_SETOR",
+          setor_nome: String(linha.setor_nome ?? "").trim().toUpperCase() || "SEM SETOR",
+          mes_vigencia: linha.mes_vigencia,
+          descricao_ponta: linha.descricao_ponta,
+          cod_ponta: linha.cod_ponta,
+          ativo: linha.ativo,
+          updated_at: now,
+        };
+        const chave = `${registro.loja}|${registro.setor_codigo}|${registro.mes_vigencia}`;
+        const atual = payloadMap.get(chave);
+        if (!atual || (!String(atual.cod_ponta ?? "").trim() && String(registro.cod_ponta ?? "").trim())) {
+          payloadMap.set(chave, registro);
+        }
+      }
+      const payload = Array.from(payloadMap.values());
+      const { error } = await lojaDb
+        .from("ponta_codigo_pontas")
+        .upsert(payload, { onConflict: "loja,setor_codigo,mes_vigencia" });
+      if (error) throw error;
+      setMensagem(`${payload.length} capas salvas para ${monthLabel(mesVigencia)}.`);
+      await carregarCapas();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao salvar capas.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function atualizarLinha(index: number, field: keyof PontaCodigoPonta, value: string | boolean) {
+    setLinhas((prev) => prev.map((linha, i) => (i === index ? { ...linha, [field]: value } : linha)));
+  }
+
+  async function adicionarDescricaoManual() {
+    const loja = novaCapa.loja.trim() || CAPA_TODAS_LOJAS;
+    const setorDigitado = parseSetorInput(novaCapa.setor_codigo);
+    const setorCodigo = setorDigitado.codigo || "SEM_SETOR";
+    const setorNome = (novaCapa.setor_nome.trim() || setorDigitado.nome || "SEM SETOR").toUpperCase();
+    const descricao = novaCapa.descricao_ponta.trim().toUpperCase() || descricaoCapaPonta(mesVigencia, setorCodigo, setorNome);
+    if (setorCodigo === "SEM_SETOR") {
+      setErro("Informe o setor para criar a descricao. Selecione uma opcao da Media de venda ou digite o setor manualmente.");
+      return;
+    }
+
+    const chave = `${loja}|${setorCodigo}|${mesVigencia}`;
+    if (linhas.some((linha) => `${linha.loja}|${linha.setor_codigo}|${linha.mes_vigencia}` === chave)) {
+      setErro("Essa descricao ja existe para a loja, setor e mes selecionados. Edite a linha existente.");
+      return;
+    }
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const novaLinha: PontaCodigoPonta = {
+        id: `manual-${chave}`,
+        loja,
+        setor_codigo: setorCodigo,
+        setor_nome: setorNome,
+        mes_vigencia: mesVigencia,
+        descricao_ponta: descricao,
+        cod_ponta: "",
+        ativo: true,
+      };
+
+      const { error } = await lojaDb
+        .from("ponta_codigo_pontas")
+        .upsert(
+          {
+            loja,
+            setor_codigo: setorCodigo,
+            setor_nome: setorNome,
+            mes_vigencia: mesVigencia,
+            descricao_ponta: descricao,
+            cod_ponta: "",
+            ativo: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "loja,setor_codigo,mes_vigencia" },
+        );
+      if (error) throw error;
+
+      setLinhas((prev) => [
+        ...prev,
+        novaLinha,
+      ].sort((a, b) => `${a.loja}|${a.setor_codigo}`.localeCompare(`${b.loja}|${b.setor_codigo}`, "pt-BR", { numeric: true })));
+      setFiltroLoja(loja === CAPA_TODAS_LOJAS ? "" : loja);
+      setFiltroSetor(`${setorCodigo} - ${setorNome}`);
+      setFiltroCodigoPonta("");
+      setNovaCapa({ loja: "", setor_codigo: "", setor_nome: "", descricao_ponta: "" });
+      setMensagem("Descricao salva. Preencha o codigo quando o sistema externo gerar e clique em Salvar capas.");
+      await carregarCapas();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao salvar descricao da capa.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copiarDescricao(descricao: string) {
+    await navigator.clipboard?.writeText(descricao);
+    setMensagem("Descricao copiada.");
+  }
+
+  const filtradas = useMemo(
+    () =>
+      linhas.filter((linha) => {
+        const lojaFiltro = normalizarBuscaCapa(filtroLoja);
+        const setorFiltro = normalizarBuscaCapa(filtroSetor);
+        const codigoFiltro = normalizarBuscaCapa(filtroCodigoPonta);
+        const lojaBusca = normalizarBuscaCapa(linha.loja);
+        const setorBusca = normalizarBuscaCapa(`${linha.setor_codigo} ${linha.setor_nome}`);
+        const codigoBusca = normalizarBuscaCapa(`${linha.descricao_ponta ?? ""} ${linha.cod_ponta ?? ""}`);
+        const lojaOk = !lojaFiltro || lojaBusca.includes(lojaFiltro) || String(linha.loja ?? "").trim().toUpperCase() === CAPA_TODAS_LOJAS;
+        const setorOk = !setorFiltro || setorBusca.includes(setorFiltro);
+        const codigoOk = !codigoFiltro || codigoBusca.includes(codigoFiltro);
+        return lojaOk && setorOk && codigoOk;
+      }),
+    [filtroCodigoPonta, filtroLoja, filtroSetor, linhas],
+  );
+
+  function aplicarSetorNovaCapa(value: string) {
+    const setor = parseSetorInput(value);
+    const encontrado = setorOpcoes.find((item) => item.codigo === setor.codigo || `${item.codigo} - ${item.nome}` === value);
+    const setorCodigo = setor.codigo || value.toUpperCase();
+    const setorNome = encontrado?.nome ?? setor.nome ?? "";
+    const descricaoAtual = novaCapa.descricao_ponta.trim().toUpperCase();
+    const descricaoPadraoAnterior = descricaoCapaPonta(mesVigencia, novaCapa.setor_codigo || "SEM_SETOR", novaCapa.setor_nome || "SEM SETOR");
+    const descricaoPonta = !descricaoAtual || descricaoAtual === descricaoPadraoAnterior
+      ? descricaoCapaPonta(mesVigencia, setorCodigo || "SEM_SETOR", setorNome || "SEM SETOR")
+      : novaCapa.descricao_ponta;
+    setNovaCapa((prev) => ({
+      ...prev,
+      setor_codigo: setorCodigo,
+      setor_nome: setorNome || prev.setor_nome,
+      descricao_ponta: descricaoPonta,
+    }));
+  }
+
+  const lojasFiltro = useMemo(() => Array.from(new Set(linhas.map((linha) => linha.loja).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true })), [linhas]);
+  const setoresFiltro = useMemo(
+    () =>
+      Array.from(new Set([
+        ...setorOpcoes.map((setor) => `${setor.codigo} - ${setor.nome}`),
+        ...linhas.map((linha) => `${linha.setor_codigo} - ${linha.setor_nome}`).filter(Boolean),
+      ])).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true })),
+    [linhas, setorOpcoes],
+  );
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Capas de Ponta</h1>
+        <p style={descStyle}>
+          Crie a descricao, cadastre no sistema da empresa, depois volte e preencha o codigo oficial gerado.
+        </p>
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Criar descricao para cadastro externo</h2>
+        <div style={{ ...gridStyle, alignItems: "end" }}>
+          <label>
+            <span style={descStyle}>Mes vigencia</span>
+            <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value || currentMonthKey())} style={inputStyle} />
+          </label>
+          <label>
+            <span style={descStyle}>Loja</span>
+            <input value={novaCapa.loja} onChange={(e) => setNovaCapa((prev) => ({ ...prev, loja: e.target.value }))} placeholder="Vazio = todas as lojas" style={inputStyle} />
+          </label>
+          <label>
+            <span style={descStyle}>Cod. setor</span>
+            <input value={novaCapa.setor_codigo} onChange={(e) => aplicarSetorNovaCapa(e.target.value)} placeholder="Ex.: 31 ou selecione da Media" list="ponto-extra-capas-setores" style={inputStyle} />
+          </label>
+          <label>
+            <span style={descStyle}>Nome setor</span>
+            <input value={novaCapa.setor_nome} onChange={(e) => setNovaCapa((prev) => ({ ...prev, setor_nome: e.target.value }))} placeholder="Ex.: BASICA" style={inputStyle} />
+          </label>
+        </div>
+        <p style={descStyle}>
+          Deixe a loja vazia para criar uma capa geral do setor. Se informar a loja, essa capa tera prioridade apenas para aquela loja.
+        </p>
+        <div style={{ ...gridStyle, alignItems: "end", marginTop: 12, gridTemplateColumns: "1fr auto" }}>
+          <label>
+            <span style={descStyle}>Descricao da ponta</span>
+            <input
+              value={novaCapa.descricao_ponta}
+              onChange={(e) => setNovaCapa((prev) => ({ ...prev, descricao_ponta: e.target.value }))}
+              placeholder="PT MT JULHO 2026 SETOR 31 ALIMENTACAO BASICA"
+              style={inputStyle}
+            />
+          </label>
+          <button type="button" onClick={adicionarDescricaoManual} style={buttonStyle}>
+            Adicionar descricao
+          </button>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Filtrar e salvar codigos</h2>
+        <div style={{ ...gridStyle, alignItems: "end" }}>
+          <label>
+            <span style={descStyle}>Filtrar loja</span>
+            <input value={filtroLoja} onChange={(e) => setFiltroLoja(e.target.value)} placeholder="Filtrar loja" list="ponto-extra-capas-lojas" style={inputStyle} />
+          </label>
+          <label>
+            <span style={descStyle}>Filtrar setor</span>
+            <input value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} placeholder="Codigo ou nome do setor" list="ponto-extra-capas-setores" style={inputStyle} />
+          </label>
+          <label>
+            <span style={descStyle}>Filtrar descricao/codigo</span>
+            <input
+              value={filtroCodigoPonta}
+              onChange={(e) => setFiltroCodigoPonta(e.target.value)}
+              placeholder="Descricao ou cod. ponta"
+              style={inputStyle}
+            />
+          </label>
+          <button type="button" disabled={loading || linhas.length === 0} onClick={() => void salvarTodas()} style={buttonStyle}>
+            {loading ? "Salvando..." : "Salvar capas"}
+          </button>
+        </div>
+        {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+        <datalist id="ponto-extra-capas-lojas">
+          {lojasFiltro.map((loja) => <option key={loja} value={loja} />)}
+        </datalist>
+        <datalist id="ponto-extra-capas-setores">
+          {setoresFiltro.map((setor) => <option key={setor} value={setor} />)}
+        </datalist>
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Capas para cadastro externo</h2>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["Acoes", "Loja", "Cod. setor", "Nome setor", "Mes", "Descricao da ponta", "Cod. ponta", "Ativo"].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.length === 0 && <tr><td style={tdStyle}>Nenhuma capa encontrada. Importe Base Ponta e Media de venda primeiro.</td></tr>}
+              {filtradas.map((linha) => {
+                const index = linhas.findIndex((item) => item.id === linha.id);
+                return (
+                  <tr key={`${linha.loja}-${linha.setor_codigo}-${linha.mes_vigencia}`}>
+                    <td style={tdStyle}>
+                      <button
+                        type="button"
+                        onClick={() => void copiarDescricao(linha.descricao_ponta ?? "")}
+                        style={{ ...buttonStyle, padding: "8px 12px", background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}`, whiteSpace: "nowrap" }}
+                      >
+                        Copiar descricao
+                      </button>
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.loja ?? ""}
+                        onChange={(e) => atualizarLinha(index, "loja", e.target.value)}
+                        style={{ ...inputStyle, minWidth: 80 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.setor_codigo ?? ""}
+                        onChange={(e) => atualizarLinha(index, "setor_codigo", e.target.value.toUpperCase())}
+                        style={{ ...inputStyle, minWidth: 120 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.setor_nome ?? ""}
+                        onChange={(e) => atualizarLinha(index, "setor_nome", e.target.value.toUpperCase())}
+                        style={{ ...inputStyle, minWidth: 220 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>{monthLabel(linha.mes_vigencia)}</td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.descricao_ponta ?? ""}
+                        onChange={(e) => atualizarLinha(index, "descricao_ponta", e.target.value)}
+                        style={{ ...inputStyle, minWidth: 420 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.cod_ponta ?? ""}
+                        onChange={(e) => atualizarLinha(index, "cod_ponta", e.target.value.toUpperCase())}
+                        placeholder="Preencher apos cadastro externo"
+                        style={{ ...inputStyle, minWidth: 160 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input type="checkbox" checked={linha.ativo} onChange={(e) => atualizarLinha(index, "ativo", e.target.checked)} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function PontoExtraProcessamento() {
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Record<string, any>[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState("");
+  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
   const [resumo, setResumo] = useState({
     produtosBase: 0,
     processados: 0,
     semMedia: 0,
     semCubagem: 0,
     semEstoque: 0,
-    skuIgnorados: 0,
+    semCodigoPonta: 0,
+    foraReparticao: 0,
   });
 
   async function carregarResultado() {
     const { data, error, count } = await lojaDb
       .from("ponta_processada")
       .select("*", { count: "exact" })
+      .eq("mes_vigencia", mesVigencia)
       .order("loja", { ascending: true })
-      .order("tipo_ponta", { ascending: true })
+      .order("cod_ponta", { ascending: true })
       .limit(200);
     if (error) throw error;
     setResultado((data ?? []) as Record<string, any>[]);
@@ -1241,10 +2147,12 @@ export function PontoExtraProcessamento() {
     setResumo((prev) => ({
       ...prev,
       produtosBase: produtosCount.count ?? 0,
-      processados: count ?? data?.length ?? 0,
+      processados: (data ?? []).filter((item: any) => !item.fora_reparticao).length || count || 0,
       semMedia: mediaCount.count ? prev.semMedia : produtosCount.count ?? 0,
       semCubagem: cubagemCount.count ? prev.semCubagem : produtosCount.count ?? 0,
       semEstoque: estoqueCount.count ? prev.semEstoque : produtosCount.count ?? 0,
+      semCodigoPonta: (data ?? []).filter((item: any) => !String(item.cod_ponta ?? "").trim()).length,
+      foraReparticao: (data ?? []).filter((item: any) => Boolean(item.fora_reparticao)).length,
     }));
   }
 
@@ -1253,7 +2161,7 @@ export function PontoExtraProcessamento() {
       console.error(err);
       setErro(err?.message ?? "Erro ao carregar processamento.");
     });
-  }, []);
+  }, [mesVigencia]);
 
   async function carregarTabela<T = Record<string, any>>(tabela: string, select = "*") {
     const pageSize = 1000;
@@ -1270,38 +2178,33 @@ export function PontoExtraProcessamento() {
     return allRows;
   }
 
-  function chaveTexto(...partes: unknown[]) {
-    return partes.map((parte) => String(parte ?? "").trim().toUpperCase()).join("|");
-  }
-
   async function processar() {
     setLoading(true);
     setErro(null);
     setMensagem(null);
     try {
-      const [produtos, medias, estoques, cubagens, cadastros] = await Promise.all([
+      const [produtos, medias, estoques, cubagens, capas] = await Promise.all([
         carregarTabela<any>("ponta_produtos"),
         carregarTabela<any>("ponta_media_venda"),
         carregarTabela<any>("ponta_estoque_cd"),
         carregarTabela<any>("ponta_cubagem"),
-        carregarTabela<any>("ponta_cadastros"),
+        carregarTabela<any>("ponta_codigo_pontas"),
       ]);
 
       const mediaPorLojaCodigo = new Map<string, any>();
-      const mediaPorCodigo = new Map<string, any>();
       for (const media of medias) {
         const codigo = String(media.codigo_produto ?? "").trim();
         if (!codigo) continue;
         const loja = String(media.loja ?? "").trim();
         if (loja) mediaPorLojaCodigo.set(chaveTexto(loja, codigo), media);
-        if (!mediaPorCodigo.has(chaveTexto(codigo))) mediaPorCodigo.set(chaveTexto(codigo), media);
       }
 
       const estoquePorCodigo = new Map<string, number>();
       for (const estoque of estoques) {
         const codigo = String(estoque.codigo_produto ?? "").trim();
         if (!codigo) continue;
-        estoquePorCodigo.set(chaveTexto(codigo), Math.max(estoquePorCodigo.get(chaveTexto(codigo)) ?? 0, toNumber(estoque.estoque_disponivel)));
+        const chave = chaveTexto(codigo);
+        estoquePorCodigo.set(chave, (estoquePorCodigo.get(chave) ?? 0) + toNumber(estoque.estoque_disponivel));
       }
 
       const cubagemPorTipo = new Map<string, any>();
@@ -1310,13 +2213,14 @@ export function PontoExtraProcessamento() {
         if (tipo && toNumber(cubagem.total_m3) > 0) cubagemPorTipo.set(chaveTexto(tipo), cubagem);
       }
 
-      const cadastroPorPonta = new Map<string, any>();
-      for (const cadastro of cadastros) {
-        const tipo = String(cadastro.tipo_ponta ?? "").trim();
-        const setor = String(cadastro.setor ?? "").trim();
-        if (!tipo) continue;
-        cadastroPorPonta.set(chaveTexto(tipo, setor), cadastro);
-        if (!cadastroPorPonta.has(chaveTexto(tipo))) cadastroPorPonta.set(chaveTexto(tipo), cadastro);
+      const capaPorLojaSetorMes = new Map<string, any>();
+      for (const capa of capas) {
+        if (!capa.ativo) continue;
+        const loja = String(capa.loja ?? "").trim();
+        const setorCodigo = String(capa.setor_codigo ?? "").trim();
+        const mes = String(capa.mes_vigencia ?? "").trim();
+        if (!loja || !setorCodigo || !mes) continue;
+        capaPorLojaSetorMes.set(chaveTexto(loja, setorCodigo, mes), capa);
       }
 
       const produtosPorPonta = new Map<string, any[]>();
@@ -1338,24 +2242,35 @@ export function PontoExtraProcessamento() {
           const loja = String(produto.loja ?? "").trim();
           const numeroPonta = String(produto.quantidade ?? "").trim();
           const tipoPonta = String(produto.tipo_ponta ?? "").trim().toUpperCase();
-          const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo)) ?? mediaPorCodigo.get(chaveTexto(codigo));
-          const categoriaPath = splitCategoriaPath(media?.categoria);
-          const secao = categoriaPath.setor || String(produto.secao ?? "").trim();
-          const categoria = categoriaPath.categoria || String(produto.categoria ?? "").trim();
+          const media = mediaPorLojaCodigo.get(chaveTexto(loja, codigo));
+          const setor = media?.categoria ? parseSetorInfoMedia(media.categoria) : parseSetorInfoMedia("");
+          const secao = setor.setor_n2 || setor.nome;
+          const categoria = setor.categoria_n1 || String(produto.categoria ?? "").trim();
           const cubagem = cubagemPorTipo.get(chaveTexto(tipoPonta));
           const estoqueCd = estoquePorCodigo.get(chaveTexto(codigo)) ?? 0;
-          const cadastro = cadastroPorPonta.get(chaveTexto(tipoPonta, secao)) ?? cadastroPorPonta.get(chaveTexto(tipoPonta));
+          const capa =
+            capaPorLojaSetorMes.get(chaveTexto(loja, setor.codigo, mesVigencia)) ??
+            capaPorLojaSetorMes.get(chaveTexto(CAPA_TODAS_LOJAS, setor.codigo, mesVigencia));
+          const codPonta = String(capa?.cod_ponta ?? "").trim();
           return {
             produto,
             media,
             cubagem,
-            cadastro,
+            capa,
+            codPonta,
             codigo,
             loja,
             numeroPonta,
             tipoPonta,
+            setorCodigo: setor.codigo,
+            setorNome: setor.nome,
             secao,
             categoria,
+            categoriaN1: setor.categoria_n1,
+            setorN2: setor.setor_n2,
+            grupoN3: setor.grupo_n3,
+            subgrupoN4: setor.subgrupo_n4,
+            tipoN5: setor.tipo_n5,
             estoqueCd,
             mediaVenda: toNumber(media?.media_venda_un_dia),
           };
@@ -1365,50 +2280,90 @@ export function PontoExtraProcessamento() {
       const candidatosPorPonta = new Map<string, typeof candidatos>();
       for (const item of candidatos) {
         const grupo = chaveTexto(
-          item.produto.ponta_base_id ?? "",
           item.loja,
           item.numeroPonta,
+          item.codPonta || "SEM_CODIGO_PONTA",
+          item.setorCodigo,
           item.tipoPonta,
-          item.produto.secao,
-          item.produto.categoria,
         );
         candidatosPorPonta.set(grupo, [...(candidatosPorPonta.get(grupo) ?? []), item]);
       }
 
       const baseCalculada = Array.from(candidatosPorPonta.values()).flatMap((grupo) => {
         const limiteSku = Math.max(1, Math.floor(toNumber(grupo[0]?.cubagem?.reparticao) || 7));
-        return grupo
+        return [...grupo]
           .sort((a, b) => {
             const estoqueDiff = Number(b.estoqueCd > 0) - Number(a.estoqueCd > 0);
             if (estoqueDiff !== 0) return estoqueDiff;
-            return b.mediaVenda - a.mediaVenda;
+            const mediaDiff = b.mediaVenda - a.mediaVenda;
+            if (mediaDiff !== 0) return mediaDiff;
+            return a.codigo.localeCompare(b.codigo, "pt-BR", { numeric: true });
           })
-          .slice(0, limiteSku);
+          .map((item, index) => ({
+            ...item,
+            limiteSku,
+            ordemReparticao: index + 1,
+            foraReparticao: index >= limiteSku,
+            statusReparticao: index >= limiteSku ? "FORA DA REPARTICAO" : "ELEGIVEL",
+          }));
       });
-      const skuIgnorados = produtos.length - baseCalculada.length;
+      const foraReparticao = baseCalculada.filter((item) => item.foraReparticao).length;
 
       const somaPorPonta = new Map<string, number>();
       for (const item of baseCalculada) {
-        const grupo = chaveTexto(item.loja, item.numeroPonta, item.secao);
+        if (item.foraReparticao) continue;
+        const grupo = chaveTexto(item.loja, item.numeroPonta, item.codPonta || "SEM_CODIGO_PONTA", item.setorCodigo, item.tipoPonta);
         somaPorPonta.set(grupo, (somaPorPonta.get(grupo) ?? 0) + item.mediaVenda);
       }
 
       const payload = baseCalculada.map((item) => {
-        const somaMedia = somaPorPonta.get(chaveTexto(item.loja, item.numeroPonta, item.secao)) ?? 0;
-        const participacao = somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
+        const somaMedia = item.foraReparticao
+          ? 0
+          : somaPorPonta.get(chaveTexto(item.loja, item.numeroPonta, item.codPonta || "SEM_CODIGO_PONTA", item.setorCodigo, item.tipoPonta)) ?? 0;
+        const participacao = !item.foraReparticao && somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
         const m3Ponta = totalM3Cubagem(item.cubagem);
         const m3Capacidade = m3Ponta * participacao;
         const m3Unid = toNumber(item.media?.m3_unid);
         const unidadeSugerida = m3Unid > 0 ? m3Capacidade / m3Unid : 0;
-        const qtdeEmbCompra = toNumber(item.media?.qtde_emb_compra);
+        const qtdeEmbCompraOriginal = toNumber(item.media?.qtde_emb_compra);
+        const embalagemInvalida = qtdeEmbCompraOriginal <= 0;
+        const qtdeEmbCompra = embalagemInvalida ? 1 : qtdeEmbCompraOriginal;
         const caixasSugeridas = qtdeEmbCompra > 0 ? unidadeSugerida / qtdeEmbCompra : 0;
+        const estqMinimo = Math.ceil(unidadeSugerida);
+        const estqMaximo = Math.ceil(unidadeSugerida);
+        const parMin = toNumber(item.media?.par_min);
+        const parMax = toNumber(item.media?.par_max);
+        const codPonta = item.codPonta;
+        const rowBase = {
+          m3_unid: m3Unid,
+          unidade_sugerida: unidadeSugerida,
+          caixas_sugeridas: caixasSugeridas,
+          estoque_cd: item.estoqueCd,
+          cod_ponta: codPonta,
+          fora_reparticao: item.foraReparticao,
+          m3_capacidade: m3Capacidade,
+          m3_ponta: m3Ponta,
+          codigo_produto: item.codigo,
+          descricao_produto: item.media?.descricao_produto ?? "",
+          media_venda_un_dia: item.mediaVenda,
+          qtde_emb_compra: qtdeEmbCompra,
+          embalagem_invalida: embalagemInvalida,
+        };
+        const alertas = alertasPontoExtra(rowBase);
 
         return {
           loja: item.loja,
           quant_ponta: item.numeroPonta,
           tipo_ponta: item.tipoPonta,
           secao: item.secao,
+          setor_codigo: item.setorCodigo,
+          setor_nome: item.setorNome,
           categoria: item.categoria,
+          categoria_n1: item.categoriaN1,
+          setor_n2: item.setorN2,
+          grupo_n3: item.grupoN3,
+          subgrupo_n4: item.subgrupoN4,
+          tipo_n5: item.tipoN5,
           codigo_produto: item.codigo,
           descricao_produto: item.media?.descricao_produto ?? "",
           codigo_fornecedor: item.media?.codigo_fornecedor ?? "",
@@ -1421,10 +2376,27 @@ export function PontoExtraProcessamento() {
           m3_unid: m3Unid,
           unidade_sugerida: unidadeSugerida,
           qtde_emb_compra: qtdeEmbCompra,
+          embalagem_invalida: embalagemInvalida,
           caixas_sugeridas: caixasSugeridas,
           estoque_cd: item.estoqueCd,
-          cod_ponta: item.cadastro?.codigo_ponta ?? "",
-          descricao_ponta: item.cadastro?.descricao ?? "",
+          cod_ponta: codPonta,
+          descricao_ponta: item.capa?.descricao_ponta ?? "",
+          mes_vigencia: mesVigencia,
+          status_codigo_ponta: codPonta ? "COM_CODIGO_PONTA" : "SEM_CODIGO_PONTA",
+          status_reparticao: item.statusReparticao,
+          fora_reparticao: item.foraReparticao,
+          ordem_reparticao: item.ordemReparticao,
+          limite_reparticao: item.limiteSku,
+          alertas,
+          aprovado: false,
+          estqminimo_sugerido: estqMinimo,
+          estqmaximo_sugerido: estqMaximo,
+          dtavigenciainicio: monthStart(mesVigencia),
+          dtavigenciafim: monthEnd(mesVigencia),
+          par_min_normal: parMin,
+          par_max_normal: parMax,
+          estoque_minimo_total: parMin + estqMinimo,
+          estoque_maximo_total: parMax + estqMaximo,
         };
       });
 
@@ -1434,15 +2406,16 @@ export function PontoExtraProcessamento() {
 
       const novoResumo = {
         produtosBase: produtos.length,
-        processados: payload.length,
+        processados: payload.filter((item) => !item.fora_reparticao).length,
         semMedia: baseCalculada.filter((item) => !item.media).length,
         semCubagem: baseCalculada.filter((item) => !item.cubagem).length,
         semEstoque: baseCalculada.filter((item) => item.estoqueCd <= 0).length,
-        skuIgnorados,
+        semCodigoPonta: payload.filter((item) => !item.cod_ponta).length,
+        foraReparticao,
       };
       setResumo(novoResumo);
       setResultado(payload.slice(0, 200));
-      setMensagem(`Processamento concluido: ${payload.length} produtos gravados.`);
+      setMensagem(`Processamento concluido: ${payload.length} produtos gravados para ${monthLabel(mesVigencia)}.`);
     } catch (err: any) {
       console.error(err);
       setErro(err?.message ?? "Erro ao processar Ponto Extra.");
@@ -1456,17 +2429,18 @@ export function PontoExtraProcessamento() {
   const gruposPreview = useMemo(() => {
     const grupos = new Map<string, Record<string, any>[]>();
     for (const item of preview) {
-      const chave = chaveTexto(item.loja, item.quant_ponta, item.secao);
+      const chave = chaveTexto(item.loja, item.cod_ponta, item.quant_ponta, item.setor_codigo, item.secao);
       grupos.set(chave, [...(grupos.get(chave) ?? []), item]);
     }
     return Array.from(grupos.entries()).map(([chave, itens]) => ({
       chave,
       loja: itens[0]?.loja ?? "-",
       ponta: itens[0]?.quant_ponta ?? "-",
+      codPonta: itens[0]?.cod_ponta ?? "-",
       setor: itens[0]?.secao ?? "-",
       tipoPonta: itens[0]?.tipo_ponta ?? "-",
       itens,
-      somaMedia: itens.reduce((sum, item) => sum + toNumber(item.media_venda_un_dia), 0),
+      somaMedia: itens.filter((item) => !item.fora_reparticao).reduce((sum, item) => sum + toNumber(item.media_venda_un_dia), 0),
       estoqueCd: itens.reduce((sum, item) => sum + toNumber(item.estoque_cd), 0),
     }));
   }, [preview]);
@@ -1481,7 +2455,11 @@ export function PontoExtraProcessamento() {
       </div>
 
       <div style={cardStyle}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+          <label style={{ minWidth: 180 }}>
+            <span style={descStyle}>Mes vigencia</span>
+            <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value || currentMonthKey())} style={inputStyle} />
+          </label>
           <button type="button" onClick={() => void processar()} disabled={loading} style={buttonStyle}>
             {loading ? "Processando..." : "Processar Ponto Extra"}
           </button>
@@ -1504,7 +2482,8 @@ export function PontoExtraProcessamento() {
         <MetricCard label="Sem media" value={resumo.semMedia} />
         <MetricCard label="Sem cubagem" value={resumo.semCubagem} />
         <MetricCard label="Sem estoque CD" value={resumo.semEstoque} />
-        <MetricCard label="SKU fora da reparticao" value={resumo.skuIgnorados} />
+        <MetricCard label="Sem codigo da ponta" value={resumo.semCodigoPonta} />
+        <MetricCard label="Fora da reparticao" value={resumo.foraReparticao} />
       </div>
 
       <div style={cardStyle}>
@@ -1519,9 +2498,14 @@ export function PontoExtraProcessamento() {
                 {[
                   "Loja",
                   "Ponta",
+                  "Limite",
                   "Setor",
+                  "Categoria N1",
+                  "Setor N2",
+                  "Grupo N3",
+                  "Subgrupo N4",
+                  "Tipo N5",
                   "Tipo ponta",
-                  "Categoria",
                   "Codigo",
                   "Descricao",
                   "Media",
@@ -1530,6 +2514,8 @@ export function PontoExtraProcessamento() {
                   "Unid. sugerida",
                   "Caixas sugeridas",
                   "Estoque CD",
+                  "Cod. ponta",
+                  "Status",
                 ].map((header) => (
                   <th key={header} style={thStyle}>{header}</th>
                 ))}
@@ -1541,7 +2527,7 @@ export function PontoExtraProcessamento() {
                 <Fragment key={grupo.chave}>
                   <tr>
                     <td
-                      colSpan={13}
+                      colSpan={20}
                       style={{
                         ...tdStyle,
                         background: "rgba(0,0,0,0.38)",
@@ -1550,16 +2536,21 @@ export function PontoExtraProcessamento() {
                         fontSize: 13,
                       }}
                     >
-                      Loja {grupo.loja} | Ponta {grupo.ponta} | Setor {grupo.setor} | {grupo.tipoPonta} | {grupo.itens.length} SKU
+                      Loja {grupo.loja} | Cod. ponta {grupo.codPonta || "-"} | Ponta {grupo.ponta} | Setor {grupo.setor} | {grupo.tipoPonta} | {grupo.itens.length} SKU
                     </td>
                   </tr>
                   {grupo.itens.map((item, index) => (
                     <tr key={`${grupo.chave}-${item.codigo_produto}-${index}`}>
                       <td style={tdStyle}>{item.loja || "-"}</td>
                       <td style={tdStyle}>{item.quant_ponta || "-"}</td>
+                      <td style={tdStyle}>{item.limite_reparticao || "-"}</td>
                       <td style={tdStyle}>{item.secao || "-"}</td>
+                      <td style={tdStyle}>{item.categoria_n1 || "-"}</td>
+                      <td style={tdStyle}>{item.setor_n2 || "-"}</td>
+                      <td style={tdStyle}>{item.grupo_n3 || "-"}</td>
+                      <td style={tdStyle}>{item.subgrupo_n4 || "-"}</td>
+                      <td style={tdStyle}>{item.tipo_n5 || "-"}</td>
                       <td style={tdStyle}>{item.tipo_ponta || "-"}</td>
-                      <td style={tdStyle}>{item.categoria || "-"}</td>
                       <td style={tdStyle}>{item.codigo_produto || "-"}</td>
                       <td style={tdStyle}>{item.descricao_produto || "-"}</td>
                       <td style={tdStyle}>{formatNumber(item.media_venda_un_dia, 3)}</td>
@@ -1568,6 +2559,10 @@ export function PontoExtraProcessamento() {
                       <td style={tdStyle}>{formatNumber(item.unidade_sugerida, 2)}</td>
                       <td style={tdStyle}>{formatNumber(item.caixas_sugeridas, 2)}</td>
                       <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
+                      <td style={tdStyle}>{item.cod_ponta || "-"}</td>
+                      <td style={{ ...tdStyle, color: item.fora_reparticao ? "#fbbf24" : theme.colors.neonGreen }}>
+                        {item.status_reparticao || "ELEGIVEL"}
+                      </td>
                     </tr>
                   ))}
                 </Fragment>
@@ -1580,11 +2575,583 @@ export function PontoExtraProcessamento() {
   );
 }
 
+export function PontoExtraAnalise() {
+  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [filtros, setFiltros] = useState({
+    loja: "",
+    setor: "",
+    tipo: "",
+    status: "",
+    codPonta: "",
+    descPonta: "",
+    produto: "",
+  });
+
+  async function carregar() {
+    setLoading(true);
+    setErro(null);
+    try {
+      const { data, error } = await lojaDb
+        .from("ponta_processada")
+        .select("*")
+        .order("loja", { ascending: true })
+        .order("cod_ponta", { ascending: true })
+        .limit(1000);
+      if (error) throw error;
+      setRows((data ?? []) as Record<string, any>[]);
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? "Erro ao carregar analise.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void carregar();
+  }, []);
+
+  async function aprovar(id: string, aprovado: boolean) {
+    const { error } = await lojaDb.from("ponta_processada").update({ aprovado }).eq("id", id);
+    if (error) {
+      setErro(error.message);
+      return;
+    }
+    setRows((prev) => prev.map((item) => (item.id === id ? { ...item, aprovado } : item)));
+  }
+
+  async function atualizarAprovacao(ids: string[], aprovado: boolean) {
+    if (ids.length === 0) return;
+    setErro(null);
+    for (let index = 0; index < ids.length; index += 300) {
+      const chunk = ids.slice(index, index + 300);
+      const { error } = await lojaDb.from("ponta_processada").update({ aprovado }).in("id", chunk);
+      if (error) {
+        setErro(error.message);
+        return;
+      }
+    }
+    const idSet = new Set(ids);
+    setRows((prev) => prev.map((item) => (idSet.has(item.id) ? { ...item, aprovado } : item)));
+  }
+
+  function toggleExpandido(key: string) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const filtradas = useMemo(
+    () =>
+      rows.filter((item) => {
+        const alertas = alertasPontoExtra(item).join(" ").toUpperCase();
+        const status = `${item.status_reparticao ?? ""} ${item.status_codigo_ponta ?? ""} ${alertas}`.toUpperCase();
+        const produto = `${item.codigo_produto ?? ""} ${item.descricao_produto ?? ""}`.toUpperCase();
+        const descricaoPonta = String(item.descricao_ponta ?? "").toUpperCase();
+        return (
+          (!filtros.loja || String(item.loja ?? "").includes(filtros.loja)) &&
+          (!filtros.setor || `${item.setor_codigo ?? ""} ${item.setor_nome ?? ""} ${item.secao ?? ""}`.toUpperCase().includes(filtros.setor.toUpperCase())) &&
+          (!filtros.tipo || String(item.tipo_ponta ?? "").toUpperCase().includes(filtros.tipo.toUpperCase())) &&
+          (!filtros.codPonta || String(item.cod_ponta ?? "").toUpperCase().includes(filtros.codPonta.toUpperCase())) &&
+          (!filtros.descPonta || descricaoPonta.includes(filtros.descPonta.toUpperCase())) &&
+          (!filtros.produto || produto.includes(filtros.produto.toUpperCase())) &&
+          (!filtros.status || status.includes(filtros.status.toUpperCase()))
+        );
+      }),
+    [filtros, rows],
+  );
+
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, { key: string; codPonta: string; descricao: string; mes: string; itens: Record<string, any>[] }>();
+    for (const item of filtradas) {
+      const codPonta = String(item.cod_ponta ?? "").trim() || "-";
+      const descricao = String(item.descricao_ponta ?? "").trim() || "Sem descricao da ponta";
+      const mes = String(item.mes_vigencia ?? "").trim();
+      const key = chaveTexto(codPonta, descricao, mes);
+      const atual = mapa.get(key);
+      if (atual) atual.itens.push(item);
+      else mapa.set(key, { key, codPonta, descricao, mes, itens: [item] });
+    }
+    return Array.from(mapa.values()).sort((a, b) => `${a.codPonta} ${a.descricao}`.localeCompare(`${b.codPonta} ${b.descricao}`));
+  }, [filtradas]);
+
+  const metricas = useMemo(() => {
+    const alertados = filtradas.filter((item) => alertasPontoExtra(item).length > 0);
+    return {
+      pontas: grupos.length,
+      elegiveis: filtradas.filter((item) => !item.fora_reparticao && String(item.status_reparticao ?? "").toUpperCase() === "ELEGIVEL").length,
+      aprovados: filtradas.filter((item) => item.aprovado).length,
+      fora: filtradas.filter((item) => item.fora_reparticao).length,
+      alertas: alertados.length,
+      semCodigo: filtradas.filter((item) => !String(item.cod_ponta ?? "").trim()).length,
+      caixas: filtradas.reduce((total, item) => total + toNumber(item.caixas_sugeridas), 0),
+    };
+  }, [filtradas, grupos.length]);
+
+  function resumoGrupo(itens: Record<string, any>[]) {
+    const alertados = itens.filter((item) => alertasPontoExtra(item).length > 0);
+    const valoresUnicos = (campo: string) => Array.from(new Set(itens.map((item) => String(item[campo] ?? "").trim()).filter(Boolean)));
+    const lojas = valoresUnicos("loja");
+    const numerosPonta = valoresUnicos("quant_ponta");
+    const setores = Array.from(new Set(itens.map((item) => `${item.setor_codigo || "-"} - ${item.setor_nome || item.secao || "-"}`)));
+    const tipos = valoresUnicos("tipo_ponta");
+    const limites = Array.from(new Set(itens.map((item) => Math.floor(toNumber(item.limite_reparticao))).filter((value) => value > 0)));
+    return {
+      loja: lojas.length === 1 ? lojas[0] : lojas.length > 1 ? "VARIAS" : "-",
+      numeroPonta: numerosPonta.length === 1 ? numerosPonta[0] : numerosPonta.length > 1 ? "VARIAS" : "-",
+      setor: setores.length === 1 ? setores[0] : setores.length > 1 ? "VARIOS" : "-",
+      tipo: tipos.length === 1 ? tipos[0] : tipos.length > 1 ? "VARIOS" : "-",
+      limite: limites.length === 1 ? limites[0] : limites.length > 1 ? "VARIOS" : "-",
+      total: itens.length,
+      elegiveis: itens.filter((item) => !item.fora_reparticao && String(item.status_reparticao ?? "").toUpperCase() === "ELEGIVEL").length,
+      fora: itens.filter((item) => item.fora_reparticao).length,
+      semEstoque: itens.filter((item) => toNumber(item.estoque_cd) <= 0).length,
+      semCubagem: itens.filter((item) => toNumber(item.m3_ponta) <= 0).length,
+      semMedia: itens.filter((item) => toNumber(item.media_venda_un_dia) <= 0).length,
+      somaMedia: itens
+        .filter((item) => !item.fora_reparticao && String(item.status_reparticao ?? "").toUpperCase() === "ELEGIVEL")
+        .reduce((total, item) => total + toNumber(item.media_venda_un_dia), 0),
+      caixas: itens.reduce((total, item) => total + toNumber(item.caixas_sugeridas), 0),
+      unidades: itens.reduce((total, item) => total + toNumber(item.unidade_sugerida), 0),
+      alertas: alertados.length,
+    };
+  }
+
+  function gruposOperacionais(itens: Record<string, any>[]) {
+    const mapa = new Map<
+      string,
+      {
+        key: string;
+        loja: string;
+        numeroPonta: string;
+        setor: string;
+        setorCodigo: string;
+        setorNome: string;
+        tipoPonta: string;
+        itens: Record<string, any>[];
+      }
+    >();
+    for (const item of itens) {
+      const loja = String(item.loja ?? "-").trim() || "-";
+      const numeroPonta = String(item.quant_ponta ?? "-").trim() || "-";
+      const setorCodigo = String(item.setor_codigo ?? "-").trim() || "-";
+      const setorNome = String(item.setor_nome ?? item.secao ?? "-").trim() || "-";
+      const tipoPonta = String(item.tipo_ponta ?? "-").trim() || "-";
+      const key = chaveTexto(loja, numeroPonta, setorCodigo, tipoPonta);
+      const atual = mapa.get(key);
+      if (atual) atual.itens.push(item);
+      else {
+        mapa.set(key, {
+          key,
+          loja,
+          numeroPonta,
+          setor: `${setorCodigo} - ${setorNome}`,
+          setorCodigo,
+          setorNome,
+          tipoPonta,
+          itens: [item],
+        });
+      }
+    }
+    return Array.from(mapa.values()).sort((a, b) =>
+      `${a.loja} ${a.numeroPonta} ${a.setor} ${a.tipoPonta}`.localeCompare(`${b.loja} ${b.numeroPonta} ${b.setor} ${b.tipoPonta}`, "pt-BR", { numeric: true }),
+    );
+  }
+
+  const groupRowStyle: React.CSSProperties = {
+    ...tdStyle,
+    background: "rgba(2,6,23,0.95)",
+    color: theme.colors.neonGreen,
+    fontWeight: 800,
+  };
+
+  const nestedGroupStyle: React.CSSProperties = {
+    ...tdStyle,
+    background: "rgba(15,23,42,0.95)",
+    color: theme.colors.neonOrange,
+    fontWeight: 800,
+  };
+
+  const detailRowStyle: React.CSSProperties = {
+    ...tdStyle,
+    background: "rgba(30,41,59,0.72)",
+  };
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Analise da Sugestao</h1>
+        <p style={descStyle}>Valide as sugestoes agrupadas por codigo da ponta antes da exportacao.</p>
+      </div>
+      <div style={cardStyle}>
+        <div style={{ ...gridStyle, alignItems: "end" }}>
+          {[
+            ["codPonta", "Cod. ponta"],
+            ["descPonta", "Descricao da ponta"],
+            ["loja", "Loja"],
+            ["setor", "Setor"],
+            ["tipo", "Tipo de ponta"],
+            ["status", "Status/alerta"],
+            ["produto", "Produto"],
+          ].map(([key, label]) => (
+            <label key={key}>
+              <span style={descStyle}>{label}</span>
+              <input
+                value={(filtros as any)[key]}
+                onChange={(e) => setFiltros((prev) => ({ ...prev, [key]: e.target.value }))}
+                style={inputStyle}
+              />
+            </label>
+          ))}
+          <button type="button" onClick={() => void carregar()} disabled={loading} style={buttonStyle}>
+            {loading ? "Carregando..." : "Atualizar"}
+          </button>
+        </div>
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+      </div>
+      <div style={gridStyle}>
+        <MetricCard label="Cod. pontas analisados" value={metricas.pontas} />
+        <MetricCard label="SKUs elegiveis" value={metricas.elegiveis} />
+        <MetricCard label="SKUs aprovados" value={metricas.aprovados} />
+        <MetricCard label="Fora da reparticao" value={metricas.fora} />
+        <MetricCard label="Com alerta" value={metricas.alertas} />
+        <MetricCard label="Sem codigo da ponta" value={metricas.semCodigo} />
+        <MetricCard label="Caixas sugeridas total" value={formatNumber(metricas.caixas, 2)} />
+      </div>
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Sugestoes por codigo da ponta</h2>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {[
+                  "",
+                  "Cod. ponta",
+                  "Descricao da ponta",
+                  "Mes",
+                  "Loja",
+                  "Numero ponta",
+                  "Setor",
+                  "Tipo",
+                  "Limite SKU",
+                  "Total SKUs",
+                  "Elegiveis",
+                  "Fora repart.",
+                  "Sem estoque",
+                  "Sem cubagem",
+                  "Sem media",
+                  "Soma media",
+                  "Caixas total",
+                  "Unid. total",
+                  "Alertas",
+                  "Acoes",
+                ].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {grupos.length === 0 && <tr><td style={tdStyle}>Nenhum item processado.</td></tr>}
+              {grupos.map((grupo) => {
+                const resumo = resumoGrupo(grupo.itens);
+                const abertoCod = expandidos.has(grupo.key);
+                const idsElegiveis = grupo.itens
+                  .filter((item) => !item.fora_reparticao && String(item.status_reparticao ?? "").toUpperCase() === "ELEGIVEL")
+                  .map((item) => item.id);
+                const idsComAlerta = grupo.itens.filter((item) => alertasPontoExtra(item).length > 0).map((item) => item.id);
+                return (
+                  <Fragment key={grupo.key}>
+                    <tr>
+                      <td style={groupRowStyle}>
+                        <button type="button" onClick={() => toggleExpandido(grupo.key)} style={{ ...buttonStyle, padding: "3px 9px" }}>
+                          {abertoCod ? "-" : "+"}
+                        </button>
+                      </td>
+                      <td style={groupRowStyle}>{grupo.codPonta}</td>
+                      <td style={groupRowStyle}>{grupo.codPonta} - {grupo.descricao}</td>
+                      <td style={groupRowStyle}>{monthLabel(grupo.mes)}</td>
+                      <td style={groupRowStyle}>{resumo.loja}</td>
+                      <td style={groupRowStyle}>{resumo.numeroPonta}</td>
+                      <td style={groupRowStyle}>{resumo.setor}</td>
+                      <td style={groupRowStyle}>{resumo.tipo}</td>
+                      <td style={groupRowStyle}>{resumo.limite}</td>
+                      <td style={groupRowStyle}>{resumo.total}</td>
+                      <td style={groupRowStyle}>{resumo.elegiveis}</td>
+                      <td style={groupRowStyle}>{resumo.fora}</td>
+                      <td style={groupRowStyle}>{resumo.semEstoque}</td>
+                      <td style={groupRowStyle}>{resumo.semCubagem}</td>
+                      <td style={groupRowStyle}>{resumo.semMedia}</td>
+                      <td style={groupRowStyle}>{formatNumber(resumo.somaMedia, 3)}</td>
+                      <td style={groupRowStyle}>{formatNumber(resumo.caixas, 2)}</td>
+                      <td style={groupRowStyle}>{formatNumber(resumo.unidades, 2)}</td>
+                      <td style={{ ...groupRowStyle, color: resumo.alertas ? "#fbbf24" : theme.colors.neonGreen }}>{resumo.alertas}</td>
+                      <td style={groupRowStyle}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => void atualizarAprovacao(idsElegiveis, true)} style={{ ...buttonStyle, padding: "6px 10px" }}>Aprovar elegiveis</button>
+                          <button type="button" onClick={() => void atualizarAprovacao(idsComAlerta, false)} style={{ ...buttonStyle, padding: "6px 10px", background: "#f97316", color: "#111827" }}>Reprovar alertas</button>
+                          <button type="button" onClick={() => void atualizarAprovacao(grupo.itens.map((item) => item.id), false)} style={{ ...buttonStyle, padding: "6px 10px", background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>Limpar</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {abertoCod && gruposOperacionais(grupo.itens).map((operacao) => {
+                      const keyOperacao = `${grupo.key}|op|${operacao.key}`;
+                      const abertoOperacao = expandidos.has(keyOperacao);
+                      const resumoOperacao = resumoGrupo(operacao.itens);
+                      return (
+                        <Fragment key={keyOperacao}>
+                          <tr>
+                            <td style={nestedGroupStyle}>
+                              <button type="button" onClick={() => toggleExpandido(keyOperacao)} style={{ ...buttonStyle, padding: "3px 9px" }}>
+                                {abertoOperacao ? "-" : "+"}
+                              </button>
+                            </td>
+                            <td style={nestedGroupStyle}>{grupo.codPonta}</td>
+                            <td style={nestedGroupStyle}>{grupo.descricao}</td>
+                            <td style={nestedGroupStyle}>{monthLabel(grupo.mes)}</td>
+                            <td style={nestedGroupStyle}>{operacao.loja}</td>
+                            <td style={nestedGroupStyle}>{operacao.numeroPonta}</td>
+                            <td style={nestedGroupStyle}>{operacao.setor}</td>
+                            <td style={nestedGroupStyle}>{operacao.tipoPonta}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.limite}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.total}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.elegiveis}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.fora}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.semEstoque}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.semCubagem}</td>
+                            <td style={nestedGroupStyle}>{resumoOperacao.semMedia}</td>
+                            <td style={nestedGroupStyle}>{formatNumber(resumoOperacao.somaMedia, 3)}</td>
+                            <td style={nestedGroupStyle}>{formatNumber(resumoOperacao.caixas, 2)}</td>
+                            <td style={nestedGroupStyle}>{formatNumber(resumoOperacao.unidades, 2)}</td>
+                            <td style={{ ...nestedGroupStyle, color: resumoOperacao.alertas ? "#fbbf24" : theme.colors.neonGreen }}>{resumoOperacao.alertas}</td>
+                            <td style={nestedGroupStyle}>Loja + ponta + setor + tipo</td>
+                          </tr>
+                          {abertoOperacao && (
+                            <tr>
+                              <td colSpan={20} style={{ ...tdStyle, background: "rgba(15,23,42,0.72)", padding: 12 }}>
+                                <div style={{ overflowX: "auto" }}>
+                                  <table style={tableStyle}>
+                                    <thead>
+                                      <tr>
+                                        {[
+                                          "Codigo produto",
+                                          "Descricao",
+                                          "Categoria N1",
+                                          "Setor N2",
+                                          "Grupo N3",
+                                          "Subgrupo N4",
+                                          "Tipo N5",
+                                          "Setor codigo",
+                                          "Setor nome",
+                                          "Media venda",
+                                          "Participacao",
+                                          "M3 capacidade",
+                                          "Unidade sugerida",
+                                          "Caixa sugerida",
+                                          "Estoque CD",
+                                          "Status",
+                                          "Alertas",
+                                          "Aprovacao",
+                                        ].map((header) => (
+                                          <th key={header} style={thStyle}>{header}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {operacao.itens.map((item) => {
+                                        const alertas = alertasPontoExtra(item);
+                                        return (
+                                          <tr key={item.id}>
+                                            <td style={detailRowStyle}>{item.codigo_produto}</td>
+                                            <td style={detailRowStyle}>{item.descricao_produto || "-"}</td>
+                                            <td style={detailRowStyle}>{item.categoria_n1 || "-"}</td>
+                                            <td style={detailRowStyle}>{item.setor_n2 || "-"}</td>
+                                            <td style={detailRowStyle}>{item.grupo_n3 || "-"}</td>
+                                            <td style={detailRowStyle}>{item.subgrupo_n4 || "-"}</td>
+                                            <td style={detailRowStyle}>{item.tipo_n5 || "-"}</td>
+                                            <td style={detailRowStyle}>{item.setor_codigo || "-"}</td>
+                                            <td style={detailRowStyle}>{item.setor_nome || "-"}</td>
+                                            <td style={detailRowStyle}>{formatNumber(item.media_venda_un_dia, 3)}</td>
+                                            <td style={detailRowStyle}>{formatPercent(toNumber(item.participacao))}</td>
+                                            <td style={detailRowStyle}>{formatNumber(item.m3_capacidade, 6)}</td>
+                                            <td style={detailRowStyle}>{formatNumber(item.unidade_sugerida, 2)}</td>
+                                            <td style={detailRowStyle}>{formatNumber(item.caixas_sugeridas, 2)}</td>
+                                            <td style={detailRowStyle}>{formatNumber(item.estoque_cd, 0)}</td>
+                                            <td style={{ ...detailRowStyle, color: item.fora_reparticao ? "#fbbf24" : theme.colors.neonGreen }}>{item.status_reparticao}</td>
+                                            <td style={{ ...detailRowStyle, color: alertas.length ? "#fbbf24" : theme.colors.textMuted }}>{alertas.join(" | ") || "-"}</td>
+                                            <td style={detailRowStyle}>
+                                              <button
+                                                type="button"
+                                                onClick={() => void aprovar(item.id, !item.aprovado)}
+                                                style={{ ...buttonStyle, padding: "6px 10px", background: item.aprovado ? "#991b1b" : theme.colors.neonGreen, color: item.aprovado ? "#fff" : "#022c22" }}
+                                              >
+                                                {item.aprovado ? "Reprovar" : "Aprovar"}
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PontoExtraExportacao() {
+  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function carregar() {
+    const { data, error } = await lojaDb
+      .from("ponta_processada")
+      .select("*")
+      .eq("aprovado", true)
+      .eq("fora_reparticao", false)
+      .not("cod_ponta", "is", null)
+      .order("loja", { ascending: true });
+    if (error) {
+      setErro(error.message);
+      return;
+    }
+    setRows((data ?? []).filter((item: any) => String(item.cod_ponta ?? "").trim()));
+  }
+
+  useEffect(() => {
+    void carregar();
+  }, []);
+
+  function exportarProdutos() {
+    downloadCsv(
+      "ponto_extra_produtos.csv",
+      ["SEQPONTOEXTRA", "SEQPRODUTO", "STATUS"],
+      rows.map((item) => ({
+        SEQPONTOEXTRA: item.cod_ponta,
+        SEQPRODUTO: item.codigo_produto,
+        STATUS: "A",
+      })),
+    );
+  }
+
+  function exportarQuantidade() {
+    downloadCsv(
+      "ponto_extra_quantidade.csv",
+      ["SEQPONTOEXTRA", "SEQPRODUTO", "NROEMPRESA", "SEQVIGENCIA", "ESTQMINIMO", "ESTQMAXIMO", "DTAVIGENCIAINICIO", "DTAVIGENCIAFIM", "STATUS"],
+      rows.map((item) => ({
+        SEQPONTOEXTRA: item.cod_ponta,
+        SEQPRODUTO: item.codigo_produto,
+        NROEMPRESA: item.loja,
+        SEQVIGENCIA: item.mes_vigencia,
+        ESTQMINIMO: Math.ceil(toNumber(item.estqminimo_sugerido)),
+        ESTQMAXIMO: Math.ceil(toNumber(item.estqmaximo_sugerido)),
+        DTAVIGENCIAINICIO: item.dtavigenciainicio,
+        DTAVIGENCIAFIM: item.dtavigenciafim,
+        STATUS: "A",
+      })),
+    );
+  }
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Exportacao Ponto Extra</h1>
+        <p style={descStyle}>Exporta apenas sugestoes aprovadas, elegiveis e com codigo oficial de ponta.</p>
+      </div>
+      <div style={gridStyle}>
+        <MetricCard label="Itens aprovados" value={rows.length} />
+        <MetricCard label="Lojas" value={new Set(rows.map((item) => item.loja)).size} />
+        <MetricCard label="Pontas" value={new Set(rows.map((item) => item.cod_ponta)).size} />
+      </div>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button type="button" onClick={exportarProdutos} disabled={rows.length === 0} style={buttonStyle}>Exportar Produtos</button>
+          <button type="button" onClick={exportarQuantidade} disabled={rows.length === 0} style={buttonStyle}>Exportar Quantidade</button>
+          <button type="button" onClick={() => void carregar()} style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>Atualizar</button>
+        </div>
+        {rows.length === 0 && <div style={{ marginTop: 12, color: "#fbbf24" }}>Nenhum produto aprovado para exportacao. Aprove os itens elegiveis na Analise da Sugestao.</div>}
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+      </div>
+    </section>
+  );
+}
+
 export function PontoExtraAcompanhamento() {
-  return <Placeholder titulo="Acompanhamento de Abastecimento" descricao="Controle por loja da implantacao e abastecimento das pontas de gondola." />;
+  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    lojaDb
+      .from("ponta_processada")
+      .select("*")
+      .eq("aprovado", true)
+      .order("loja", { ascending: true })
+      .limit(500)
+      .then(({ data, error }) => {
+        if (error) setErro(error.message);
+        else setRows((data ?? []) as Record<string, any>[]);
+      });
+  }, []);
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Acompanhamento de Abastecimento</h1>
+        <p style={descStyle}>A ponta e PLUS: estoque total = PAR normal da loja + sugestao da ponta.</p>
+      </div>
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Pontas aprovadas</h2>
+        {erro && <div style={{ color: "#f87171" }}>{erro}</div>}
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["Loja", "Cod. ponta", "Produto", "PAR min", "Min ponta", "Min total", "PAR max", "Max ponta", "Max total", "Estoque CD"].map((header) => (
+                  <th key={header} style={thStyle}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td style={tdStyle}>Nenhuma sugestao aprovada para acompanhamento.</td></tr>}
+              {rows.map((item) => (
+                <tr key={item.id}>
+                  <td style={tdStyle}>{item.loja}</td>
+                  <td style={tdStyle}>{item.cod_ponta || "-"}</td>
+                  <td style={tdStyle}>{item.codigo_produto} - {item.descricao_produto}</td>
+                  <td style={tdStyle}>{formatNumber(item.par_min_normal, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estqminimo_sugerido, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estoque_minimo_total, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.par_max_normal, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estqmaximo_sugerido, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estoque_maximo_total, 0)}</td>
+                  <td style={tdStyle}>{formatNumber(item.estoque_cd, 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function PontoExtraRelatorio() {
   return <Placeholder titulo="Relatorio Comercial" descricao="Visao consolidada para validar loja, ponta, categoria, codigo e sugestao de abastecimento." />;
 }
-
