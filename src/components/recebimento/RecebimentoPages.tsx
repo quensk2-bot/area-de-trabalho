@@ -710,6 +710,78 @@ type NoShowImportacaoHistorico = {
   observacao: string | null;
 };
 
+type NoShowResumoMensalRow = {
+  uf: string | null;
+  mes: string | null;
+  ano: number | null;
+  agendas_mes: number | string | null;
+  recebidas: number | string | null;
+  nao_recebidas: number | string | null;
+  total_no_show: number | string | null;
+  percentual_no_show: number | string | null;
+  media_recebidas_dia: number | string | null;
+  media_no_show_dia: number | string | null;
+  capacidade_dia: number | string | null;
+  meta_recebimento_mes: number | string | null;
+  percentual_recebido: number | string | null;
+};
+
+type NoShowDashboardResumoRow = {
+  uf: string | null;
+  mes: string | null;
+  ano: number | null;
+  produtos: number | string | null;
+  paletes: number | string | null;
+  caixas: number | string | null;
+  valor_total: number | string | null;
+  total_agendas: number | string | null;
+  realizado: number | string | null;
+  no_show: number | string | null;
+  nao_realizado: number | string | null;
+  abandono: number | string | null;
+  eficiencia: number | string | null;
+  acuracia: number | string | null;
+};
+
+type NoShowTopFornecedorRow = {
+  uf: string | null;
+  mes: string | null;
+  ano: number | null;
+  fornecedor_nome: string | null;
+  agendas: number | string | null;
+  recebidas: number | string | null;
+  nao_recebidas: number | string | null;
+  no_show: number | string | null;
+  percentual_no_show: number | string | null;
+  ranking: number | string | null;
+};
+
+type NoShowBasePortalDashboardRow = {
+  id: string;
+  mes: string | null;
+  data_recebimento: string | null;
+  uf: string | null;
+  fornecedor_nome: string | null;
+  status_recebimento: string | null;
+  concluido: boolean | null;
+  no_show: boolean | null;
+  nao_realizado: boolean | null;
+  abandono: boolean | null;
+  sku: number | string | null;
+  paletes: number | string | null;
+  caixas: number | string | null;
+  valor: number | string | null;
+  volumes: number | string | null;
+};
+
+type NoShowMetaCapacidadeDashboardRow = {
+  uf: string | null;
+  mes: number | null;
+  ano: number | null;
+  capacidade_dia: number | string | null;
+  meta_recebimento_mes: number | string | null;
+};
+
 const importarNoShowWorkbook = async (
   nomeArquivo: string,
   portalRows: NoShowPortalRow[],
@@ -1277,6 +1349,31 @@ const uniqueValues = (rows: DashboardRow[], field: keyof DashboardRow) =>
   Array.from(new Set(rows.map((r) => String(r[field] ?? "")).filter(Boolean))).sort((a, b) =>
     a.localeCompare(b)
   );
+
+const padMonth = (value: number | string | null | undefined) => {
+  const parsed = parseMonthNumber(value == null ? undefined : String(value));
+  return parsed == null ? "" : String(parsed).padStart(2, "0");
+};
+
+const noShowMonthValue = (row: { mes: string | null; data_recebimento: string | null }) => {
+  const fromMes = padMonth(row.mes);
+  if (fromMes) return fromMes;
+  return row.data_recebimento ? row.data_recebimento.slice(5, 7) : "";
+};
+
+const noShowYearValue = (row: { data_recebimento: string | null }) =>
+  row.data_recebimento ? row.data_recebimento.slice(0, 4) : "";
+
+const noShowStatusLabel = (row: Pick<NoShowBasePortalDashboardRow, "concluido" | "no_show" | "nao_realizado" | "abandono" | "status_recebimento">) => {
+  if (row.abandono) return "Abandono";
+  if (row.no_show) return "No Show";
+  if (row.nao_realizado) return "Não realizado";
+  if (row.concluido) return "Realizado";
+  return row.status_recebimento?.trim() || "Sem status";
+};
+
+const countDistinctNoShowDates = (rows: NoShowBasePortalDashboardRow[]) =>
+  new Set(rows.map((row) => row.data_recebimento).filter(Boolean)).size;
 
 const sumRows = (rows: DashboardRow[], field: keyof DashboardRow) =>
   rows.reduce((sum, row) => sum + toNumber(row[field] as any), 0);
@@ -5117,6 +5214,824 @@ export function RecebimentoImportacao({ perfil }: Props) {
             </table>
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
+  const [resumoRows, setResumoRows] = useState<NoShowResumoMensalRow[]>([]);
+  const [dashboardRows, setDashboardRows] = useState<NoShowDashboardResumoRow[]>([]);
+  const [topRows, setTopRows] = useState<NoShowTopFornecedorRow[]>([]);
+  const [baseRows, setBaseRows] = useState<NoShowBasePortalDashboardRow[]>([]);
+  const [metaRows, setMetaRows] = useState<NoShowMetaCapacidadeDashboardRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState({
+    mes: "",
+    ano: "",
+    uf: "",
+    fornecedor: "",
+    status: "",
+  });
+
+  const carregarDashboard = async () => {
+    setLoading(true);
+    setErro(null);
+
+    const [resumoResult, dashboardResult, topResult, baseResult, metaResult] = await Promise.all([
+      db().from("vw_noshow_resumo_mensal").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }).order("uf", { ascending: true }),
+      db().from("vw_noshow_dashboard").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }).order("uf", { ascending: true }),
+      db().from("vw_noshow_top_fornecedores").select("*").order("ranking", { ascending: true }),
+      db()
+        .from("noshow_base_portal")
+        .select("id,mes,data_recebimento,uf,fornecedor_nome,status_recebimento,concluido,no_show,nao_realizado,abandono,sku,paletes,caixas,valor,volumes")
+        .order("data_recebimento", { ascending: false }),
+      db().from("noshow_metas_capacidade").select("uf,mes,ano,capacidade_dia,meta_recebimento_mes").order("ano", { ascending: false }).order("mes", { ascending: false }).order("uf", { ascending: true }),
+    ]);
+
+    const firstError = resumoResult.error ?? dashboardResult.error ?? topResult.error ?? baseResult.error ?? metaResult.error;
+    if (firstError) {
+      console.error("Erro ao carregar dashboard No Show:", firstError);
+      setErro("Erro ao carregar os dados do dashboard No Show.");
+      setResumoRows([]);
+      setDashboardRows([]);
+      setTopRows([]);
+      setBaseRows([]);
+      setMetaRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const nextResumoRows = (resumoResult.data ?? []) as NoShowResumoMensalRow[];
+    const nextDashboardRows = (dashboardResult.data ?? []) as NoShowDashboardResumoRow[];
+    const nextTopRows = (topResult.data ?? []) as NoShowTopFornecedorRow[];
+    const nextBaseRows = (baseResult.data ?? []) as NoShowBasePortalDashboardRow[];
+    const nextMetaRows = (metaResult.data ?? []) as NoShowMetaCapacidadeDashboardRow[];
+
+    setResumoRows(nextResumoRows);
+    setDashboardRows(nextDashboardRows);
+    setTopRows(nextTopRows);
+    setBaseRows(nextBaseRows);
+    setMetaRows(nextMetaRows);
+
+    setFiltros((prev) => {
+      if (prev.mes || prev.ano) return prev;
+      const latestRow = nextBaseRows.find((row) => row.data_recebimento) ?? null;
+      if (!latestRow?.data_recebimento) return prev;
+      return {
+        ...prev,
+        mes: latestRow.data_recebimento.slice(5, 7),
+        ano: latestRow.data_recebimento.slice(0, 4),
+      };
+    });
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void carregarDashboard();
+  }, []);
+
+  const mesesDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => noShowMonthValue(row)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [baseRows]
+  );
+  const anosDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => noShowYearValue(row)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [baseRows]
+  );
+  const ufsDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => (row.uf ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
+  const statusDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => noShowStatusLabel(row)).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
+
+  const baseRowsFiltradas = useMemo(() => {
+    const fornecedorFiltro = filtros.fornecedor.trim().toLowerCase();
+    return baseRows.filter((row) => {
+      const mes = noShowMonthValue(row);
+      const ano = noShowYearValue(row);
+      const uf = (row.uf ?? "").trim();
+      const fornecedor = (row.fornecedor_nome ?? "").toLowerCase();
+      const status = noShowStatusLabel(row);
+
+      if (filtros.mes && mes !== filtros.mes) return false;
+      if (filtros.ano && ano !== filtros.ano) return false;
+      if (filtros.uf && uf !== filtros.uf) return false;
+      if (fornecedorFiltro && !fornecedor.includes(fornecedorFiltro)) return false;
+      if (filtros.status && status !== filtros.status) return false;
+      return true;
+    });
+  }, [baseRows, filtros]);
+
+  const metasFiltradas = useMemo(
+    () =>
+      metaRows.filter((row) => {
+        if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
+        if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
+        if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+        return true;
+      }),
+    [metaRows, filtros]
+  );
+
+  const resumoConsolidado = useMemo(() => {
+    if (!filtros.fornecedor && !filtros.status) {
+      return resumoRows.filter((row) => {
+        if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
+        if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
+        if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+        return true;
+      });
+    }
+
+    const grouped = new Map<string, NoShowResumoMensalRow>();
+    for (const row of baseRowsFiltradas) {
+      const uf = row.uf ?? "-";
+      const mes = noShowMonthValue(row);
+      const ano = Number(noShowYearValue(row) || 0);
+      const key = `${uf}|${mes}|${ano}`;
+      const current = grouped.get(key) ?? {
+        uf,
+        mes,
+        ano,
+        agendas_mes: 0,
+        recebidas: 0,
+        nao_recebidas: 0,
+        total_no_show: 0,
+        percentual_no_show: 0,
+        media_recebidas_dia: 0,
+        media_no_show_dia: 0,
+        capacidade_dia: 0,
+        meta_recebimento_mes: 0,
+        percentual_recebido: 0,
+      };
+
+      const agendas = toNumber(current.agendas_mes) + 1;
+      const recebidas = toNumber(current.recebidas) + (row.concluido ? 1 : 0);
+      const totalNoShow = toNumber(current.total_no_show) + (row.no_show ? 1 : 0);
+      const naoRecebidas = agendas - recebidas;
+      grouped.set(key, {
+        ...current,
+        agendas_mes: agendas,
+        recebidas,
+        nao_recebidas: naoRecebidas,
+        total_no_show: totalNoShow,
+      });
+    }
+
+    return Array.from(grouped.values())
+      .map((row) => {
+        const dias = countDistinctNoShowDates(
+          baseRowsFiltradas.filter(
+            (item) =>
+              (item.uf ?? "-") === row.uf &&
+              noShowMonthValue(item) === padMonth(row.mes) &&
+              Number(noShowYearValue(item) || 0) === Number(row.ano ?? 0)
+          )
+        );
+        const meta = metaRows.find(
+          (item) =>
+            (item.uf ?? "") === (row.uf ?? "") &&
+            padMonth(item.mes) === padMonth(row.mes) &&
+            String(item.ano ?? "") === String(row.ano ?? "")
+        );
+        const agendas = toNumber(row.agendas_mes);
+        const recebidas = toNumber(row.recebidas);
+        const noShow = toNumber(row.total_no_show);
+        const metaRecebimentoMes = toNumber(meta?.meta_recebimento_mes);
+        return {
+          ...row,
+          media_recebidas_dia: dias > 0 ? recebidas / dias : 0,
+          media_no_show_dia: dias > 0 ? noShow / dias : 0,
+          capacidade_dia: toNumber(meta?.capacidade_dia),
+          meta_recebimento_mes: metaRecebimentoMes,
+          percentual_no_show: agendas > 0 ? noShow / agendas : 0,
+          percentual_recebido: metaRecebimentoMes > 0 ? recebidas / metaRecebimentoMes : agendas > 0 ? recebidas / agendas : 0,
+        };
+      })
+      .sort((a, b) => `${b.ano ?? 0}${padMonth(b.mes)}`.localeCompare(`${a.ano ?? 0}${padMonth(a.mes)}`));
+  }, [baseRowsFiltradas, filtros, metaRows, resumoRows]);
+
+  const top5Fornecedores = useMemo(() => {
+    if (!filtros.fornecedor && !filtros.status) {
+      return topRows
+        .filter((row) => {
+          if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
+          if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
+          if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+          return true;
+        })
+        .slice()
+        .sort((a, b) => toNumber(b.no_show) - toNumber(a.no_show) || toNumber(b.agendas) - toNumber(a.agendas))
+        .slice(0, 5);
+    }
+
+    const grouped = new Map<string, NoShowTopFornecedorRow>();
+    for (const row of baseRowsFiltradas) {
+      const fornecedor = row.fornecedor_nome?.trim() || "Não informado";
+      const key = fornecedor;
+      const current = grouped.get(key) ?? {
+        uf: filtros.uf || row.uf,
+        mes: filtros.mes,
+        ano: filtros.ano ? Number(filtros.ano) : null,
+        fornecedor_nome: fornecedor,
+        agendas: 0,
+        recebidas: 0,
+        nao_recebidas: 0,
+        no_show: 0,
+        percentual_no_show: 0,
+        ranking: 0,
+      };
+      const agendas = toNumber(current.agendas) + 1;
+      const recebidas = toNumber(current.recebidas) + (row.concluido ? 1 : 0);
+      const noShow = toNumber(current.no_show) + (row.no_show ? 1 : 0);
+      const naoRecebidas = agendas - recebidas;
+      grouped.set(key, {
+        ...current,
+        agendas,
+        recebidas,
+        nao_recebidas: naoRecebidas,
+        no_show: noShow,
+        percentual_no_show: agendas > 0 ? noShow / agendas : 0,
+      });
+    }
+
+    return Array.from(grouped.values())
+      .sort((a, b) => toNumber(b.no_show) - toNumber(a.no_show) || toNumber(b.agendas) - toNumber(a.agendas))
+      .slice(0, 5)
+      .map((row, index) => ({ ...row, ranking: index + 1 }));
+  }, [baseRowsFiltradas, filtros, topRows]);
+
+  const indicadores = useMemo(() => {
+    const totalAgendas = baseRowsFiltradas.length;
+    const recebidas = baseRowsFiltradas.filter((row) => row.concluido).length;
+    const totalNoShow = baseRowsFiltradas.filter((row) => row.no_show).length;
+    const naoRealizado = baseRowsFiltradas.filter((row) => row.nao_realizado).length;
+    const abandono = baseRowsFiltradas.filter((row) => row.abandono).length;
+    const naoRecebidas = totalAgendas - recebidas;
+    const diasAtivos = countDistinctNoShowDates(baseRowsFiltradas);
+    const capacidadeDia = metasFiltradas.reduce((sum, row) => sum + toNumber(row.capacidade_dia), 0);
+    const metaRecebimentoMes = metasFiltradas.reduce((sum, row) => sum + toNumber(row.meta_recebimento_mes), 0);
+    const percentualNoShow = totalAgendas > 0 ? totalNoShow / totalAgendas : 0;
+    const percentualRecebido = metaRecebimentoMes > 0 ? recebidas / metaRecebimentoMes : totalAgendas > 0 ? recebidas / totalAgendas : 0;
+    const eficiencia = totalAgendas > 0 ? recebidas / totalAgendas : 0;
+    const acuraciaDenominador = recebidas + totalNoShow + naoRealizado + abandono;
+    const acuracia = acuraciaDenominador > 0 ? recebidas / acuraciaDenominador : 0;
+    const produtos = baseRowsFiltradas.reduce((sum, row) => sum + toNumber(row.sku), 0);
+    const paletes = baseRowsFiltradas.reduce((sum, row) => sum + toNumber(row.paletes), 0);
+    const caixas = baseRowsFiltradas.reduce((sum, row) => sum + toNumber(row.caixas), 0);
+    const valorTotal = baseRowsFiltradas.reduce((sum, row) => sum + toNumber(row.valor), 0);
+
+    return {
+      totalAgendas,
+      recebidas,
+      naoRecebidas,
+      totalNoShow,
+      percentualNoShow,
+      mediaRecebidasDia: diasAtivos > 0 ? recebidas / diasAtivos : 0,
+      mediaNoShowDia: diasAtivos > 0 ? totalNoShow / diasAtivos : 0,
+      capacidadeDia,
+      metaRecebimentoMes,
+      percentualRecebido,
+      eficiencia,
+      acuracia,
+      realizado: recebidas,
+      naoRealizado,
+      abandono,
+      produtos,
+      paletes,
+      caixas,
+      valorTotal,
+    };
+  }, [baseRowsFiltradas, metasFiltradas]);
+
+  const consolidadoOperacional = useMemo(() => {
+    if (filtros.fornecedor || filtros.status) {
+      return {
+        produtos: indicadores.produtos,
+        paletes: indicadores.paletes,
+        caixas: indicadores.caixas,
+        valor_total: indicadores.valorTotal,
+      };
+    }
+
+    const rows = dashboardRows.filter((row) => {
+      if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
+      if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
+      if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+      return true;
+    });
+
+    return rows.reduce(
+      (acc, row) => ({
+        produtos: acc.produtos + toNumber(row.produtos),
+        paletes: acc.paletes + toNumber(row.paletes),
+        caixas: acc.caixas + toNumber(row.caixas),
+        valor_total: acc.valor_total + toNumber(row.valor_total),
+      }),
+      { produtos: 0, paletes: 0, caixas: 0, valor_total: 0 }
+    );
+  }, [dashboardRows, filtros, indicadores]);
+
+  const cards = [
+    ["Total agendas", String(indicadores.totalAgendas)],
+    ["Recebidas", String(indicadores.recebidas)],
+    ["Não recebidas", String(indicadores.naoRecebidas)],
+    ["Total No Show", String(indicadores.totalNoShow)],
+    ["% No Show", percent(indicadores.percentualNoShow)],
+    ["Média recebidas/dia", indicadores.mediaRecebidasDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
+    ["Média No Show/dia", indicadores.mediaNoShowDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
+    ["Capacidade dia", indicadores.capacidadeDia.toLocaleString("pt-BR")],
+    ["Meta recebimento mês", indicadores.metaRecebimentoMes.toLocaleString("pt-BR")],
+    ["% recebido", percent(indicadores.percentualRecebido)],
+    ["Eficiência", percent(indicadores.eficiencia)],
+    ["Acurácia", percent(indicadores.acuracia)],
+    ["Realizado", String(indicadores.realizado)],
+    ["Não realizado", String(indicadores.naoRealizado)],
+    ["Abandono", String(indicadores.abandono)],
+  ];
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Dashboard No Show</h1>
+        <p style={descStyle}>Painel consolidado do No Show com filtros operacionais, metas e ranking de fornecedores.</p>
+      </div>
+
+      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        <select style={inputStyle} value={filtros.mes} onChange={(e) => setFiltros({ ...filtros, mes: e.target.value })}>
+          <option value="">Mês</option>
+          {mesesDisponiveis.map((mes) => (
+            <option key={mes} value={mes}>
+              {mes}
+            </option>
+          ))}
+        </select>
+        <select style={inputStyle} value={filtros.ano} onChange={(e) => setFiltros({ ...filtros, ano: e.target.value })}>
+          <option value="">Ano</option>
+          {anosDisponiveis.map((ano) => (
+            <option key={ano} value={ano}>
+              {ano}
+            </option>
+          ))}
+        </select>
+        <select style={inputStyle} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
+          <option value="">UF</option>
+          {ufsDisponiveis.map((uf) => (
+            <option key={uf} value={uf}>
+              {uf}
+            </option>
+          ))}
+        </select>
+        <input
+          style={inputStyle}
+          placeholder="Fornecedor"
+          value={filtros.fornecedor}
+          onChange={(e) => setFiltros({ ...filtros, fornecedor: e.target.value })}
+        />
+        <select style={inputStyle} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
+          <option value="">Status</option>
+          {statusDisponiveis.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <button type="button" style={buttonSecondaryStyle} onClick={() => setFiltros({ mes: "", ano: "", uf: "", fornecedor: "", status: "" })}>
+          Limpar filtros
+        </button>
+      </div>
+
+      {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
+
+      <div style={gridStyle}>
+        {cards.map(([label, value]) => (
+          <div key={label} style={cardStyle}>
+            <div style={metricLabelStyle}>{label}</div>
+            <div style={metricValueStyle}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={gridStyle}>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Produtos</div>
+          <div style={metricValueStyle}>{consolidadoOperacional.produtos.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Paletes</div>
+          <div style={metricValueStyle}>{consolidadoOperacional.paletes.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Caixas</div>
+          <div style={metricValueStyle}>{consolidadoOperacional.caixas.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Valor total</div>
+          <div style={{ ...metricValueStyle, fontSize: 20 }}>{formatCurrency(consolidadoOperacional.valor_total)}</div>
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+          <div>
+            <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Resumo mensal</div>
+            <div style={descStyle}>
+              {filtros.fornecedor || filtros.status
+                ? "Consolidado recalculado a partir da base portal para respeitar filtros de fornecedor e status."
+                : "Consolidado carregado a partir da view mensal do No Show."}
+            </div>
+          </div>
+          <button type="button" style={buttonSecondaryStyle} onClick={() => void carregarDashboard()} disabled={loading}>
+            {loading ? "Atualizando..." : "Atualizar"}
+          </button>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8 }}>UF</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Mês</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Ano</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
+              <th style={{ textAlign: "right", padding: 8 }}>% No Show</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Média receb./dia</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Média No Show/dia</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Capacidade dia</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Meta mês</th>
+              <th style={{ textAlign: "right", padding: 8 }}>% recebido</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumoConsolidado.length === 0 ? (
+              <tr>
+                <td colSpan={13} style={{ padding: 12, color: theme.colors.textSoft }}>
+                  Nenhum dado encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            ) : (
+              resumoConsolidado.map((row, index) => (
+                <tr key={`${row.uf ?? "uf"}-${row.mes ?? "mes"}-${row.ano ?? index}`}>
+                  <td style={{ padding: 8 }}>{row.uf ?? "-"}</td>
+                  <td style={{ padding: 8 }}>{padMonth(row.mes) || "-"}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{row.ano ?? "-"}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.agendas_mes).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.total_no_show).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.media_recebidas_dia).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.media_no_show_dia).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.capacidade_dia).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.meta_recebimento_mes).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_recebido))}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto" }}>
+        <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Top 5 fornecedores com maior No Show</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720, marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8 }}>Rank</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Fornecedor</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
+              <th style={{ textAlign: "right", padding: 8 }}>% No Show</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top5Fornecedores.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 12, color: theme.colors.textSoft }}>
+                  Nenhum fornecedor encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            ) : (
+              top5Fornecedores.map((row, index) => (
+                <tr key={`${row.fornecedor_nome ?? "fornecedor"}-${index}`}>
+                  <td style={{ padding: 8 }}>{toNumber(row.ranking) || index + 1}</td>
+                  <td style={{ padding: 8 }}>{row.fornecedor_nome ?? "Não informado"}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.agendas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.no_show).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function RecebimentoNoShowTop5({ perfil: _perfil }: Props) {
+  const [topRows, setTopRows] = useState<NoShowTopFornecedorRow[]>([]);
+  const [dashboardRows, setDashboardRows] = useState<NoShowDashboardResumoRow[]>([]);
+  const [baseRows, setBaseRows] = useState<NoShowBasePortalDashboardRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState({
+    mes: "",
+    ano: "",
+    uf: "",
+    fornecedor: "",
+  });
+
+  const carregarTop5 = async () => {
+    setLoading(true);
+    setErro(null);
+
+    const [topResult, dashboardResult, baseResult] = await Promise.all([
+      db().from("vw_noshow_top_fornecedores").select("*").order("ranking", { ascending: true }),
+      db().from("vw_noshow_dashboard").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }).order("uf", { ascending: true }),
+      db()
+        .from("noshow_base_portal")
+        .select("id,mes,data_recebimento,uf,fornecedor_nome,status_recebimento,concluido,no_show,nao_realizado,abandono")
+        .order("data_recebimento", { ascending: false }),
+    ]);
+
+    const firstError = topResult.error ?? dashboardResult.error ?? baseResult.error;
+    if (firstError) {
+      console.error("Erro ao carregar Top 5 No Show:", firstError);
+      setErro("Erro ao carregar os dados do Top 5 No Show.");
+      setTopRows([]);
+      setDashboardRows([]);
+      setBaseRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const nextTopRows = (topResult.data ?? []) as NoShowTopFornecedorRow[];
+    const nextDashboardRows = (dashboardResult.data ?? []) as NoShowDashboardResumoRow[];
+    const nextBaseRows = (baseResult.data ?? []) as NoShowBasePortalDashboardRow[];
+
+    setTopRows(nextTopRows);
+    setDashboardRows(nextDashboardRows);
+    setBaseRows(nextBaseRows);
+
+    setFiltros((prev) => {
+      if (prev.mes || prev.ano) return prev;
+      const latestRow = nextBaseRows.find((row) => row.data_recebimento) ?? null;
+      if (!latestRow?.data_recebimento) return prev;
+      return {
+        ...prev,
+        mes: latestRow.data_recebimento.slice(5, 7),
+        ano: latestRow.data_recebimento.slice(0, 4),
+      };
+    });
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void carregarTop5();
+  }, []);
+
+  const fornecedoresDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => (row.fornecedor_nome ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
+  const ufsDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => (row.uf ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
+  const mesesDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => noShowMonthValue(row)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [baseRows]
+  );
+  const anosDisponiveis = useMemo(
+    () => Array.from(new Set(baseRows.map((row) => noShowYearValue(row)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [baseRows]
+  );
+
+  const baseFiltrada = useMemo(() => {
+    const fornecedorFiltro = filtros.fornecedor.trim().toLowerCase();
+    return baseRows.filter((row) => {
+      const mes = noShowMonthValue(row);
+      const ano = noShowYearValue(row);
+      const uf = (row.uf ?? "").trim();
+      const fornecedor = (row.fornecedor_nome ?? "").toLowerCase();
+
+      if (filtros.mes && mes !== filtros.mes) return false;
+      if (filtros.ano && ano !== filtros.ano) return false;
+      if (filtros.uf && uf !== filtros.uf) return false;
+      if (fornecedorFiltro && !fornecedor.includes(fornecedorFiltro)) return false;
+      return true;
+    });
+  }, [baseRows, filtros]);
+
+  const totalFornecedores = useMemo(
+    () => new Set(baseFiltrada.map((row) => (row.fornecedor_nome ?? "").trim()).filter(Boolean)).size,
+    [baseFiltrada]
+  );
+
+  const totalAgendas = useMemo(() => {
+    if (!filtros.fornecedor) {
+      return dashboardRows.reduce((sum, row) => {
+        if (filtros.mes && padMonth(row.mes) !== filtros.mes) return sum;
+        if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return sum;
+        if (filtros.uf && (row.uf ?? "") !== filtros.uf) return sum;
+        return sum + toNumber(row.total_agendas);
+      }, 0);
+    }
+    return baseFiltrada.length;
+  }, [baseFiltrada, dashboardRows, filtros]);
+
+  const totalNoShow = useMemo(() => {
+    if (!filtros.fornecedor) {
+      return dashboardRows.reduce((sum, row) => {
+        if (filtros.mes && padMonth(row.mes) !== filtros.mes) return sum;
+        if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return sum;
+        if (filtros.uf && (row.uf ?? "") !== filtros.uf) return sum;
+        return sum + toNumber(row.no_show);
+      }, 0);
+    }
+    return baseFiltrada.filter((row) => row.no_show).length;
+  }, [baseFiltrada, dashboardRows, filtros]);
+
+  const top5Rows = useMemo(() => {
+    if (!filtros.fornecedor) {
+      return topRows
+        .filter((row) => {
+          if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
+          if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
+          if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+          return true;
+        })
+        .slice()
+        .sort((a, b) => toNumber(b.no_show) - toNumber(a.no_show) || toNumber(b.agendas) - toNumber(a.agendas))
+        .slice(0, 5)
+        .map((row, index) => ({ ...row, ranking: index + 1 }));
+    }
+
+    const grouped = new Map<string, NoShowTopFornecedorRow>();
+    for (const row of baseFiltrada) {
+      const fornecedor = row.fornecedor_nome?.trim() || "Não informado";
+      const current = grouped.get(fornecedor) ?? {
+        uf: filtros.uf || row.uf,
+        mes: filtros.mes,
+        ano: filtros.ano ? Number(filtros.ano) : null,
+        fornecedor_nome: fornecedor,
+        agendas: 0,
+        recebidas: 0,
+        nao_recebidas: 0,
+        no_show: 0,
+        percentual_no_show: 0,
+        ranking: 0,
+      };
+      const agendas = toNumber(current.agendas) + 1;
+      const recebidas = toNumber(current.recebidas) + (row.concluido ? 1 : 0);
+      const noShow = toNumber(current.no_show) + (row.no_show ? 1 : 0);
+      const naoRecebidas = agendas - recebidas;
+      grouped.set(fornecedor, {
+        ...current,
+        agendas,
+        recebidas,
+        nao_recebidas: naoRecebidas,
+        no_show: noShow,
+        percentual_no_show: agendas > 0 ? noShow / agendas : 0,
+      });
+    }
+
+    return Array.from(grouped.values())
+      .sort((a, b) => toNumber(b.no_show) - toNumber(a.no_show) || toNumber(b.agendas) - toNumber(a.agendas))
+      .slice(0, 5)
+      .map((row, index) => ({ ...row, ranking: index + 1 }));
+  }, [baseFiltrada, filtros, topRows]);
+
+  const percentualNoShow = totalAgendas > 0 ? totalNoShow / totalAgendas : 0;
+  const maiorNoShow = top5Rows[0]?.fornecedor_nome ?? "-";
+
+  return (
+    <section style={pageStyle}>
+      <div>
+        <h1 style={titleStyle}>Top 5 No Show</h1>
+        <p style={descStyle}>Ranking dos fornecedores com maior impacto de No Show no Recebimento.</p>
+      </div>
+
+      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        <select style={inputStyle} value={filtros.mes} onChange={(e) => setFiltros({ ...filtros, mes: e.target.value })}>
+          <option value="">Mês</option>
+          {mesesDisponiveis.map((mes) => (
+            <option key={mes} value={mes}>
+              {mes}
+            </option>
+          ))}
+        </select>
+        <select style={inputStyle} value={filtros.ano} onChange={(e) => setFiltros({ ...filtros, ano: e.target.value })}>
+          <option value="">Ano</option>
+          {anosDisponiveis.map((ano) => (
+            <option key={ano} value={ano}>
+              {ano}
+            </option>
+          ))}
+        </select>
+        <select style={inputStyle} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
+          <option value="">UF</option>
+          {ufsDisponiveis.map((uf) => (
+            <option key={uf} value={uf}>
+              {uf}
+            </option>
+          ))}
+        </select>
+        <select style={inputStyle} value={filtros.fornecedor} onChange={(e) => setFiltros({ ...filtros, fornecedor: e.target.value })}>
+          <option value="">Fornecedor</option>
+          {fornecedoresDisponiveis.map((fornecedor) => (
+            <option key={fornecedor} value={fornecedor}>
+              {fornecedor}
+            </option>
+          ))}
+        </select>
+        <button type="button" style={buttonSecondaryStyle} onClick={() => setFiltros({ mes: "", ano: "", uf: "", fornecedor: "" })}>
+          Limpar filtros
+        </button>
+      </div>
+
+      {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
+
+      <div style={gridStyle}>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Total fornecedores</div>
+          <div style={metricValueStyle}>{totalFornecedores.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Total agendas</div>
+          <div style={metricValueStyle}>{totalAgendas.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Total No Show</div>
+          <div style={metricValueStyle}>{totalNoShow.toLocaleString("pt-BR")}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>% No Show</div>
+          <div style={metricValueStyle}>{percent(percentualNoShow)}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={metricLabelStyle}>Fornecedor com maior No Show</div>
+          <div style={{ ...metricValueStyle, fontSize: 18, overflowWrap: "anywhere" }}>{maiorNoShow}</div>
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+          <div>
+            <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Tabela principal</div>
+            <div style={descStyle}>Ordenação do maior No Show para o menor.</div>
+          </div>
+          <button type="button" style={buttonSecondaryStyle} onClick={() => void carregarTop5()} disabled={loading}>
+            {loading ? "Atualizando..." : "Atualizar"}
+          </button>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8 }}>Rank</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Fornecedor</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
+              <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
+              <th style={{ textAlign: "right", padding: 8 }}>% No Show</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top5Rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: 12, color: theme.colors.textSoft }}>
+                  Nenhum dado encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            ) : (
+              top5Rows.map((row, index) => (
+                <tr key={`${row.fornecedor_nome ?? "fornecedor"}-${index}`}>
+                  <td style={{ padding: 8 }}>{toNumber(row.ranking) || index + 1}</td>
+                  <td style={{ padding: 8 }}>{row.fornecedor_nome ?? "Não informado"}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.agendas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.no_show).toLocaleString("pt-BR")}</td>
+                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
   );

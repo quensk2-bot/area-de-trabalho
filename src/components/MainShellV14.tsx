@@ -23,7 +23,9 @@ import {
   RecebimentoFornecedores,
   RecebimentoImportarAgendaFutura,
   RecebimentoImportacao,
+  RecebimentoNoShowDashboard,
   RecebimentoNoShowImportacao,
+  RecebimentoNoShowTop5,
   RecebimentoOcorrencias,
   RecebimentoPlaceholder,
   RecebimentoTransportadoras,
@@ -719,19 +721,9 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     } else if (menu === "recebimento-noshow-importacao") {
       content = <RecebimentoNoShowImportacao perfil={perfil} />;
     } else if (menu === "recebimento-noshow-dashboard") {
-      content = (
-        <RecebimentoPlaceholder
-          titulo="Dashboard No Show"
-          descricao="Painel No Show em construção. Nesta etapa ele mostrará os principais indicadores do recebimento No Show."
-        />
-      );
+      content = <RecebimentoNoShowDashboard perfil={perfil} />;
     } else if (menu === "recebimento-noshow-top5") {
-      content = (
-        <RecebimentoPlaceholder
-          titulo="Top 5 No Show"
-          descricao="Ranking No Show em construção. Nesta etapa ele mostrará os maiores impactos por fornecedor e transportadora."
-        />
-      );
+      content = <RecebimentoNoShowTop5 perfil={perfil} />;
     } else if (menu === "recebimento-noshow-realizado") {
       content = (
         <RecebimentoPlaceholder
