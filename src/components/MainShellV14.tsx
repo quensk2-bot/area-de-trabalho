@@ -23,14 +23,18 @@ import {
   RecebimentoFornecedores,
   RecebimentoImportarAgendaFutura,
   RecebimentoImportacao,
+  RecebimentoNoShowImportacao,
   RecebimentoOcorrencias,
   RecebimentoPlaceholder,
   RecebimentoTransportadoras,
 } from "./recebimento/RecebimentoPages";
 import {
+  PontoExtraAnalise,
   PontoExtraAcompanhamento,
+  PontoExtraCapas,
   PontoExtraCubagem,
   PontoExtraDashboard,
+  PontoExtraExportacao,
   PontoExtraImportacao,
   PontoExtraProcessamento,
   PontoExtraRelatorio,
@@ -59,11 +63,18 @@ type MenuKey =
   | "recebimento-importar-agenda-futura"
   | "recebimento-ocorrencias"
   | "recebimento-relatorios"
+  | "recebimento-noshow-importacao"
+  | "recebimento-noshow-dashboard"
+  | "recebimento-noshow-top5"
+  | "recebimento-noshow-realizado"
   | "recebimento-confirmacao-agenda"
   | "loja-ponto-dashboard"
   | "loja-ponto-importacao"
   | "loja-ponto-cubagem"
+  | "loja-ponto-capas"
   | "loja-ponto-processamento"
+  | "loja-ponto-analise"
+  | "loja-ponto-exportacao"
   | "loja-ponto-acompanhamento"
   | "loja-ponto-relatorio";
 
@@ -306,6 +317,10 @@ const RECEBIMENTO_ROUTES: Partial<Record<MenuKey, string>> = {
   "recebimento-fornecedores": "/recebimento/fornecedores",
   "recebimento-transportadoras": "/recebimento/transportadoras",
   "recebimento-importacao": "/recebimento/importacao",
+  "recebimento-noshow-importacao": "/recebimento/noshow-importacao",
+  "recebimento-noshow-dashboard": "/recebimento/noshow/dashboard",
+  "recebimento-noshow-top5": "/recebimento/noshow/top5",
+  "recebimento-noshow-realizado": "/recebimento/noshow/realizado",
   "recebimento-ocorrencias": "/recebimento/ocorrencias",
   "recebimento-relatorios": "/recebimento/relatorios",
 };
@@ -314,7 +329,10 @@ const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
   "loja-ponto-dashboard": "/loja/ponto-extra",
   "loja-ponto-importacao": "/loja/ponto-extra/importacao",
   "loja-ponto-cubagem": "/loja/ponto-extra/cubagem",
+  "loja-ponto-capas": "/loja/ponto-extra/capas",
   "loja-ponto-processamento": "/loja/ponto-extra/processamento",
+  "loja-ponto-analise": "/loja/ponto-extra/analise",
+  "loja-ponto-exportacao": "/loja/ponto-extra/exportacao",
   "loja-ponto-acompanhamento": "/loja/ponto-extra/acompanhamento",
   "loja-ponto-relatorio": "/loja/ponto-extra/relatorio",
 };
@@ -366,6 +384,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     recebimento: false,
     recebimentoConfirmacao: false,
     recebimentoPlanejamento: false,
+    recebimentoNoShow: false,
     loja: false,
     lojaPontoExtra: false,
   });
@@ -382,6 +401,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       | "recebimento"
       | "recebimentoConfirmacao"
       | "recebimentoPlanejamento"
+        | "recebimentoNoShow"
       | "loja"
       | "lojaPontoExtra"
   ) => {
@@ -500,13 +520,27 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     []
   );
 
+  const recebimentoNoShowItems = useMemo(
+    () =>
+      [
+        ["recebimento-noshow-importacao", "Importação No Show"],
+        ["recebimento-noshow-dashboard", "Dashboard No Show"],
+        ["recebimento-noshow-top5", "Top 5 No Show"],
+        ["recebimento-noshow-realizado", "Recebimento Realizado"],
+      ] as [MenuKey, string][],
+    []
+  );
+
   const lojaPontoExtraItems = useMemo(
     () =>
       [
         ["loja-ponto-dashboard", "Dashboard Ponto Extra"],
         ["loja-ponto-importacao", "Importar Bases"],
         ["loja-ponto-cubagem", "Cubagem"],
+        ["loja-ponto-capas", "Capas de Ponta"],
         ["loja-ponto-processamento", "Processar Ponto Extra"],
+        ["loja-ponto-analise", "Analise da Sugestao"],
+        ["loja-ponto-exportacao", "Exportacao"],
         ["loja-ponto-acompanhamento", "Acompanhamento"],
         ["loja-ponto-relatorio", "Relatorio Comercial"],
       ] as [MenuKey, string][],
@@ -682,6 +716,29 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       content = <RecebimentoTransportadoras perfil={perfil} />;
     } else if (menu === "recebimento-importacao") {
       content = <RecebimentoImportacao perfil={perfil} />;
+    } else if (menu === "recebimento-noshow-importacao") {
+      content = <RecebimentoNoShowImportacao perfil={perfil} />;
+    } else if (menu === "recebimento-noshow-dashboard") {
+      content = (
+        <RecebimentoPlaceholder
+          titulo="Dashboard No Show"
+          descricao="Painel No Show em construção. Nesta etapa ele mostrará os principais indicadores do recebimento No Show."
+        />
+      );
+    } else if (menu === "recebimento-noshow-top5") {
+      content = (
+        <RecebimentoPlaceholder
+          titulo="Top 5 No Show"
+          descricao="Ranking No Show em construção. Nesta etapa ele mostrará os maiores impactos por fornecedor e transportadora."
+        />
+      );
+    } else if (menu === "recebimento-noshow-realizado") {
+      content = (
+        <RecebimentoPlaceholder
+          titulo="Recebimento Realizado"
+          descricao="Visão de recebimento realizado em construção. Aqui será detalhado o consolidado operacional do No Show."
+        />
+      );
     } else if (menu === "recebimento-agenda") {
       content = <RecebimentoAgenda perfil={perfil} />;
     } else if (menu === "recebimento-ocorrencias") {
@@ -708,8 +765,14 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       content = <PontoExtraImportacao perfil={perfil} />;
     } else if (menu === "loja-ponto-cubagem") {
       content = <PontoExtraCubagem />;
+    } else if (menu === "loja-ponto-capas") {
+      content = <PontoExtraCapas />;
     } else if (menu === "loja-ponto-processamento") {
       content = <PontoExtraProcessamento />;
+    } else if (menu === "loja-ponto-analise") {
+      content = <PontoExtraAnalise />;
+    } else if (menu === "loja-ponto-exportacao") {
+      content = <PontoExtraExportacao />;
     } else if (menu === "loja-ponto-acompanhamento") {
       content = <PontoExtraAcompanhamento />;
     } else if (menu === "loja-ponto-relatorio") {
@@ -861,6 +924,35 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
                   </button>
                   {gruposMenuAbertos.recebimentoPlanejamento &&
                     recebimentoItems.map(([key, label]) => {
+                      const active = menu === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => navegarMenu(key)}
+                          style={{
+                            ...shellStyles.menuButton,
+                            ...(active ? shellStyles.menuButtonActive : {}),
+                          }}
+                        >
+                          <span style={shellStyles.menuButtonLeft}>
+                            <span style={shellStyles.menuBullet} />
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupoMenu("recebimentoNoShow")}
+                    style={shellStyles.menuSubGroupTitle}
+                  >
+                    <span>03 Gestão Recebimento NO SHOW CD</span>
+                    <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.recebimentoNoShow ? "-" : "+"}</span>
+                  </button>
+                  {gruposMenuAbertos.recebimentoNoShow &&
+                    recebimentoNoShowItems.map(([key, label]) => {
                       const active = menu === key;
                       return (
                         <button

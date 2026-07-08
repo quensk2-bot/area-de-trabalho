@@ -196,6 +196,9 @@ type ConfirmacaoHistorico = {
   contato_tipo: string | null;
   resultado: string | null;
   observacao: string | null;
+  fornecedor_contato_id: string | null;
+  transportadora_contato_id: string | null;
+  contato_origem: string | null;
   created_at: string | null;
 };
 
@@ -244,9 +247,35 @@ const parseDecimal = (value: string | undefined) => {
 
 const parseDateBR = (value: string | undefined) => {
   const trimmed = (value ?? "").trim();
-  const match = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  return null;
+};
+
+const parseMonthNumber = (value: string | undefined) => {
+  const trimmed = (value ?? "").trim();
+  const monthByName: Record<string, number> = {
+    JANEIRO: 1,
+    FEVEREIRO: 2,
+    MARCO: 3,
+    MARÇO: 3,
+    ABRIL: 4,
+    MAIO: 5,
+    JUNHO: 6,
+    JULHO: 7,
+    AGOSTO: 8,
+    SETEMBRO: 9,
+    OUTUBRO: 10,
+    NOVEMBRO: 11,
+    DEZEMBRO: 12,
+  };
+  const upper = trimmed.toUpperCase();
+  if (monthByName[upper]) return monthByName[upper];
+  const match = trimmed.match(/(\d{1,2})/);
   if (!match) return null;
-  return `${match[3]}-${match[2]}-${match[1]}`;
+  return Number(match[1]);
 };
 
 const parseTime = (value: string | undefined) => {
@@ -326,6 +355,803 @@ const parseXlsxTable = async (file: File) => {
     Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""]))
   );
 };
+
+const parseWorkbookSheetRows = (workbook: XLSX.WorkBook, sheetName: string, requiredHeaders: string[]) => {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return [] as Record<string, string>[];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: "" });
+  const headerRow = rows.find((row) =>
+    row.some((cell) => requiredHeaders.includes(normalizeHeader(String(cell ?? ""))))
+  );
+  if (!headerRow) return [] as Record<string, string>[];
+  const startIndex = rows.indexOf(headerRow) + 1;
+  const headers = headerRow.map((cell) => String(cell ?? "").trim());
+  return rows.slice(startIndex).filter((row) => row.some((cell) => String(cell ?? "").trim() !== "")).map((row) => {
+    const normalizedRow: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      normalizedRow[normalizeHeader(header)] = String(row[index] ?? "").trim();
+    });
+    return normalizedRow;
+  });
+};
+
+const getFirstDateYear = (value: string | null | undefined) => {
+  if (!value) return null;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return Number(iso[1]);
+  const br = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return Number(br[3]);
+  return null;
+};
+
+const parseDiaMesWithYear = (value: string | undefined, year?: number) => {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return null;
+  const explicit = parseDateBR(trimmed);
+  if (explicit) return explicit;
+  const match = trimmed.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
+  if (!match) return null;
+  const day = match[1];
+  const month = match[2];
+  const yearPart = match[3] ? Number(match[3]) : year;
+  if (!yearPart) return null;
+  return `${yearPart}-${month}-${day}`;
+};
+
+const parsePortalRow = (row: Record<string, string>) => {
+  const status = row["STATUS_RECEBIMENTO"] ?? "";
+  const statusLower = status.toLowerCase();
+  const concluido = parseDecimal(row["CONCLUIDO"]) > 0 || statusIncludes(status, ["concluido", "concluido", "finalizado", "ok"]);
+  const noShow = statusIncludes(status, ["no show", "noshow"]);
+  const naoRealizado = parseDecimal(row["NAO_REALIZADO"]) > 0 || statusIncludes(status, ["nao realizado", "não realizado"]);
+  const abandono = statusIncludes(status, ["abandono", "aband"]) || statusIncludes(row["ACOES_DO_ABASTECIMENTO"], ["aband"]);
+  const observacao = [
+    row["OCORRENCIA"],
+    row["ACOES_DO_ABASTECIMENTO"],
+    row["RETORNO"],
+    row["CAUSAS_DA_NAO_DESCARGA"],
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return {
+    mes: row["MES"] || null,
+    data_recebimento: parseDateBR(row["DATA"]) || parseDateBR(row["DATA_RECEBIMENTO"]) || null,
+    uf: row["UF"] || null,
+    dia_recebimento: row["DIA_RECEBIMENTO_MES"] || null,
+    ticket: row["TICKET"] || null,
+    hora: parseTime(row["HORA"] || row["HORARIO"]),
+    numero_nota: row["N_NUMA_NOTA"] || row["N_NUMERO_NOTA"] || row["N_NOTA"] || null,
+    pedidos: row["PEDIDOS"] || null,
+    fornecedor_nome: row["FORNECEDOR"] || null,
+    transportadora_nome: row["DESTINATARIO"] || row["EMPRESA"] || null,
+    volumes: parseDecimal(row["VOLUMES"]),
+    sku: parseDecimal(row["SKUS"]),
+    status_recebimento: status || null,
+    modalidade: row["PADRAO_DE_RECEBIMENTO"] || null,
+    tipo_carga: row["GRUPO"] || null,
+    tipo_veiculo: row["TIPO_VEICULO"] || null,
+    perfil_carga: row["PERFIL_DA_CARGA"] || null,
+    valor: parseDecimal(row["VALOR"]),
+    paletes: parseDecimal(row["PALETES"]),
+    caixas: parseDecimal(row["CAIXAS"]),
+    concluido,
+    no_show: noShow,
+    nao_realizado: naoRealizado,
+    abandono,
+    observacao: observacao || null,
+  };
+};
+
+const parsePlanejamentoRow = (row: Record<string, string>, yearOverride?: number) => {
+  const agenda = row["AGENDAMENTO"] || "";
+  const data_referencia = parseDiaMesWithYear(agenda, yearOverride) || parseDateBR(row["HORA_CHEGADA"]);
+  const fornecedorMatch = agenda.match(/\d+\s+(.+)$/);
+  const fornecedor_nome = fornecedorMatch ? fornecedorMatch[1].trim() : agenda.trim() || null;
+  const tipoVeiculoParts: string[] = [];
+  if (parseDecimal(row["CARRETA"]) > 0) tipoVeiculoParts.push("Carreta");
+  if (parseDecimal(row["TRUCK"]) > 0) tipoVeiculoParts.push("Truck");
+  if (parseDecimal(row["TOCO"]) > 0) tipoVeiculoParts.push("Toco");
+  if (parseDecimal(row["VAN"]) > 0) tipoVeiculoParts.push("Van");
+
+  return {
+    data_referencia,
+    uf: row["UF"] || null,
+    fornecedor_nome,
+    transportadora_nome: agenda || null,
+    nro_carga: row["NRO_CARGA"] || null,
+    hora_chegada: parseTime(row["HORA_CHEGADA"]),
+    estivada: parseDecimal(row["ESTIVADA"]),
+    repaletizada: parseDecimal(row["REPALETIZADA"]),
+    paletizada: parseDecimal(row["PALETIZADA"]),
+    itens: parseDecimal(row["ITENS"]),
+    cross: parseDecimal(row["ITENS_CROSS"]),
+    armaz: parseDecimal(row["ITENS_ARMAZ"]),
+    paletes: parseDecimal(row["PALETES"]),
+    percentual_palete: parseDecimal(row["PALETE"]),
+    caixas: parseDecimal(row["CAIXAS"]),
+    percentual_conferencia: parseDecimal(row["P_CONFERENCIA"]),
+    tipo_veiculo: tipoVeiculoParts.join("/") || null,
+    observacao: null,
+  };
+};
+
+const parseMetaRow = (row: Record<string, string>) => {
+  const mesNumber = parseMonthNumber(row["MES"] || row["MÊS"]) || null;
+  const ano = Number(row["ANO"] || "") || getFirstDateYear(row["INICIO"]) || getFirstDateYear(row["FIM"]);
+  const dias_recebimento = parseDecimal(row["DIAS_DE_RECEBIMENTO"] || row["DIAS_RECEBIMENTO"]);
+  const capacidade_dia = parseDecimal(row["CAPACIDADE"] || row["CAPACIDADE_DIA"] || row["CAPACIDADE "]);
+  const meta_recebimento_mes = parseDecimal(row["META_RECEBIMENTO_MES"]) || dias_recebimento * capacidade_dia;
+  return {
+    uf: row["UF"] || null,
+    mes: mesNumber,
+    ano: ano || null,
+    dias_recebimento,
+    feriados: parseDecimal(row["FERIADOS"]),
+    capacidade_dia,
+    meta_recebimento_mes,
+    meta_no_show_percentual: 0,
+    meta_no_show_dia: 0,
+    observacao: row["OBSERVACAO"] || null,
+  };
+};
+
+const parseNoShowMetaRows = (rows: Record<string, string>[]) => {
+  const metaHeaders = ["UF", "MES", "ANO"];
+  if (rows.length === 0) return null;
+  const headers = Object.keys(rows[0] ?? {});
+  const hasMetaHeaders = metaHeaders.every((header) => headers.includes(header));
+  if (!hasMetaHeaders) return null;
+  return rows
+    .filter((row) => (row["UF"] || row["MES"] || row["ANO"] || row["MÊS"]).trim() !== "")
+    .map(parseMetaRow);
+};
+
+const parseNoShowPlanningText = (text: string) => {
+  const lines = text.replace(/\r/g, "").split("\n").filter((line) => line.trim());
+  if (lines.length === 0) {
+    return { portalRows: [], planejamentoRows: [], metasRows: [] };
+  }
+
+  const headers = splitImportLine(lines[0]).map((header) => header.trim().toUpperCase());
+  const rawRows = lines.slice(1).map((line) => {
+    const cells = splitImportLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = cells[index] ?? "";
+    });
+    return row;
+  });
+
+  const metaRows = parseNoShowMetaRows(rawRows);
+  if (metaRows) {
+    return { portalRows: [], planejamentoRows: [], metasRows: metaRows };
+  }
+
+  const planningLikeHeaders = ["NROEMPRESA", "NRO_BOX", "AGENDA", "HORARIO", "TRANSPORTADORA", "NROCARGA"];
+  const hasPlanningHeaders = planningLikeHeaders.some((header) => headers.includes(header));
+  if (!hasPlanningHeaders) {
+    throw new Error("O TXT selecionado não possui o layout esperado de planejamento.");
+  }
+
+  const grouped = groupBy(rawRows, (row) =>
+    [row.NROEMPRESA || "", row.NRO_BOX || "", row.AGENDA || "", row.HORARIO || "", row.TRANSPORTADORA || "", row.NROCARGA || ""]
+      .join("|")
+  );
+
+  const planejamentoRows = grouped.map(([, rows]) => {
+    const first = rows[0];
+    const dataReferencia = parseDateBR(first.AGENDA) ?? null;
+    const horaChegada = parseTime(first.HORARIO);
+    const uf = first.NROEMPRESA || null;
+    const fornecedorNome = first.FORNECEDOR || first.TRANSPORTADORA || null;
+    const transportadoraNome = first.TRANSPORTADORA || null;
+    const sumField = (field: string) => rows.reduce((sum, row) => sum + parseDecimal(row[field]), 0);
+    const itens = rows.length;
+    const paletes = sumField("PALETE");
+    const cross = rows.filter((row) => /cross/i.test(`${row.MODALIDADECD || ""} ${row.MODALIDADECOMPRA || ""}`)).length;
+    const armaz = rows.filter((row) => /armazen/i.test(`${row.MODALIDADECD || ""} ${row.MODALIDADECOMPRA || ""}`)).length;
+
+    return {
+      data_referencia: dataReferencia,
+      uf,
+      fornecedor_nome: fornecedorNome,
+      transportadora_nome: transportadoraNome,
+      nro_carga: first.NROCARGA || null,
+      hora_chegada: horaChegada,
+      estivada: sumField("RECEBIDA"),
+      repaletizada: sumField("CONFERIDA"),
+      paletizada: sumField("GERADA"),
+      itens,
+      cross,
+      armaz,
+      paletes,
+      percentual_palete: paletes,
+      caixas: sumField("RECEBIDA"),
+      percentual_conferencia: rows.length === 0 ? 0 : sumField("CONFERIDA") / rows.length,
+      tipo_veiculo: first.MODALIDADECD || first.MODALIDADECOMPRA || null,
+      observacao: first.STATUS_CARGA || null,
+    };
+  });
+  const meses = Array.from(new Set(rawRows.map((row) => (row.AGENDA ? row.AGENDA.slice(3, 5) || null : null)).filter(Boolean)));
+  const metasRows = meses.length === 0
+    ? []
+    : [{
+        uf: planejamentoRows[0]?.uf || null,
+        mes: Number(meses[0]) || null,
+        ano: planejamentoRows[0]?.data_referencia ? Number(planejamentoRows[0].data_referencia.slice(0, 4)) : null,
+        dias_recebimento: 0,
+        feriados: 0,
+        capacidade_dia: 0,
+        meta_recebimento_mes: 0,
+        meta_no_show_percentual: 0,
+        meta_no_show_dia: 0,
+        observacao: "Importado do TXT de planejamento",
+      }];
+
+  return { portalRows: [], planejamentoRows, metasRows };
+};
+
+const mapGestaoAgendaRowToNoShowPortalRow = (row: GestaoAgendaImportRow) => {
+  const ufFromUnidade = row.unidade_negocios.match(/\b([A-Z]{2})\s+CD\b|\bCD\s+([A-Z]{2})\b/)?.[1] ?? row.unidade_negocios.match(/\b([A-Z]{2})\s+CD\b|\bCD\s+([A-Z]{2})\b/)?.[2] ?? null;
+  const ufFromDeposito = row.deposito.match(/\b([A-Z]{2})\s+CD\b|\bCD\s+([A-Z]{2})\b/)?.[1] ?? row.deposito.match(/\b([A-Z]{2})\s+CD\b|\bCD\s+([A-Z]{2})\b/)?.[2] ?? null;
+  return {
+    mes: row.data_agenda ? row.data_agenda.slice(5, 7) : null,
+    data_recebimento: row.data_agenda,
+    uf: ufFromUnidade || ufFromDeposito,
+    dia_recebimento: row.data_agenda ? row.data_agenda.slice(8, 10) : null,
+    ticket: row.codigo_agenda,
+    hora: row.horario,
+    numero_nota: row.notas_fiscais || null,
+    pedidos: row.doca || null,
+    fornecedor_nome: row.fornecedor_nome,
+    transportadora_nome: row.transportadora_nome,
+    volumes: row.volumes,
+    sku: row.sku,
+    status_recebimento: row.tipo_carga || null,
+    modalidade: row.tipo_volume || null,
+    tipo_carga: row.tipo_carga || null,
+    tipo_veiculo: row.tipo_veiculo || null,
+    perfil_carga: row.deposito || row.doca || null,
+    valor: 0,
+    paletes: row.tipo_volume.toLowerCase().includes("palete") ? row.volumes : 0,
+    caixas: row.tipo_volume.toLowerCase().includes("caixa") ? row.volumes : 0,
+    concluido: false,
+    no_show: false,
+    nao_realizado: false,
+    abandono: false,
+    observacao: row.notas_fiscais || row.deposito || null,
+  };
+};
+
+const parseNoShowWorkbook = async (file: File) => {
+  if (/\.(txt|csv)$/i.test(file.name)) {
+    return parseNoShowPlanningText(await file.text());
+  }
+
+  const gestaoAgendaRows = await parseGestaoAgendaRows(file);
+  if (gestaoAgendaRows.length > 0) {
+    const portalRows = gestaoAgendaRows.map(mapGestaoAgendaRowToNoShowPortalRow);
+    const uf = portalRows.find((row) => row.uf)?.uf ?? null;
+    const mes = portalRows.find((row) => row.mes)?.mes ?? null;
+    const primeiraData = portalRows.find((row) => row.data_recebimento)?.data_recebimento ?? null;
+    const ano = primeiraData ? getFirstDateYear(primeiraData) : null;
+    const metasRows = uf && mes && ano
+      ? [{
+          uf,
+          mes: Number(mes) || null,
+          ano: ano || null,
+          dias_recebimento: 0,
+          feriados: 0,
+          capacidade_dia: 0,
+          meta_recebimento_mes: 0,
+          meta_no_show_percentual: 0,
+          meta_no_show_dia: 0,
+          observacao: "Importado da planilha de agenda",
+        }]
+      : [];
+    return { portalRows, planejamentoRows: [], metasRows };
+  }
+
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    if (String(args[0] ?? "").includes("Bad uncompressed size")) return;
+    originalConsoleError(...args);
+  };
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, WTF: false });
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  const firstSheetName = workbook.SheetNames[0];
+  if (firstSheetName) {
+    const firstSheetRows = parseWorkbookSheetRows(workbook, firstSheetName, ["UF", "MES", "ANO"]);
+    const standaloneMetas = parseNoShowMetaRows(firstSheetRows);
+    if (standaloneMetas) {
+      return { portalRows: [], planejamentoRows: [], metasRows: standaloneMetas };
+    }
+  }
+
+  const portalRowsData = parseWorkbookSheetRows(workbook, "Base 1_portal", ["FORNECEDOR", "STATUS_RECEBIMENTO", "TICKET"]);
+  const portalRows = portalRowsData.map(parsePortalRow);
+  const portalYear = portalRows.map((row) => getFirstDateYear(row.data_recebimento)).find(Boolean) ?? undefined;
+
+  const planejamentoRowsData = parseWorkbookSheetRows(workbook, "Base 2_planejamento", ["AGENDAMENTO", "NRO_CARGA"]);
+  const planejamentoRows = planejamentoRowsData.map((row) => parsePlanejamentoRow(row, portalYear));
+
+  const metasRowsData = parseWorkbookSheetRows(workbook, "UF", ["UF", "MES", "CAPACIDADE"]);
+  const metasRows = metasRowsData.map(parseMetaRow);
+
+  return { portalRows, planejamentoRows, metasRows };
+};
+
+const chunkArray = <T,>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
+type NoShowPortalRow = ReturnType<typeof parsePortalRow>;
+type NoShowPlanejamentoRow = ReturnType<typeof parsePlanejamentoRow>;
+type NoShowMetaRow = ReturnType<typeof parseMetaRow>;
+type NoShowImportacaoHistorico = {
+  id: string;
+  created_at: string | null;
+  nome_arquivo: string | null;
+  mes_referencia: number | null;
+  ano_referencia: number | null;
+  uf: string | null;
+  total_linhas: number | null;
+  status: string | null;
+  observacao: string | null;
+};
+
+const importarNoShowWorkbook = async (
+  nomeArquivo: string,
+  portalRows: NoShowPortalRow[],
+  planejamentoRows: NoShowPlanejamentoRow[],
+  metasRows: NoShowMetaRow[]
+) => {
+  const uf = portalRows.find((row) => row.uf)?.uf ?? metasRows.find((row) => row.uf)?.uf ?? null;
+  const mesReferencia = portalRows
+    .map((row) => parseMonthNumber(row.mes))
+    .find((value) => value != null) ?? metasRows.find((row) => row.mes != null)?.mes ?? null;
+  const anoReferencia = portalRows
+    .map((row) => (row.data_recebimento ? getFirstDateYear(row.data_recebimento) : null))
+    .find((value) => value != null) ?? metasRows.find((row) => row.ano != null)?.ano ?? null;
+
+  const { data: importacao, error: importacaoError } = await db()
+    .from("noshow_importacoes")
+    .insert({
+      nome_arquivo: nomeArquivo,
+      mes_referencia: mesReferencia,
+      ano_referencia: anoReferencia,
+      uf,
+      total_linhas: portalRows.length + planejamentoRows.length + metasRows.length,
+      status: "ativo",
+    })
+    .select("id")
+    .single();
+  if (importacaoError) throw importacaoError;
+  const importacaoId = importacao.id as string;
+
+  const portalChunks = chunkArray(portalRows, 500);
+  for (const chunk of portalChunks) {
+    const payload = chunk.map((row) => ({ importacao_id: importacaoId, ...row }));
+    const { error } = await db().from("noshow_base_portal").insert(payload);
+    if (error) throw error;
+  }
+
+  const planejamentoChunks = chunkArray(planejamentoRows, 500);
+  for (const chunk of planejamentoChunks) {
+    const payload = chunk.map((row) => ({ importacao_id: importacaoId, ...row }));
+    const { error } = await db().from("noshow_planejamento").insert(payload);
+    if (error) throw error;
+  }
+
+  const metasChunks = chunkArray(metasRows, 500);
+  for (const chunk of metasChunks) {
+    const payload = chunk.map((row) => ({ importacao_id: importacaoId, ...row }));
+    const { error } = await db().from("noshow_metas_capacidade").insert(payload);
+    if (error) throw error;
+  }
+
+  return {
+    importacaoId,
+    totalPortal: portalRows.length,
+    totalPlanejamento: planejamentoRows.length,
+    totalMetas: metasRows.length,
+  };
+};
+
+export function RecebimentoNoShowImportacao({ perfil }: Props) {
+  const [arquivos, setArquivos] = useState<File[]>([]);
+  const [preview, setPreview] = useState({ portal: 0, planejamento: 0, metas: 0 });
+  const [rowsPreview, setRowsPreview] = useState<{
+    portal: NoShowPortalRow[];
+    planejamento: NoShowPlanejamentoRow[];
+    metas: NoShowMetaRow[];
+  }>({ portal: [], planejamento: [], metas: [] });
+  const [loading, setLoading] = useState(false);
+  const [historicoLoading, setHistoricoLoading] = useState(false);
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [progresso, setProgresso] = useState("");
+  const [historicoImportacoes, setHistoricoImportacoes] = useState<NoShowImportacaoHistorico[]>([]);
+  const [importacaoSelecionada, setImportacaoSelecionada] = useState<NoShowImportacaoHistorico | null>(null);
+
+  const carregarHistorico = async () => {
+    setHistoricoLoading(true);
+    try {
+      const { data, error } = await db()
+        .from("noshow_importacoes")
+        .select("id,created_at,nome_arquivo,mes_referencia,ano_referencia,uf,total_linhas,status,observacao")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setHistoricoImportacoes((data ?? []) as NoShowImportacaoHistorico[]);
+    } catch (e: any) {
+      console.error("Erro ao carregar historico No Show:", e);
+      setErro((current) => current ?? e?.message ?? "Erro ao carregar histórico de importações.");
+    } finally {
+      setHistoricoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void carregarHistorico();
+  }, []);
+
+  const verDetalhesImportacao = async (item: NoShowImportacaoHistorico) => {
+    setImportacaoSelecionada(item);
+    setErro(null);
+    try {
+      const [{ count: totalPortal }, { count: totalPlanejamento }, { count: totalMetas }] = await Promise.all([
+        db().from("noshow_base_portal").select("id", { count: "exact", head: true }).eq("importacao_id", item.id),
+        db().from("noshow_planejamento").select("id", { count: "exact", head: true }).eq("importacao_id", item.id),
+        db().from("noshow_metas_capacidade").select("id", { count: "exact", head: true }).eq("importacao_id", item.id),
+      ]);
+      setImportacaoSelecionada({
+        ...item,
+        observacao: [
+          item.observacao,
+          `Base 1_portal: ${totalPortal ?? 0}`,
+          `Base 2_planejamento: ${totalPlanejamento ?? 0}`,
+          `Metas: ${totalMetas ?? 0}`,
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      });
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao carregar detalhes da importação.");
+    }
+  };
+
+  const excluirImportacao = async (item: NoShowImportacaoHistorico) => {
+    const confirmado = window.confirm(
+      `Excluir a importação "${item.nome_arquivo ?? item.id}"?\n\nEsta ação remove apenas os registros vinculados a esta importação.`
+    );
+    if (!confirmado) return;
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const { data, error } = await db().rpc("fn_excluir_noshow_importacao", { p_importacao_id: item.id });
+      if (error) throw error;
+      const resumo = Array.isArray(data) ? data[0] : data;
+      setMensagem(
+        `Importação excluída. Portal: ${resumo?.portal_excluidos ?? 0}, Planejamento: ${resumo?.planejamento_excluidos ?? 0}, Metas: ${resumo?.metas_excluidos ?? 0}.`
+      );
+      setImportacaoSelecionada(null);
+      await carregarHistorico();
+    } catch (e: any) {
+      console.error("Erro ao excluir importação No Show:", e);
+      setErro(e?.message ?? "Erro ao excluir importação.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleArquivo = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    setArquivos(files);
+    setErro(null);
+    setMensagem(null);
+    setPreview({ portal: 0, planejamento: 0, metas: 0 });
+    setRowsPreview({ portal: [], planejamento: [], metas: [] });
+
+    if (files.length === 0) return;
+    try {
+      setProgresso("Analisando arquivo...");
+      const resultados = await Promise.all(files.map((file) => parseNoShowWorkbook(file)));
+      const portalRows = resultados.flatMap((resultado) => resultado.portalRows);
+      const planejamentoRows = resultados.flatMap((resultado) => resultado.planejamentoRows);
+      const metasRows = resultados.flatMap((resultado) => resultado.metasRows);
+      setPreview({ portal: portalRows.length, planejamento: planejamentoRows.length, metas: metasRows.length });
+      setRowsPreview({ portal: portalRows.slice(0, 8), planejamento: planejamentoRows.slice(0, 8), metas: metasRows.slice(0, 8) });
+      setProgresso("");
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao analisar arquivo.");
+      setProgresso("");
+    }
+  };
+
+  const importar = async () => {
+    if (arquivos.length === 0) {
+      setErro("Selecione um ou mais arquivos XLSX/TXT para importar.");
+      return;
+    }
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    setProgresso("Preparando importação...");
+
+    try {
+      const resultados = await Promise.all(arquivos.map((file) => parseNoShowWorkbook(file)));
+      const portalRows = resultados.flatMap((resultado) => resultado.portalRows);
+      const planejamentoRows = resultados.flatMap((resultado) => resultado.planejamentoRows);
+      const metasRows = resultados.flatMap((resultado) => resultado.metasRows);
+      setPreview({ portal: portalRows.length, planejamento: planejamentoRows.length, metas: metasRows.length });
+      setRowsPreview({ portal: portalRows.slice(0, 8), planejamento: planejamentoRows.slice(0, 8), metas: metasRows.slice(0, 8) });
+      setProgresso("Importando registros...");
+      const resultado = await importarNoShowWorkbook(arquivos.map((file) => file.name).join(" + "), portalRows, planejamentoRows, metasRows);
+      setMensagem(`Importação concluída: ${resultado.totalPortal} registros Base 1_portal, ${resultado.totalPlanejamento} registros Base 2_planejamento, ${resultado.totalMetas} metas.`);
+      await carregarHistorico();
+    } catch (e: any) {
+      console.error("Erro ao importar No Show:", e);
+      setErro(e?.message ?? "Erro ao importar No Show.");
+    } finally {
+      setLoading(false);
+      setProgresso("");
+    }
+  };
+
+  return (
+    <section style={pageStyle}>
+      <div style={headerStyle}>
+        <div>
+          <h1 style={titleStyle}>Importar No Show</h1>
+          <p style={descStyle}>
+            Importa arquivos XLSX ou TXT de No Show para as tabelas recebimento.noshow_base_portal, recebimento.noshow_planejamento e recebimento.noshow_metas_capacidade.
+          </p>
+        </div>
+        <a href={appHref("/recebimento/importacao")} style={buttonSecondaryStyle}>Voltar para importação de recebimento</a>
+      </div>
+
+      <div style={{ ...cardStyle, display: "grid", gap: 12 }}>
+        <input type="file" accept=".xlsx,.txt,.csv" multiple onChange={handleArquivo} style={inputStyle} />
+        <div>
+          <button type="button" style={buttonPrimaryStyle} onClick={importar} disabled={loading || arquivos.length === 0}>
+            {loading ? "Importando..." : "Importar No Show"}
+          </button>
+          {progresso && <span style={{ marginLeft: 12, color: theme.colors.textMuted, fontSize: 13 }}>{progresso}</span>}
+        </div>
+      </div>
+
+      {mensagem && <div style={{ ...cardStyle, color: theme.colors.success }}>{mensagem}</div>}
+      {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
+
+      <div style={{ ...cardStyle, marginTop: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ margin: 0, color: theme.colors.text, fontSize: 16 }}>Histórico de Importações</h2>
+            <p style={{ margin: "4px 0 0", color: theme.colors.textMuted, fontSize: 12 }}>
+              {historicoLoading ? "Carregando histórico..." : "Últimas importações registradas no No Show."}
+            </p>
+          </div>
+          <button type="button" style={buttonSecondaryStyle} onClick={() => void carregarHistorico()} disabled={historicoLoading}>
+            Recarregar
+          </button>
+        </div>
+
+        <div style={{ overflowX: "auto", marginTop: 12 }}>
+          <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+                {[
+                  "Data/Hora",
+                  "Nome arquivo",
+                  "Mês",
+                  "Ano",
+                  "UF",
+                  "Total linhas",
+                  "Status",
+                  "Observação",
+                  "Ações",
+                ].map((col) => (
+                  <th key={col} style={{ padding: 8, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {historicoImportacoes.map((item) => (
+                <tr key={item.id} style={{ borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                  <td style={{ padding: 8 }}>{item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-"}</td>
+                  <td style={{ padding: 8 }}>{item.nome_arquivo || "-"}</td>
+                  <td style={{ padding: 8 }}>{item.mes_referencia ?? "-"}</td>
+                  <td style={{ padding: 8 }}>{item.ano_referencia ?? "-"}</td>
+                  <td style={{ padding: 8 }}>{item.uf || "-"}</td>
+                  <td style={{ padding: 8 }}>{item.total_linhas ?? 0}</td>
+                  <td style={{ padding: 8 }}>{item.status || "-"}</td>
+                  <td style={{ padding: 8 }}>{item.observacao || "-"}</td>
+                  <td style={{ padding: 8, whiteSpace: "nowrap" }}>
+                    <button type="button" onClick={() => void verDetalhesImportacao(item)} style={{ marginRight: 8 }}>Visualizar detalhes</button>
+                    <button type="button" onClick={() => void excluirImportacao(item)} style={{ color: theme.colors.danger }}>Excluir importação</button>
+                  </td>
+                </tr>
+              ))}
+              {historicoImportacoes.length === 0 && (
+                <tr>
+                  <td colSpan={9} style={{ padding: 12, color: theme.colors.textMuted }}>
+                    Nenhuma importação registrada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {importacaoSelecionada && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${theme.colors.borderSoft}`, background: theme.colors.bgElevated }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <strong style={{ color: theme.colors.text }}>Detalhes da importação</strong>
+              <button type="button" onClick={() => setImportacaoSelecionada(null)} style={buttonSecondaryStyle}>Fechar</button>
+            </div>
+            <div style={{ marginTop: 8, color: theme.colors.textSoft, fontSize: 13, lineHeight: 1.5 }}>
+              <div><strong>Arquivo:</strong> {importacaoSelecionada.nome_arquivo || "-"}</div>
+              <div><strong>Data/Hora:</strong> {importacaoSelecionada.created_at ? new Date(importacaoSelecionada.created_at).toLocaleString("pt-BR") : "-"}</div>
+              <div><strong>Mês/Ano:</strong> {importacaoSelecionada.mes_referencia ?? "-"}/{importacaoSelecionada.ano_referencia ?? "-"}</div>
+              <div><strong>UF:</strong> {importacaoSelecionada.uf || "-"}</div>
+              <div><strong>Total linhas:</strong> {importacaoSelecionada.total_linhas ?? 0}</div>
+              <div><strong>Status:</strong> {importacaoSelecionada.status || "-"}</div>
+              <div><strong>Observação:</strong> {importacaoSelecionada.observacao || "-"}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 12 }}>
+        {[
+          ["Portal rows", preview.portal],
+          ["Planejamento rows", preview.planejamento],
+          ["Metas rows", preview.metas],
+        ].map(([label, value]) => (
+          <div key={label} style={cardStyle}>
+            <div style={metricLabelStyle}>{label}</div>
+            <div style={metricValueStyle}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto", marginTop: 12 }}>
+        <h2 style={{ margin: "0 0 10px", color: theme.colors.text, fontSize: 16 }}>Preview Base 1_portal</h2>
+        <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+              {[
+                "Data Recebimento",
+                "UF",
+                "Ticket",
+                "Fornecedor",
+                "Destinatario",
+                "Status",
+                "Perfil Carga",
+                "Valor",
+                "Paletes",
+                "Caixas",
+              ].map((col) => (
+                <th key={col} style={{ padding: 8, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowsPreview.portal.map((row, index) => (
+              <tr key={index} style={{ borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                <td style={{ padding: 8 }}>{formatDateBR(row.data_recebimento)}</td>
+                <td style={{ padding: 8 }}>{row.uf || "-"}</td>
+                <td style={{ padding: 8 }}>{row.ticket || "-"}</td>
+                <td style={{ padding: 8 }}>{row.fornecedor_nome || "-"}</td>
+                <td style={{ padding: 8 }}>{row.transportadora_nome || "-"}</td>
+                <td style={{ padding: 8 }}>{row.status_recebimento || "-"}</td>
+                <td style={{ padding: 8 }}>{row.perfil_carga || "-"}</td>
+                <td style={{ padding: 8 }}>{formatCurrency(row.valor || 0)}</td>
+                <td style={{ padding: 8 }}>{row.paletes?.toLocaleString?.("pt-BR") ?? row.paletes}</td>
+                <td style={{ padding: 8 }}>{row.caixas?.toLocaleString?.("pt-BR") ?? row.caixas}</td>
+              </tr>
+            ))}
+            {rowsPreview.portal.length === 0 && (
+              <tr><td colSpan={10} style={{ padding: 12, color: theme.colors.textMuted }}>Selecione um arquivo para visualizar o preview do portal.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto", marginTop: 12 }}>
+        <h2 style={{ margin: "0 0 10px", color: theme.colors.text, fontSize: 16 }}>Preview Base 2_planejamento</h2>
+        <table style={{ width: "100%", minWidth: 1000, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+              {[
+                "Data Referencia",
+                "UF",
+                "Fornecedor",
+                "Nro Carga",
+                "Hora Chegada",
+                "Estivada",
+                "Repaletizada",
+                "Paletizada",
+                "Itens",
+                "Paletes",
+              ].map((col) => (
+                <th key={col} style={{ padding: 8, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowsPreview.planejamento.map((row, index) => (
+              <tr key={index} style={{ borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                <td style={{ padding: 8 }}>{formatDateBR(row.data_referencia)}</td>
+                <td style={{ padding: 8 }}>{row.uf || "-"}</td>
+                <td style={{ padding: 8 }}>{row.fornecedor_nome || "-"}</td>
+                <td style={{ padding: 8 }}>{row.nro_carga || "-"}</td>
+                <td style={{ padding: 8 }}>{row.hora_chegada || "-"}</td>
+                <td style={{ padding: 8 }}>{row.estivada?.toLocaleString?.("pt-BR") ?? row.estivada}</td>
+                <td style={{ padding: 8 }}>{row.repaletizada?.toLocaleString?.("pt-BR") ?? row.repaletizada}</td>
+                <td style={{ padding: 8 }}>{row.paletizada?.toLocaleString?.("pt-BR") ?? row.paletizada}</td>
+                <td style={{ padding: 8 }}>{row.itens?.toLocaleString?.("pt-BR") ?? row.itens}</td>
+                <td style={{ padding: 8 }}>{row.paletes?.toLocaleString?.("pt-BR") ?? row.paletes}</td>
+              </tr>
+            ))}
+            {rowsPreview.planejamento.length === 0 && (
+              <tr><td colSpan={10} style={{ padding: 12, color: theme.colors.textMuted }}>Selecione um arquivo para visualizar o preview do planejamento.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto", marginTop: 12 }}>
+        <h2 style={{ margin: "0 0 10px", color: theme.colors.text, fontSize: 16 }}>Preview UF / Metas</h2>
+        <table style={{ width: "100%", minWidth: 900, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+              {[
+                "UF",
+                "Mês",
+                "Ano",
+                "Dias Recebimento",
+                "Feriados",
+                "Capacidade Dia",
+                "Meta Recebimento Mes",
+              ].map((col) => (
+                <th key={col} style={{ padding: 8, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowsPreview.metas.map((row, index) => (
+              <tr key={index} style={{ borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                <td style={{ padding: 8 }}>{row.uf || "-"}</td>
+                <td style={{ padding: 8 }}>{row.mes ?? "-"}</td>
+                <td style={{ padding: 8 }}>{row.ano ?? "-"}</td>
+                <td style={{ padding: 8 }}>{row.dias_recebimento?.toLocaleString?.("pt-BR") ?? row.dias_recebimento}</td>
+                <td style={{ padding: 8 }}>{row.feriados?.toLocaleString?.("pt-BR") ?? row.feriados}</td>
+                <td style={{ padding: 8 }}>{row.capacidade_dia?.toLocaleString?.("pt-BR") ?? row.capacidade_dia}</td>
+                <td style={{ padding: 8 }}>{row.meta_recebimento_mes?.toLocaleString?.("pt-BR") ?? row.meta_recebimento_mes}</td>
+              </tr>
+            ))}
+            {rowsPreview.metas.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: 12, color: theme.colors.textMuted }}>Selecione um arquivo para visualizar o preview de metas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 const parseExcelSerialDate = (value: string) => {
   const serial = Number(value);
@@ -1229,6 +2055,8 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
   const [fornecedorContatos, setFornecedorContatos] = useState<FornecedorContato[]>([]);
   const [transportadoraContatos, setTransportadoraContatos] = useState<TransportadoraContato[]>([]);
   const [historico, setHistorico] = useState<ConfirmacaoHistorico[]>([]);
+  const [selectedFornecedorContatoId, setSelectedFornecedorContatoId] = useState<string | null>(null);
+  const [selectedTransportadoraContatoId, setSelectedTransportadoraContatoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [filtros, setFiltros] = useState({
@@ -1240,7 +2068,16 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
     unidade: "",
     possuiNota: "",
   });
-  const [registro, setRegistro] = useState({ canal: "WhatsApp", contato_nome: "", contato_tipo: "", resultado: "Confirmado", observacao: "" });
+  const [registro, setRegistro] = useState({
+    canal: "WhatsApp",
+    contato_nome: "",
+    contato_tipo: "",
+    resultado: "Confirmado",
+    observacao: "",
+    fornecedor_contato_id: null as string | null,
+    transportadora_contato_id: null as string | null,
+    contato_origem: null as string | null,
+  });
 
   const formatNumber = (value: number | string | null | undefined) => toNumber(value).toLocaleString("pt-BR");
   const formatTime = (value: string | null | undefined) => (value ? value.slice(0, 5) : "-");
@@ -1339,7 +2176,18 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
 
   const abrirDetalhe = async (row: GestaoAgendaRow) => {
     setSelecionada(row);
-    setRegistro({ canal: "WhatsApp", contato_nome: "", contato_tipo: "", resultado: "Confirmado", observacao: "" });
+    setSelectedFornecedorContatoId(null);
+    setSelectedTransportadoraContatoId(null);
+    setRegistro({
+      canal: "WhatsApp",
+      contato_nome: "",
+      contato_tipo: "",
+      resultado: "Confirmado",
+      observacao: "",
+      fornecedor_contato_id: null,
+      transportadora_contato_id: null,
+      contato_origem: null,
+    });
     const [fc, tc, hist] = await Promise.all([
       row.fornecedor_id
         ? db().from("fornecedor_contatos").select("*").eq("fornecedor_id", row.fornecedor_id).eq("ativo", true).order("principal", { ascending: false })
@@ -1349,9 +2197,18 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
         : Promise.resolve({ data: [], error: null }),
       db().from("confirmacao_agenda_historico").select("*").eq("gestao_agenda_id", row.id).order("created_at", { ascending: false }),
     ]);
-    setFornecedorContatos((fc.data ?? []) as FornecedorContato[]);
-    setTransportadoraContatos((tc.data ?? []) as TransportadoraContato[]);
+    const fornecedorContatos = (fc.data ?? []) as FornecedorContato[];
+    const transportadoraContatos = (tc.data ?? []) as TransportadoraContato[];
+    setFornecedorContatos(fornecedorContatos);
+    setTransportadoraContatos(transportadoraContatos);
     setHistorico((hist.data ?? []) as ConfirmacaoHistorico[]);
+
+    if (fornecedorContatos.length > 0) {
+      setSelectedFornecedorContatoId(fornecedorContatos.find((c) => c.principal)?.id ?? fornecedorContatos[0].id);
+    }
+    if (transportadoraContatos.length > 0) {
+      setSelectedTransportadoraContatoId(transportadoraContatos.find((c) => c.principal)?.id ?? transportadoraContatos[0].id);
+    }
   };
 
   const atualizarConfirmacao = async (row: GestaoAgendaRow, status: string, observacao = "", canal = "Outro", contatoNome = "", contatoTipo = "") => {
@@ -1370,7 +2227,8 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
       setErro("Erro ao atualizar confirmação.");
       return;
     }
-    await db().from("confirmacao_agenda_historico").insert({
+
+    const payload: any = {
       gestao_agenda_id: row.id,
       usuario_id: perfil.id,
       canal,
@@ -1378,14 +2236,46 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
       contato_tipo: contatoTipo || null,
       resultado: status,
       observacao: observacao || null,
-    });
+    };
+
+    if (selecionada?.id === row.id) {
+      if (selectedFornecedorContatoId) {
+        payload.fornecedor_contato_id = selectedFornecedorContatoId;
+        payload.contato_origem = "contato_fornecedor";
+      } else if (row.fornecedor_whatsapp || row.fornecedor_email) {
+        payload.contato_origem = "base_fornecedor";
+      }
+
+      if (selectedTransportadoraContatoId) {
+        payload.transportadora_contato_id = selectedTransportadoraContatoId;
+        payload.contato_origem = payload.contato_origem ? payload.contato_origem : "contato_transportadora";
+      } else if (row.transportadora_whatsapp || row.transportadora_email) {
+        payload.contato_origem = payload.contato_origem ? payload.contato_origem : "base_transportadora";
+      }
+    } else {
+      if (row.fornecedor_whatsapp || row.fornecedor_email) {
+        payload.contato_origem = "base_fornecedor";
+      }
+      if (row.transportadora_whatsapp || row.transportadora_email) {
+        payload.contato_origem = payload.contato_origem ? payload.contato_origem : "base_transportadora";
+      }
+    }
+
+    await db().from("confirmacao_agenda_historico").insert(payload);
     await carregar();
     if (selecionada?.id === row.id) await abrirDetalhe({ ...row, status_confirmacao: status, observacao });
   };
 
   const salvarHistorico = async () => {
     if (!selecionada) return;
-    await atualizarConfirmacao(selecionada, registro.resultado, registro.observacao, registro.canal, registro.contato_nome, registro.contato_tipo);
+    await atualizarConfirmacao(
+      selecionada,
+      registro.resultado,
+      registro.observacao,
+      registro.canal,
+      registro.contato_nome,
+      registro.contato_tipo
+    );
     await abrirDetalhe(selecionada);
   };
 
@@ -1395,6 +2285,69 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
     fornecedorEmail: mailtoHref(row.fornecedor_email, mensagemFornecedor(row)),
     transportadoraEmail: mailtoHref(row.transportadora_email, mensagemTransportadora(row)),
   });
+
+  const getSelectedFornecedorContato = (row: GestaoAgendaRow) => {
+    const selected = fornecedorContatos.find((contato) => contato.id === selectedFornecedorContatoId);
+    if (selected) return selected;
+    if (row.fornecedor_whatsapp || row.fornecedor_email) {
+      return {
+        id: "base_fornecedor",
+        fornecedor_id: row.fornecedor_id ?? "",
+        nome: row.fornecedor_nome ?? "Fornecedor",
+        cargo: null,
+        tipo: "Cadastro",
+        telefone: null,
+        whatsapp: row.fornecedor_whatsapp,
+        email: row.fornecedor_email,
+        principal: true,
+        ativo: true,
+        observacao: null,
+      } as FornecedorContato;
+    }
+    return null;
+  };
+
+  const getSelectedTransportadoraContato = (row: GestaoAgendaRow) => {
+    const selected = transportadoraContatos.find((contato) => contato.id === selectedTransportadoraContatoId);
+    if (selected) return selected;
+    if (row.transportadora_whatsapp || row.transportadora_email) {
+      return {
+        id: "base_transportadora",
+        transportadora_id: row.transportadora_id ?? "",
+        nome: row.transportadora_nome ?? "Transportadora",
+        cargo: null,
+        telefone: null,
+        whatsapp: row.transportadora_whatsapp,
+        email: row.transportadora_email,
+        principal: true,
+        ativo: true,
+        observacao: null,
+      } as TransportadoraContato;
+    }
+    return null;
+  };
+
+  const selectedFornecedorContato = selecionada ? getSelectedFornecedorContato(selecionada) : null;
+  const selectedTransportadoraContato = selecionada ? getSelectedTransportadoraContato(selecionada) : null;
+
+  const handlePrefillRegistro = (canal: string, contato: { nome: string; tipo?: string | null; cargo?: string | null; id: string }, origem: string) => {
+    setRegistro((prev) => ({
+      ...prev,
+      canal,
+      contato_nome: contato.nome,
+      contato_tipo: contato.tipo || contato.cargo || "",
+      fornecedor_contato_id: origem === "contato_fornecedor" ? (contato.id.startsWith("base_") ? null : contato.id) : null,
+      transportadora_contato_id: origem === "contato_transportadora" ? (contato.id.startsWith("base_") ? null : contato.id) : null,
+      contato_origem: origem,
+    }));
+
+    if (origem === "contato_fornecedor") {
+      setSelectedFornecedorContatoId(contato.id.startsWith("base_") ? null : contato.id);
+    }
+    if (origem === "contato_transportadora") {
+      setSelectedTransportadoraContatoId(contato.id.startsWith("base_") ? null : contato.id);
+    }
+  };
 
   return (
     <section style={pageStyle}>
@@ -1515,21 +2468,21 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                 <button type="button" style={buttonSecondaryStyle} onClick={() => void copyText(mensagemConfirmacaoAgenda(selecionada, "transportadora"))}>
                   Copiar mensagem
                 </button>
-                {whatsappHref(selecionada.fornecedor_whatsapp, mensagemFornecedor(selecionada)) && (
-                  <a style={buttonSecondaryStyle} href={whatsappHref(selecionada.fornecedor_whatsapp, mensagemFornecedor(selecionada))!} target="_blank" rel="noreferrer">
+                {whatsappHref(selectedFornecedorContato?.whatsapp ?? selecionada.fornecedor_whatsapp, mensagemFornecedor(selecionada)) && (
+                  <a style={buttonSecondaryStyle} href={whatsappHref(selectedFornecedorContato?.whatsapp ?? selecionada.fornecedor_whatsapp, mensagemFornecedor(selecionada))!} target="_blank" rel="noreferrer">
                     WhatsApp fornecedor
                   </a>
                 )}
-                {whatsappHref(selecionada.transportadora_whatsapp, mensagemTransportadora(selecionada)) && (
-                  <a style={buttonSecondaryStyle} href={whatsappHref(selecionada.transportadora_whatsapp, mensagemTransportadora(selecionada))!} target="_blank" rel="noreferrer">
+                {whatsappHref(selectedTransportadoraContato?.whatsapp ?? selecionada.transportadora_whatsapp, mensagemTransportadora(selecionada)) && (
+                  <a style={buttonSecondaryStyle} href={whatsappHref(selectedTransportadoraContato?.whatsapp ?? selecionada.transportadora_whatsapp, mensagemTransportadora(selecionada))!} target="_blank" rel="noreferrer">
                     WhatsApp transportadora
                   </a>
                 )}
-                {mailtoHref(selecionada.fornecedor_email, mensagemFornecedor(selecionada)) && (
-                  <a style={buttonSecondaryStyle} href={mailtoHref(selecionada.fornecedor_email, mensagemFornecedor(selecionada))!}>E-mail fornecedor</a>
+                {mailtoHref(selectedFornecedorContato?.email ?? selecionada.fornecedor_email, mensagemFornecedor(selecionada)) && (
+                  <a style={buttonSecondaryStyle} href={mailtoHref(selectedFornecedorContato?.email ?? selecionada.fornecedor_email, mensagemFornecedor(selecionada))!}>E-mail fornecedor</a>
                 )}
-                {mailtoHref(selecionada.transportadora_email, mensagemTransportadora(selecionada)) && (
-                  <a style={buttonSecondaryStyle} href={mailtoHref(selecionada.transportadora_email, mensagemTransportadora(selecionada))!}>E-mail transportadora</a>
+                {mailtoHref(selectedTransportadoraContato?.email ?? selecionada.transportadora_email, mensagemTransportadora(selecionada)) && (
+                  <a style={buttonSecondaryStyle} href={mailtoHref(selectedTransportadoraContato?.email ?? selecionada.transportadora_email, mensagemTransportadora(selecionada))!}>E-mail transportadora</a>
                 )}
               </div>
             </div>
@@ -1543,7 +2496,24 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <div style={{ color: theme.colors.text, fontWeight: 800, marginBottom: 8 }}>Representantes / contatos</div>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+                    <label style={{ fontSize: 13, color: theme.colors.textSoft }}>
+                      Contato selecionado:
+                      <select
+                        style={{ ...inputStyle, marginTop: 6 }}
+                        value={selectedFornecedorContatoId ?? ""}
+                        onChange={(e) => setSelectedFornecedorContatoId(e.target.value || null)}
+                      >
+                        {fornecedorContatos.map((contato) => (
+                          <option key={contato.id} value={contato.id}>
+                            {contato.nome} {contato.principal ? "(principal)" : ""}
+                          </option>
+                        ))}
+                        {selecionada.fornecedor_whatsapp || selecionada.fornecedor_email ? (
+                          <option value="">Base do fornecedor</option>
+                        ) : null}
+                      </select>
+                    </label>
                     {[...fornecedorContatos, ...(selecionada.fornecedor_whatsapp || selecionada.fornecedor_email ? [{ id: "fornecedor-base-card", fornecedor_id: selecionada.fornecedor_id ?? "", nome: selecionada.fornecedor_nome ?? "Fornecedor", cargo: null, tipo: "Cadastro", telefone: null, whatsapp: selecionada.fornecedor_whatsapp, email: selecionada.fornecedor_email, principal: true, ativo: true, observacao: null }] : [])].map((contato) => {
                       const wa = whatsappHref(contato.whatsapp || contato.telefone, mensagemFornecedor(selecionada));
                       return (
@@ -1553,6 +2523,13 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                             {wa ? <a style={buttonSecondaryStyle} href={wa} target="_blank" rel="noreferrer">WhatsApp Web</a> : null}
                             {contato.email ? <a style={buttonSecondaryStyle} href={mailtoHref(contato.email, mensagemFornecedor(selecionada)) ?? "#"}>E-mail</a> : null}
+                            <button
+                              type="button"
+                              style={buttonSecondaryStyle}
+                              onClick={() => handlePrefillRegistro(contato.whatsapp ? "WhatsApp" : contato.email ? "E-mail" : "Outro", contato, "contato_fornecedor")}
+                            >
+                              Usar contato
+                            </button>
                           </div>
                         </div>
                       );
@@ -1579,7 +2556,24 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <div style={{ color: theme.colors.text, fontWeight: 800, marginBottom: 8 }}>Contatos da transportadora</div>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+                    <label style={{ fontSize: 13, color: theme.colors.textSoft }}>
+                      Contato selecionado:
+                      <select
+                        style={{ ...inputStyle, marginTop: 6 }}
+                        value={selectedTransportadoraContatoId ?? ""}
+                        onChange={(e) => setSelectedTransportadoraContatoId(e.target.value || null)}
+                      >
+                        {transportadoraContatos.map((contato) => (
+                          <option key={contato.id} value={contato.id}>
+                            {contato.nome} {contato.principal ? "(principal)" : ""}
+                          </option>
+                        ))}
+                        {selecionada.transportadora_whatsapp || selecionada.transportadora_email ? (
+                          <option value="">Base da transportadora</option>
+                        ) : null}
+                      </select>
+                    </label>
                     {[...transportadoraContatos, ...(selecionada.transportadora_whatsapp || selecionada.transportadora_email ? [{ id: "transp-base-card", transportadora_id: selecionada.transportadora_id ?? "", nome: selecionada.transportadora_nome ?? "Transportadora", cargo: null, telefone: null, whatsapp: selecionada.transportadora_whatsapp, email: selecionada.transportadora_email, principal: true, ativo: true, observacao: null }] : [])].map((contato) => {
                       const wa = whatsappHref(contato.whatsapp || contato.telefone, mensagemTransportadora(selecionada));
                       return (
@@ -1589,6 +2583,13 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                             {wa ? <a style={buttonSecondaryStyle} href={wa} target="_blank" rel="noreferrer">WhatsApp Web</a> : null}
                             {contato.email ? <a style={buttonSecondaryStyle} href={mailtoHref(contato.email, mensagemTransportadora(selecionada)) ?? "#"}>E-mail</a> : null}
+                            <button
+                              type="button"
+                              style={buttonSecondaryStyle}
+                              onClick={() => handlePrefillRegistro(contato.whatsapp ? "WhatsApp" : contato.email ? "E-mail" : "Outro", contato, "contato_transportadora")}
+                            >
+                              Usar contato
+                            </button>
                           </div>
                         </div>
                       );
@@ -2484,6 +3485,7 @@ export function RecebimentoFornecedores({ perfil: _perfil }: Props) {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [selecionado, setSelecionado] = useState<Fornecedor | null>(null);
   const [contatos, setContatos] = useState<FornecedorContato[]>([]);
+  const [contatoEditId, setContatoEditId] = useState<string | null>(null);
   const [transportadoras, setTransportadoras] = useState<Transportadora[]>([]);
   const [transportadoraVinculo, setTransportadoraVinculo] = useState("");
   const [busca, setBusca] = useState("");
@@ -2615,8 +3617,21 @@ export function RecebimentoFornecedores({ perfil: _perfil }: Props) {
   const salvarContato = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selecionado || !contatoForm.nome.trim()) return;
-    const { error } = await db().from("fornecedor_contatos").insert({
-      fornecedor_id: selecionado.id,
+
+    setErro(null);
+    if (contatoForm.principal) {
+      const { error: resetError } = await db()
+        .from("fornecedor_contatos")
+        .update({ principal: false })
+        .eq("fornecedor_id", selecionado.id)
+        .eq("principal", true);
+      if (resetError) {
+        setErro("Erro ao atualizar contato principal do fornecedor.");
+        return;
+      }
+    }
+
+    const payload = {
       nome: contatoForm.nome.trim(),
       cargo: contatoForm.cargo.trim() || null,
       tipo: contatoForm.tipo.trim() || null,
@@ -2626,12 +3641,20 @@ export function RecebimentoFornecedores({ perfil: _perfil }: Props) {
       principal: contatoForm.principal,
       ativo: true,
       observacao: contatoForm.observacao.trim() || null,
-    });
+    };
+
+    const query = contatoEditId
+      ? db().from("fornecedor_contatos").update(payload).eq("id", contatoEditId)
+      : db().from("fornecedor_contatos").insert({ fornecedor_id: selecionado.id, ...payload });
+
+    const { error } = await query;
     if (error) {
       setErro("Erro ao salvar contato do fornecedor.");
       return;
     }
+
     setContatoForm({ nome: "", cargo: "", tipo: "", telefone: "", whatsapp: "", email: "", principal: false, observacao: "" });
+    setContatoEditId(null);
     await carregarContatos(selecionado);
   };
 
@@ -2642,6 +3665,48 @@ export function RecebimentoFornecedores({ perfil: _perfil }: Props) {
       .upsert({ fornecedor_id: selecionado.id, transportadora_id: transportadoraVinculo }, { onConflict: "fornecedor_id,transportadora_id" });
     if (error) setErro("Erro ao vincular transportadora.");
     else setTransportadoraVinculo("");
+  };
+
+  const editarContato = (contato: FornecedorContato) => {
+    setContatoEditId(contato.id);
+    setContatoForm({
+      nome: contato.nome,
+      cargo: contato.cargo ?? "",
+      tipo: contato.tipo ?? "",
+      telefone: contato.telefone ?? "",
+      whatsapp: contato.whatsapp ?? "",
+      email: contato.email ?? "",
+      principal: !!contato.principal,
+      observacao: contato.observacao ?? "",
+    });
+  };
+
+  const toggleFornecedorContatoAtivo = async (contato: FornecedorContato) => {
+    const { error } = await db().from("fornecedor_contatos").update({ ativo: !contato.ativo }).eq("id", contato.id);
+    if (error) {
+      setErro("Erro ao atualizar status do contato.");
+      return;
+    }
+    if (selecionado) await carregarContatos(selecionado);
+  };
+
+  const definirContatoPrincipalFornecedor = async (contato: FornecedorContato) => {
+    if (!selecionado) return;
+    const { error: resetError } = await db()
+      .from("fornecedor_contatos")
+      .update({ principal: false })
+      .eq("fornecedor_id", selecionado.id)
+      .eq("principal", true);
+    if (resetError) {
+      setErro("Erro ao atualizar contato principal.");
+      return;
+    }
+    const { error } = await db().from("fornecedor_contatos").update({ principal: true }).eq("id", contato.id);
+    if (error) {
+      setErro("Erro ao definir contato principal.");
+      return;
+    }
+    await carregarContatos(selecionado);
   };
 
   const whatsappLink = (whatsapp: string | null) => {
@@ -2777,6 +3842,17 @@ export function RecebimentoFornecedores({ perfil: _perfil }: Props) {
               <div key={contato.id} style={{ borderTop: `1px solid ${theme.colors.borderSoft}`, paddingTop: 8 }}>
                 <div style={{ fontWeight: 800 }}>{contato.nome} {contato.principal ? "(principal)" : ""}</div>
                 <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>{contato.tipo ?? contato.cargo ?? "-"} | {contato.email ?? "-"}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  <button type="button" style={buttonSecondaryStyle} onClick={() => editarContato(contato)}>Editar</button>
+                  <button type="button" style={buttonSecondaryStyle} onClick={() => toggleFornecedorContatoAtivo(contato)}>
+                    {contato.ativo ? "Desativar" : "Ativar"}
+                  </button>
+                  {!contato.principal && (
+                    <button type="button" style={buttonSecondaryStyle} onClick={() => definirContatoPrincipalFornecedor(contato)}>
+                      Definir principal
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {contatos.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 13 }}>Nenhum contato cadastrado.</div>}
@@ -2809,6 +3885,7 @@ export function RecebimentoTransportadoras({ perfil: _perfil }: Props) {
     observacao: "",
   });
   const [contatoForm, setContatoForm] = useState({ nome: "", cargo: "", telefone: "", whatsapp: "", email: "", principal: false, observacao: "" });
+  const [contatoEditIdTransportadora, setContatoEditIdTransportadora] = useState<string | null>(null);
 
   const carregar = async () => {
     setLoading(true);
@@ -2924,7 +4001,21 @@ export function RecebimentoTransportadoras({ perfil: _perfil }: Props) {
   const salvarContato = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selecionada || !contatoForm.nome.trim()) return;
-    const { error } = await db().from("transportadora_contatos").insert({
+
+    setErro(null);
+    if (contatoForm.principal) {
+      const { error: resetError } = await db()
+        .from("transportadora_contatos")
+        .update({ principal: false })
+        .eq("transportadora_id", selecionada.id)
+        .eq("principal", true);
+      if (resetError) {
+        setErro("Erro ao atualizar contato principal da transportadora.");
+        return;
+      }
+    }
+
+    const payload = {
       transportadora_id: selecionada.id,
       nome: contatoForm.nome.trim(),
       cargo: contatoForm.cargo.trim() || null,
@@ -2934,12 +4025,61 @@ export function RecebimentoTransportadoras({ perfil: _perfil }: Props) {
       principal: contatoForm.principal,
       ativo: true,
       observacao: contatoForm.observacao.trim() || null,
-    });
+    };
+
+    const query = contatoEditIdTransportadora
+      ? db().from("transportadora_contatos").update(payload).eq("id", contatoEditIdTransportadora)
+      : db().from("transportadora_contatos").insert(payload);
+
+    const { error } = await query;
     if (error) {
       setErro("Erro ao salvar contato.");
       return;
     }
+
     setContatoForm({ nome: "", cargo: "", telefone: "", whatsapp: "", email: "", principal: false, observacao: "" });
+    setContatoEditIdTransportadora(null);
+    await carregarContatos(selecionada);
+  };
+
+  const editarContatoTransportadora = (contato: TransportadoraContato) => {
+    setContatoEditIdTransportadora(contato.id);
+    setContatoForm({
+      nome: contato.nome,
+      cargo: contato.cargo ?? "",
+      telefone: contato.telefone ?? "",
+      whatsapp: contato.whatsapp ?? "",
+      email: contato.email ?? "",
+      principal: !!contato.principal,
+      observacao: contato.observacao ?? "",
+    });
+  };
+
+  const toggleTransportadoraContatoAtivo = async (contato: TransportadoraContato) => {
+    const { error } = await db().from("transportadora_contatos").update({ ativo: !contato.ativo }).eq("id", contato.id);
+    if (error) {
+      setErro("Erro ao atualizar status do contato.");
+      return;
+    }
+    if (selecionada) await carregarContatos(selecionada);
+  };
+
+  const definirContatoPrincipalTransportadora = async (contato: TransportadoraContato) => {
+    if (!selecionada) return;
+    const { error: resetError } = await db()
+      .from("transportadora_contatos")
+      .update({ principal: false })
+      .eq("transportadora_id", selecionada.id)
+      .eq("principal", true);
+    if (resetError) {
+      setErro("Erro ao atualizar contato principal.");
+      return;
+    }
+    const { error } = await db().from("transportadora_contatos").update({ principal: true }).eq("id", contato.id);
+    if (error) {
+      setErro("Erro ao definir contato principal.");
+      return;
+    }
     await carregarContatos(selecionada);
   };
 
@@ -3525,6 +4665,7 @@ export function RecebimentoImportacao({ perfil }: Props) {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [preview, setPreview] = useState({ linhas: 0, agendamentos: 0, itens: 0 });
+  const [importacoes, setImportacoes] = useState<any[]>([]);
 
   const analisarArquivo = async (file: File) => {
     if (await isGestaoAgendaFile(file)) {
@@ -3845,6 +4986,63 @@ export function RecebimentoImportacao({ perfil }: Props) {
     }
   };
 
+  async function carregarHistorico() {
+    try {
+      const { data, error } = await db()
+        .from('importacoes')
+        .select('id,nome_arquivo,tipo_importacao,data_importacao,quantidade_linhas,quantidade_processadas,quantidade_erro,status,observacao')
+        .order('data_importacao', { ascending: false });
+      if (error) throw error;
+      setImportacoes(data ?? []);
+    } catch (err: any) {
+      console.error('Erro ao carregar historico de importacoes.', err);
+    }
+  }
+
+  useEffect(() => {
+    void carregarHistorico();
+  }, []);
+
+  async function excluirImportacao(item: any) {
+    const nome = item.nome_arquivo || item.tipo_importacao || item.id;
+    const confirmado = window.confirm(
+      `Excluir a importacao "${nome}"?\n\nSomente os registros ligados a este arquivo serao removidos do Supabase. Esta acao nao apaga outras bases.`,
+    );
+    if (!confirmado) return;
+
+    setLoading(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const id = String(item.id);
+
+      // verificar se existem registros vinculados
+      const counts = await Promise.all([
+        db().from('agendamento_itens').select('id', { count: 'exact', head: true }).eq('importacao_id', id),
+        db().from('agendamento_historico').select('id', { count: 'exact', head: true }).eq('importacao_id', id),
+        db().from('agendamentos').select('id', { count: 'exact', head: true }).eq('importacao_id', id),
+        db().from('gestao_agenda').select('id', { count: 'exact', head: true }).eq('importacao_id', id),
+      ]);
+
+      const totalLinked = counts.reduce((acc: number, r: any) => acc + (r?.count ?? 0), 0);
+      if (totalLinked === 0) {
+        window.alert('Importacao antiga sem vínculo rastreável. Exclusão bloqueada.');
+        return;
+      }
+
+      // chamar a função SQL para exclusão segura
+      const { data: rpcData, error: rpcError } = await db().rpc('fn_excluir_importacao', { p_importacao_id: id });
+      if (rpcError) throw rpcError;
+      setMensagem(`Importacao "${nome}" excluida. Resumo: ${JSON.stringify(rpcData?.[0] ?? rpcData)}`);
+      await carregarHistorico();
+    } catch (err: any) {
+      console.error(err);
+      setErro(err?.message ?? 'Erro ao excluir importacao.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <section style={pageStyle}>
       <div>
@@ -3879,6 +5077,47 @@ export function RecebimentoImportacao({ perfil }: Props) {
 
       {mensagem && <div style={{ ...cardStyle, color: theme.colors.success }}>{mensagem}</div>}
       {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
+      <div style={{ ...cardStyle }}>
+        <h2 style={{ margin: 0, color: theme.colors.neonGreen }}>Histórico de Importações</h2>
+        {importacoes.length === 0 ? (
+          <div style={{ marginTop: 8, color: theme.colors.textSoft }}>Nenhuma importação registrada.</div>
+        ) : (
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Data/Hora</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Tipo</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Arquivo</th>
+                  <th style={{ textAlign: 'right', padding: 8 }}>Linhas</th>
+                  <th style={{ textAlign: 'right', padding: 8 }}>Processadas</th>
+                  <th style={{ textAlign: 'right', padding: 8 }}>Erros</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importacoes.map((it) => (
+                  <tr key={it.id}>
+                    <td style={{ padding: 8 }}>{it.data_importacao ? new Date(it.data_importacao).toLocaleString() : ''}</td>
+                    <td style={{ padding: 8 }}>{it.tipo_importacao}</td>
+                    <td style={{ padding: 8 }}>{it.nome_arquivo}</td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>{it.quantidade_linhas ?? it.total_linhas ?? 0}</td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>{it.quantidade_processadas ?? 0}</td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>{it.quantidade_erro ?? 0}</td>
+                    <td style={{ padding: 8 }}>{it.status}</td>
+                    <td style={{ padding: 8 }}>
+                      <button type="button" onClick={() => window.alert(JSON.stringify(it, null, 2))} style={{ marginRight: 8 }}>Visualizar</button>
+                      <button type="button" onClick={() => void excluirImportacao(it)} style={{ color: theme.colors.danger }}>Excluir</button>
+                      <button type="button" disabled style={{ marginLeft: 8 }}>Reprocessar (Em breve)</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
