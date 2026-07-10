@@ -5467,8 +5467,29 @@ const isGestaoAgendaFile = async (file: File) => {
 
 const importarGestaoAgendaRows = async (
   rowsGestao: GestaoAgendaImportRow[],
+  nomeArquivo: string,
+  usuarioId: string,
   onProgress?: (current: number, total: number) => void
 ) => {
+  const primeiraData = rowsGestao.find((row) => row.data_agenda)?.data_agenda ?? null;
+  const { data: importacao, error: importacaoError } = await db()
+    .from("importacoes")
+    .insert({
+      nome_arquivo: nomeArquivo,
+      data_referencia: primeiraData,
+      total_linhas: rowsGestao.length,
+      usuario_id: usuarioId,
+      tipo_importacao: "agenda_futura",
+      quantidade_linhas: rowsGestao.length,
+      quantidade_processadas: 0,
+      quantidade_erro: 0,
+      status: "Importando",
+    })
+    .select("id")
+    .single();
+  if (importacaoError) throw importacaoError;
+  const importacaoId = importacao.id as string;
+
   const fornecedoresCache = new Map<string, { id: string | null; criado: boolean }>();
   const transportadorasCache = new Map<string, { id: string | null; criado: boolean }>();
   const erros: string[] = [];
@@ -5565,6 +5586,7 @@ const importarGestaoAgendaRows = async (
         fornecedor_id: fornecedorId,
         transportadora_id: transportadoraId,
         possui_nota: row.notas_fiscais.trim().length > 0,
+        importacao_id: importacaoId,
         ultima_importacao_id: importacaoId,
         ultima_atualizacao_importacao: new Date().toISOString(),
       };
@@ -5612,6 +5634,18 @@ const importarGestaoAgendaRows = async (
     }
   }
 
+  const { error: importacaoUpdateError } = await db()
+    .from("importacoes")
+    .update({
+      quantidade_processadas: agendasNovas + agendasAtualizadas,
+      quantidade_erro: erros.length,
+      status: erros.length > 0 ? "Erro" : "Concluída",
+      data_finalizacao: new Date().toISOString(),
+      observacao: erros.length > 0 ? `Importacao concluida com ${erros.length} erro(s).` : null,
+    })
+    .eq("id", importacaoId);
+  if (importacaoUpdateError) throw importacaoUpdateError;
+
   return {
     totalImportado: agendasNovas + agendasAtualizadas,
     fornecedoresCriados,
@@ -5623,10 +5657,13 @@ const importarGestaoAgendaRows = async (
   };
 };
 
-const importarGestaoAgendaFile = async (file: File, onProgress?: (current: number, total: number) => void) =>
-  importarGestaoAgendaRows(await parseGestaoAgendaRows(file), onProgress);
+const importarGestaoAgendaFile = async (
+  file: File,
+  usuarioId: string,
+  onProgress?: (current: number, total: number) => void
+) => importarGestaoAgendaRows(await parseGestaoAgendaRows(file), file.name, usuarioId, onProgress);
 
-export function RecebimentoImportarAgendaFutura({ perfil: _perfil }: Props) {
+export function RecebimentoImportarAgendaFutura({ perfil }: Props) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [linhasImportacao, setLinhasImportacao] = useState<GestaoAgendaImportRow[]>([]);
   const [preview, setPreview] = useState<GestaoAgendaImportRow[]>([]);
@@ -5676,7 +5713,7 @@ export function RecebimentoImportarAgendaFutura({ perfil: _perfil }: Props) {
     try {
       const linhas = linhasImportacao.length > 0 ? linhasImportacao : await parseGestaoAgendaRows(arquivo);
       setLinhasImportacao(linhas);
-      const resultado = await importarGestaoAgendaRows(linhas, (current, total) => {
+      const resultado = await importarGestaoAgendaRows(linhas, arquivo.name, perfil.id, (current, total) => {
         if (current === 1 || current === total || current % 10 === 0) setProgresso(`Importando ${current} de ${total} agendas...`);
       });
       setResumo(resultado);
@@ -7960,4 +7997,3 @@ export function RecebimentoPlaceholder({ titulo, descricao }: { titulo: string; 
     </section>
   );
 }
-
