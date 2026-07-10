@@ -23,6 +23,7 @@ type Agendamento = {
 type DashboardRow = {
   agendamento_id: string;
   chave_importacao: string | null;
+  uf?: string | null;
   empresa: string | null;
   nro_box: string | null;
   data_agenda: string | null;
@@ -1662,6 +1663,8 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
     const fallback = {
       data: todayISO(),
       dataFim: todayISO(),
+      uf: "",
+      fornecedor: "",
       status: "",
       modalidade: "",
       transportadora: "",
@@ -1692,8 +1695,10 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
     const { data, error } = await db()
       .from("vw_recebimento_dashboard")
       .select("*")
-      .eq("data_agenda", filtros.data)
+      .gte("data_agenda", filtros.data)
+      .lte("data_agenda", filtros.dataFim)
       .order("status_recebimento_calculado", { ascending: true })
+      .order("data_agenda", { ascending: true })
       .order("transportadora", { ascending: true })
       .order("nro_carga", { ascending: true });
 
@@ -1739,15 +1744,17 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
 
   useEffect(() => {
     void carregarDashboard();
-  }, [filtros.data]);
+  }, [filtros.data, filtros.dataFim]);
 
   const rowsFiltradas = useMemo(() => {
     return rows.filter((r) => {
+      const uf = String((r as any).uf ?? "").trim();
+      if (filtros.uf && uf !== filtros.uf) return false;
+      if (filtros.fornecedor && !(r.fornecedor_nome ?? "").toLowerCase().includes(filtros.fornecedor.toLowerCase())) return false;
       if (filtros.status && r.status_recebimento_calculado !== filtros.status) return false;
       if (filtros.modalidade && r.modalidade_calculada !== filtros.modalidade) return false;
       if (filtros.transportadora && !(r.transportadora ?? "").toLowerCase().includes(filtros.transportadora.toLowerCase())) return false;
       if (filtros.empresa && r.empresa !== filtros.empresa) return false;
-      if (filtros.secao && !(r.secoes ?? "").toLowerCase().includes(filtros.secao.toLowerCase())) return false;
       return true;
     });
   }, [rows, filtros]);
@@ -1887,15 +1894,147 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
   };
   const resumoExecutivo = useMemo(
     () => [
-      { icon: "📅", label: filtros.data === todayISO() ? "Hoje" : formatDateBR(filtros.data), value: "" },
+      { icon: "📅", label: filtros.data === filtros.dataFim ? formatDateBR(filtros.data) : `${formatDateBR(filtros.data)} até ${formatDateBR(filtros.dataFim)}`, value: "" },
       { icon: "📦", label: `${sumRows(rowsFiltradas, "qtd_cargas").toLocaleString("pt-BR")} cargas`, value: "" },
       { icon: "🪵", label: `${sumRows(rowsFiltradas, "total_paletes").toLocaleString("pt-BR")} paletes`, value: "" },
       { icon: "📦", label: `${sumRows(rowsFiltradas, "total_caixas").toLocaleString("pt-BR")} caixas`, value: "" },
+      { icon: "📦", label: `${sumRows(rowsFiltradas, "total_itens").toLocaleString("pt-BR")} produtos`, value: "" },
       { icon: "💰", label: formatCurrency(sumRows(rowsFiltradas, "valor_total")), value: "" },
-      { icon: "⚠️", label: `${sumRows(rowsFiltradas, "ruptura_total").toLocaleString("pt-BR")} rupturas`, value: "" },
     ],
-    [rowsFiltradas, filtros.data]
+    [rowsFiltradas, filtros.data, filtros.dataFim]
   );
+  const getRowUf = (row: DashboardRow) => String((row as any).uf ?? "").trim();
+  const ufsDisponiveis = useMemo(() => Array.from(new Set(rows.map((row) => getRowUf(row)).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [rows]);
+  const eficienciaOperacional = rowsFiltradas.length > 0 ? sumRows(rowsFiltradas, "perc_carga") / rowsFiltradas.length : 0;
+  const tempoMedioConferencia = "N/D";
+  const kpiRows = useMemo(
+    () => [
+      {
+        title: "Status",
+        cards: [
+          ["📦 Cargas", String(sumRows(rowsFiltradas, "qtd_cargas"))],
+          ["✅ Finalizadas", String(sumRows(rowsFiltradas, "ind_finalizada"))],
+          ["🟡 Em conferência", String(sumRows(rowsFiltradas, "ind_em_conferencia"))],
+          ["🚫 No Show", String(sumRows(rowsFiltradas, "ind_no_show"))],
+          ["❌ Recusadas", String(sumRows(rowsFiltradas, "ind_recusada"))],
+        ],
+      },
+      {
+        title: "Volume",
+        cards: [
+          ["🪵 Paletes", formatNumber(sumRows(rowsFiltradas, "total_paletes"))],
+          ["📦 Caixas", formatNumber(sumRows(rowsFiltradas, "total_caixas"))],
+          ["📦 Produtos", formatNumber(sumRows(rowsFiltradas, "total_itens"))],
+          ["💰 Valor", formatCurrency(sumRows(rowsFiltradas, "valor_total"))],
+        ],
+      },
+      {
+        title: "Performance",
+        cards: [
+          ["✔ Eficiência", percent(eficienciaOperacional)],
+          ["⏱ Tempo médio de conferência", tempoMedioConferencia],
+          ["📝 Ocorrências", formatNumber(sumRows(rowsFiltradas, "ocorrencias_abertas"))],
+        ],
+      },
+    ],
+    [rowsFiltradas, eficienciaOperacional]
+  );
+  const modalidadeSeries = useMemo(() => {
+    const grouped = new Map<string, number>();
+    rowsFiltradas.forEach((row) => {
+      const key = row.modalidade_calculada ?? "Sem modalidade";
+      grouped.set(key, (grouped.get(key) ?? 0) + 1);
+    });
+    return Array.from(grouped.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [rowsFiltradas]);
+  const situacaoSeries = useMemo(() => {
+    const grouped = new Map<string, number>();
+    rowsFiltradas.forEach((row) => {
+      const key = row.status_recebimento_calculado ?? row.status_finalizada ?? "Sem situação";
+      grouped.set(key, (grouped.get(key) ?? 0) + 1);
+    });
+    return Array.from(grouped.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [rowsFiltradas]);
+  const tendenciaPorDia = useMemo(() => {
+    const grouped = new Map<string, number>();
+    rowsFiltradas.forEach((row) => {
+      const key = row.data_agenda ?? "";
+      if (!key) return;
+      grouped.set(key, (grouped.get(key) ?? 0) + toNumber(row.qtd_cargas));
+    });
+    return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value }));
+  }, [rowsFiltradas]);
+  const faixaHorariaSeries = useMemo(() => {
+    const grouped = new Map<string, number>([
+      ["00h-05h", 0],
+      ["06h-11h", 0],
+      ["12h-17h", 0],
+      ["18h-23h", 0],
+    ]);
+    rowsFiltradas.forEach((row) => {
+      const source = row.hora_chegada ?? row.horario;
+      const hour = Number((source ?? "").slice(0, 2));
+      if (!Number.isFinite(hour)) return;
+      const key = hour < 6 ? "00h-05h" : hour < 12 ? "06h-11h" : hour < 18 ? "12h-17h" : "18h-23h";
+      grouped.set(key, (grouped.get(key) ?? 0) + toNumber(row.qtd_cargas || 1));
+    });
+    return Array.from(grouped.entries());
+  }, [rowsFiltradas]);
+  const rankingFornecedores = useMemo(() => {
+    const grouped = new Map<string, { nome: string; cargas: number; valor: number; paletes: number }>();
+    rowsFiltradas.forEach((row) => {
+      const key = row.fornecedor_nome ?? "Fornecedor não informado";
+      const current = grouped.get(key) ?? { nome: key, cargas: 0, valor: 0, paletes: 0 };
+      current.cargas += toNumber(row.qtd_cargas || 1);
+      current.valor += toNumber(row.valor_total);
+      current.paletes += toNumber(row.total_paletes);
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.values()).sort((a, b) => b.cargas - a.cargas || b.valor - a.valor).slice(0, 8);
+  }, [rowsFiltradas]);
+  const tabelaExecutiva = useMemo(() => {
+    return rowsFiltradas
+      .slice()
+      .sort((a, b) => `${a.data_agenda ?? ""}${a.hora_chegada ?? a.horario ?? ""}`.localeCompare(`${b.data_agenda ?? ""}${b.hora_chegada ?? b.horario ?? ""}`));
+  }, [rowsFiltradas]);
+  const tendenciaPoints = useMemo(() => {
+    const width = 520;
+    const height = 180;
+    const padding = 24;
+    const max = Math.max(...tendenciaPorDia.map((item) => item.value), 1);
+    return tendenciaPorDia
+      .map((item, index) => {
+        const x = padding + (index * (width - padding * 2)) / Math.max(tendenciaPorDia.length - 1, 1);
+        const y = height - padding - (item.value / max) * (height - padding * 2);
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [tendenciaPorDia]);
+  const sectionTitleStyle: React.CSSProperties = {
+    color: theme.colors.neonOrange,
+    fontSize: 12,
+    fontWeight: 900,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  };
+  const sectionDescStyle: React.CSSProperties = {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    marginBottom: 10,
+  };
+  const tableBadgeStyle = (color: string): React.CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: `1px solid ${color}55`,
+    background: `${color}18`,
+    color,
+    fontWeight: 800,
+    fontSize: 11,
+  });
   const indicador = (row: DashboardRow, field: keyof DashboardRow) => formatNumber(row[field] as any);
   const summary = (sourceRows: DashboardRow[]) => ({
     qtd_cargas: sumRows(sourceRows, "qtd_cargas"),
@@ -2103,41 +2242,52 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
         </div>
       </div>
 
-      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-        <input type="date" style={inputStyle} value={filtros.data} onChange={(e) => setFiltros({ ...filtros, data: e.target.value })} />
-        <select style={selectStyle} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
-          <option value="">Todos os status</option>
-          {uniqueValues(rows, "status_recebimento_calculado").map((v) => <option key={v}>{v}</option>)}
+      <div style={{ ...cardStyle, display: "grid", gap: 8, padding: 12 }}>
+        <div style={sectionTitleStyle}>Filtros operacionais</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", overflowX: "auto" }}>
+        <input type="date" style={{ ...inputStyle, minWidth: 150 }} value={filtros.data} onChange={(e) => setFiltros({ ...filtros, data: e.target.value })} />
+        <input type="date" style={{ ...inputStyle, minWidth: 150 }} value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} />
+        <select style={{ ...selectStyle, minWidth: 110 }} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
+          <option value="">UF</option>
+          {ufsDisponiveis.map((v) => <option key={v}>{v}</option>)}
         </select>
-        <select style={selectStyle} value={filtros.modalidade} onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}>
-          <option value="">Todas modalidades</option>
-          {uniqueValues(rows, "modalidade_calculada").map((v) => <option key={v}>{v}</option>)}
+        <select style={{ ...selectStyle, minWidth: 150 }} value={filtros.empresa} onChange={(e) => setFiltros({ ...filtros, empresa: e.target.value })}>
+          <option value="">CD</option>
+          {uniqueValues(rows, "empresa").map((v) => <option key={v}>{v}</option>)}
         </select>
         <input
-          style={inputStyle}
+          style={{ ...inputStyle, minWidth: 210 }}
+          placeholder="Fornecedor"
+          value={filtros.fornecedor}
+          onChange={(e) => setFiltros({ ...filtros, fornecedor: e.target.value })}
+        />
+        <input
+          style={{ ...inputStyle, minWidth: 210 }}
           placeholder="Transportadora"
           value={filtros.transportadora}
           onChange={(e) => setFiltros({ ...filtros, transportadora: e.target.value })}
         />
-        <input style={inputStyle} placeholder="Seção" value={filtros.secao} onChange={(e) => setFiltros({ ...filtros, secao: e.target.value })} />
-        <select style={selectStyle} value={filtros.empresa} onChange={(e) => setFiltros({ ...filtros, empresa: e.target.value })}>
-          <option value="">Todos CD/empresa</option>
-          {uniqueValues(rows, "empresa").map((v) => <option key={v}>{v}</option>)}
+        <select style={{ ...selectStyle, minWidth: 170 }} value={filtros.modalidade} onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}>
+          <option value="">Modalidade</option>
+          {uniqueValues(rows, "modalidade_calculada").map((v) => <option key={v}>{v}</option>)}
         </select>
+        <select style={{ ...selectStyle, minWidth: 170 }} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
+          <option value="">Situação</option>
+          {uniqueValues(rows, "status_recebimento_calculado").map((v) => <option key={v}>{v}</option>)}
+        </select>
+        </div>
       </div>
 
       {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
       {loading && <div style={{ color: theme.colors.textMuted }}>Carregando recebimento...</div>}
 
       <div style={{ display: "grid", gap: 12 }}>
-        {indicadores.map((grupo) => (
+        {kpiRows.map((grupo) => (
           <div key={grupo.title} style={{ ...cardStyle, padding: 12 }}>
-            <div style={{ color: theme.colors.neonOrange, fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
-              {grupo.title}
-            </div>
+            <div style={sectionTitleStyle}>{grupo.title}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
               {grupo.cards.map(([label, value]) => (
-                <div key={label} style={{ ...cardStyle, padding: 10, minWidth: 0 }}>
+                <div key={label} style={{ ...cardStyle, padding: 10, minWidth: 0, background: "rgba(2,6,23,0.35)" }}>
                   <div style={{ ...metricValueStyle, marginTop: 0, fontSize: label === "Última atualização" ? 13 : 30, lineHeight: 1.05, fontWeight: 900, overflowWrap: "anywhere" }}>
                     {value}
                   </div>
@@ -2152,37 +2302,147 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
         ))}
       </div>
 
-      <div style={{ ...cardStyle, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, overflowX: "auto", whiteSpace: "nowrap" }}>
+      <div style={{ ...cardStyle, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, overflowX: "auto", whiteSpace: "nowrap", background: "rgba(2,6,23,0.36)" }}>
         {resumoExecutivo.map((item) => (
-          <div key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", border: `1px solid ${theme.colors.borderSoft}`, borderRadius: 999, background: "rgba(2,6,23,0.45)", color: theme.colors.textSoft, fontSize: 12, fontWeight: 700 }}>
+          <div key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 9px", border: `1px solid ${theme.colors.borderSoft}`, borderRadius: 999, background: "rgba(15,23,42,0.82)", color: theme.colors.textSoft, fontSize: 12, fontWeight: 700 }}>
             <span>{item.icon}</span>
             <span>{item.label}</span>
           </div>
         ))}
       </div>
 
+      <div style={{ ...cardStyle, display: "grid", gap: 12 }}>
+        <div>
+          <div style={sectionTitleStyle}>Leituras visuais</div>
+          <div style={sectionDescStyle}>Distribuição operacional por modalidade, situação, data, faixa horária e fornecedores.</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={sectionTitleStyle}>Gráfico por modalidade</div>
+            <div style={sectionDescStyle}>Peso relativo das modalidades carregadas no período.</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {modalidadeSeries.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Sem dados para exibir.</div>}
+              {modalidadeSeries.map(([label, value]) => {
+                const max = Math.max(...modalidadeSeries.map(([, itemValue]) => itemValue), 1);
+                return (
+                  <div key={label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft }}>
+                      <span>{label}</span>
+                      <span>{value.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${(value / max) * 100}%`, height: "100%", background: theme.colors.neonOrange }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={sectionTitleStyle}>Gráfico por situação</div>
+            <div style={sectionDescStyle}>Leitura rápida do mix de status operacionais.</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {situacaoSeries.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Sem dados para exibir.</div>}
+              {situacaoSeries.map(([label, value]) => {
+                const max = Math.max(...situacaoSeries.map(([, itemValue]) => itemValue), 1);
+                return (
+                  <div key={label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft }}>
+                      <span>{label}</span>
+                      <span>{value.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${(value / max) * 100}%`, height: "100%", background: statusColor(label) }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={sectionTitleStyle}>Tendência por dia</div>
+            <div style={sectionDescStyle}>Evolução das cargas no intervalo selecionado.</div>
+            <svg viewBox="0 0 520 180" style={{ width: "100%", height: 200 }}>
+              <line x1="24" y1="156" x2="496" y2="156" stroke={theme.colors.borderSoft} strokeWidth="1" />
+              <polyline fill="none" stroke={theme.colors.neonGreen} strokeWidth="2.5" points={tendenciaPoints} />
+            </svg>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", color: theme.colors.textMuted, fontSize: 11 }}>
+              {tendenciaPorDia.map((item) => <span key={item.date}>{formatDateBR(item.date)}</span>)}
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={sectionTitleStyle}>Faixa operacional</div>
+            <div style={sectionDescStyle}>Concentração de cargas por janela horária.</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {faixaHorariaSeries.map(([label, value]) => {
+                const max = Math.max(...faixaHorariaSeries.map(([, itemValue]) => itemValue), 1);
+                return (
+                  <div key={label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft }}>
+                      <span>{label}</span>
+                      <span>{value.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${(value / max) * 100}%`, height: "100%", background: theme.colors.neonYellow }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={sectionTitleStyle}>Ranking de fornecedores</div>
+            <div style={sectionDescStyle}>Prioridade por volume de cargas no período filtrado.</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {rankingFornecedores.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Sem dados para exibir.</div>}
+              {rankingFornecedores.map((item, index) => {
+                const max = Math.max(...rankingFornecedores.map((row) => row.cargas), 1);
+                return (
+                  <div key={`${item.nome}-${index}`}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft, gap: 8 }}>
+                      <span>{index + 1}. {item.nome}</span>
+                      <span>{item.cargas.toLocaleString("pt-BR")} cargas</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${(item.cargas / max) * 100}%`, height: "100%", background: theme.colors.neonGreen }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ color: theme.colors.neonOrange, fontWeight: 900, fontSize: 14 }}>Tabela executiva</div>
-            <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Leitura rápida das cargas com expansão para os detalhes operacionais.</div>
+            <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Leitura rápida das cargas com abertura dos detalhes operacionais abaixo.</div>
           </div>
           <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Clique na linha para expandir</div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: 1160, borderCollapse: "collapse", fontSize: 12 }}>
+          <table style={{ width: "100%", minWidth: 1480, borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ color: theme.colors.textMuted, textAlign: "left", background: "#020617" }}>
                 {[
+                  "Data",
+                  "Hora",
                   "Status",
+                  "CD",
                   "Fornecedor",
                   "Transportadora",
+                  "Modalidade",
                   "Carga",
-                  "Hora",
                   "Paletes",
-                  "Itens",
+                  "Produtos",
                   "Valor",
-                  "Ruptura",
+                  "Ocorrências",
                   "Ações",
                 ].map((col) => (
                   <th key={col} style={{ padding: 10, borderBottom: `1px solid ${theme.colors.borderSoft}`, whiteSpace: "nowrap" }}>{col}</th>
@@ -2190,24 +2450,28 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
               </tr>
             </thead>
             <tbody>
-              {rowsFiltradas.map((row) => {
+              {tabelaExecutiva.map((row) => {
                 const rowKey = `dashboard:${row.agendamento_id}`;
                 const open = !!abertos[rowKey];
                 const itens = itensPorAgendamento[row.agendamento_id] ?? [];
+                const rowStatus = row.status_recebimento_calculado ?? row.status_finalizada ?? "Agenda";
                 return (
                   <React.Fragment key={row.agendamento_id}>
-                    <tr style={{ cursor: "pointer", background: open ? "rgba(15,23,42,0.9)" : undefined }} onClick={() => toggle(rowKey)}>
-                      <td style={{ padding: 10, color: statusColor(row.status_recebimento_calculado ?? row.status_finalizada ?? "") }}>{row.status_recebimento_calculado ?? row.status_finalizada ?? "Agenda"}</td>
+                    <tr style={{ cursor: "pointer", background: open ? "rgba(15,23,42,0.9)" : "rgba(2,6,23,0.18)", transition: "background 120ms ease" }} onClick={() => toggle(rowKey)}>
+                      <td style={{ padding: 10 }}>{formatDateBR(row.data_agenda)}</td>
+                      <td style={{ padding: 10 }}>{formatTime(row.hora_chegada ?? row.horario)}</td>
+                      <td style={{ padding: 10 }}><span style={tableBadgeStyle(statusColor(rowStatus))}>{rowStatus}</span></td>
+                      <td style={{ padding: 10 }}>{row.empresa ?? "-"}</td>
                       <td style={{ padding: 10 }}>{row.fornecedor_nome ?? "-"}</td>
                       <td style={{ padding: 10 }}>{row.transportadora ?? "-"}</td>
+                      <td style={{ padding: 10 }}><span style={{ ...tableBadgeStyle(theme.colors.neonOrange), color: theme.colors.textSoft }}>{row.modalidade_calculada ?? "-"}</span></td>
                       <td style={{ padding: 10 }}>{row.nro_carga ?? "-"}</td>
-                      <td style={{ padding: 10 }}>{formatTime(row.hora_chegada ?? row.horario)}</td>
                       <td style={{ padding: 10 }}>{formatNumber(row.total_paletes)}</td>
                       <td style={{ padding: 10 }}>{formatNumber(row.total_itens)}</td>
                       <td style={{ padding: 10 }}>{formatCurrency(toNumber(row.valor_total))}</td>
-                      <td style={{ padding: 10, color: rupturaColor(row.ruptura_total), fontWeight: 900 }}>{formatNumber(row.ruptura_total)}</td>
+                      <td style={{ padding: 10 }}><span style={tableBadgeStyle(toNumber(row.ocorrencias_abertas) > 0 ? theme.colors.neonYellow : theme.colors.neonGreen)}>{formatNumber(row.ocorrencias_abertas)}</span></td>
                       <td style={{ padding: 10 }}>
-                        <span style={{ color: theme.colors.neonGreen, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ color: theme.colors.neonGreen, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: 0.2 }}>
                           <span>{open ? "👁" : "▶"}</span>
                           Detalhes
                         </span>
@@ -2215,7 +2479,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={10} style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, background: "rgba(2,6,23,0.72)" }}>
+                        <td colSpan={12} style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, background: "rgba(2,6,23,0.72)" }}>
                           <div style={{ display: "grid", gap: 12 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                               {[
@@ -2291,7 +2555,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
               })}
               {rowsFiltradas.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={10} style={{ padding: 14, color: theme.colors.textMuted }}>Nenhum dado encontrado para os filtros.</td>
+                  <td colSpan={12} style={{ padding: 14, color: theme.colors.textMuted }}>Nenhum dado encontrado para os filtros.</td>
                 </tr>
               )}
             </tbody>
