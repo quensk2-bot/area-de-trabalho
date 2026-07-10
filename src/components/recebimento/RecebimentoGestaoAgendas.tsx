@@ -19,7 +19,9 @@ import {
   buildFilterOptions,
   buildHojeGrupos,
   buildResumo,
+  buildDateRange,
   filterRows,
+  getDateLabel,
   formatDateTimeBR,
   getDefaultPeriodForMode,
   getFullDateLabel,
@@ -138,6 +140,252 @@ const statusChipColor = (status: string | null | undefined) => {
   return theme.colors.textSoft;
 };
 
+type DisponibilidadeCellStatus = "ocupada" | "disponivel" | "sem_info";
+
+type DisponibilidadeLinha = {
+  dataAnalise: string;
+  label: string;
+  rowsByAgendaDate: Map<string, GestaoAgendaRow[]>;
+};
+
+const getDataAnalise = (row: GestaoAgendaRow) => {
+  const source = row.ultima_atualizacao_importacao || row.created_at;
+  return source ? source.slice(0, 10) : null;
+};
+
+const formatDateShort = (dateISO: string) => {
+  const dt = new Date(`${dateISO}T00:00:00`);
+  return dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+};
+
+const formatMonthLabel = (dateISO: string) => {
+  const dt = new Date(`${dateISO}T00:00:00`);
+  const month = dt.toLocaleDateString("pt-BR", { month: "long" });
+  return `${String(dt.getMonth() + 1).padStart(2, "0")} - ${month.charAt(0).toUpperCase()}${month.slice(1)}`;
+};
+
+const formatAgendaDateChip = (dateISO: string) => {
+  const dt = new Date(`${dateISO}T00:00:00`);
+  const month = dt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${String(dt.getMonth() + 1).padStart(2, "0")}-${month} - dia ${dateISO.slice(8, 10)}`;
+};
+
+const getSemanaLabel = (dateISO: string) => {
+  const start = new Date(`${new Date(dateISO).getFullYear()}-01-01T00:00:00`);
+  const current = new Date(`${dateISO}T00:00:00`);
+  const days = Math.floor((current.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+  return `${Math.floor(days / 7) + 1} Semana`;
+};
+
+const buildDisponibilidadeLinhas = (rows: GestaoAgendaRow[]) => {
+  const byAnalise = new Map<string, DisponibilidadeLinha>();
+  rows.forEach((row) => {
+    const dataAnalise = getDataAnalise(row);
+    if (!dataAnalise || !row.data_agenda) return;
+    if (!byAnalise.has(dataAnalise)) {
+      byAnalise.set(dataAnalise, {
+        dataAnalise,
+        label: getFullDateLabel(dataAnalise),
+        rowsByAgendaDate: new Map<string, GestaoAgendaRow[]>(),
+      });
+    }
+    const linha = byAnalise.get(dataAnalise)!;
+    if (!linha.rowsByAgendaDate.has(row.data_agenda)) linha.rowsByAgendaDate.set(row.data_agenda, []);
+    linha.rowsByAgendaDate.get(row.data_agenda)?.push(row);
+  });
+
+  return Array.from(byAnalise.values()).sort((a, b) => a.dataAnalise.localeCompare(b.dataAnalise));
+};
+
+const getDisponibilidadeStatus = (linha: DisponibilidadeLinha, dataAgenda: string): DisponibilidadeCellStatus => {
+  const rows = linha.rowsByAgendaDate.get(dataAgenda) ?? [];
+  if (rows.length > 0) return "ocupada";
+  if (dataAgenda >= linha.dataAnalise) return "disponivel";
+  return "sem_info";
+};
+
+const statusDisponibilidadeStyle = (status: DisponibilidadeCellStatus): React.CSSProperties => {
+  if (status === "ocupada") {
+    return {
+      background: "rgba(248,113,113,0.16)",
+      color: theme.colors.danger,
+      borderColor: "rgba(248,113,113,0.45)",
+    };
+  }
+  if (status === "disponivel") {
+    return {
+      background: "rgba(34,197,94,0.13)",
+      color: theme.colors.neonGreen,
+      borderColor: "rgba(34,197,94,0.42)",
+    };
+  }
+  return {
+    background: "rgba(148,163,184,0.08)",
+    color: theme.colors.textMuted,
+    borderColor: "rgba(148,163,184,0.24)",
+  };
+};
+
+const statusDisponibilidadeLabel = (status: DisponibilidadeCellStatus) => {
+  if (status === "ocupada") return "X";
+  if (status === "disponivel") return "OK";
+  return "-";
+};
+
+function RecebimentoGestaoAgendasDisponibilidade({
+  agendaDates,
+  linhas,
+  selectedDay,
+  onSelectDay,
+  narrow,
+}: {
+  agendaDates: string[];
+  linhas: DisponibilidadeLinha[];
+  selectedDay: string | null;
+  onSelectDay: (dateISO: string) => void;
+  narrow: boolean;
+}) {
+  const semanas = Array.from(new Set(agendaDates.map(getSemanaLabel)));
+  const meses = Array.from(new Set(agendaDates.map(formatMonthLabel)));
+
+  if (agendaDates.length === 0 || linhas.length === 0) {
+    return (
+      <div style={{ borderRadius: 12, border: `1px solid ${theme.colors.borderSoft}`, background: "rgba(2,6,23,0.52)", padding: 14, color: theme.colors.textMuted, fontSize: 13 }}>
+        Sem base importada para montar a disponibilidade no periodo filtrado.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) 320px", gap: 12 }}>
+      <section style={{ border: `1px solid ${theme.colors.borderSoft}`, borderRadius: 12, background: "rgba(2,6,23,0.38)", overflow: "hidden" }}>
+        <header style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>
+          <div>
+            <h2 style={{ margin: 0, color: theme.colors.text, fontSize: 15 }}>Disponibilidade de Agenda Regional</h2>
+            <div style={{ marginTop: 4, color: theme.colors.textMuted, fontSize: 12 }}>Base oficial: Listagem de Agenda no Portal</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11, fontWeight: 800 }}>
+            <span style={{ color: theme.colors.danger }}>X Todas agendas ocupadas</span>
+            <span style={{ color: theme.colors.neonGreen }}>OK Agenda disponivel</span>
+            <span style={{ color: theme.colors.textMuted }}>- Sem informacao</span>
+          </div>
+        </header>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: Math.max(760, 160 + agendaDates.length * 46), borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th rowSpan={2} style={{ position: "sticky", left: 0, zIndex: 3, background: theme.colors.bg, color: theme.colors.text, borderRight: `1px solid ${theme.colors.borderSoft}`, borderBottom: `1px solid ${theme.colors.borderSoft}`, padding: 8, textAlign: "left", minWidth: 156 }}>
+                  Data analise
+                </th>
+                <th colSpan={agendaDates.length} style={{ background: theme.colors.bg, color: theme.colors.text, borderBottom: `1px solid ${theme.colors.borderSoft}`, padding: 8 }}>
+                  Data da agenda
+                </th>
+              </tr>
+              <tr>
+                {agendaDates.map((dateISO) => (
+                  <th key={dateISO} style={{ background: "rgba(15,23,42,0.96)", borderBottom: `1px solid ${theme.colors.borderSoft}`, padding: 4, minWidth: 42 }}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectDay(dateISO)}
+                      style={{
+                        border: "none",
+                        background: selectedDay === dateISO ? "rgba(34,197,94,0.18)" : "transparent",
+                        color: selectedDay === dateISO ? theme.colors.neonGreen : theme.colors.textSoft,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        width: "100%",
+                        padding: "4px 2px",
+                      }}
+                      title={getFullDateLabel(dateISO)}
+                    >
+                      {formatDateShort(dateISO)}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((linha) => (
+                <tr key={linha.dataAnalise}>
+                  <th style={{ position: "sticky", left: 0, zIndex: 2, background: theme.colors.bg, color: theme.colors.text, borderRight: `1px solid ${theme.colors.borderSoft}`, borderTop: `1px solid ${theme.colors.borderSoft}`, padding: 8, textAlign: "left" }}>
+                    <div>{getDateLabel(linha.dataAnalise, false)}</div>
+                    <div style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: "capitalize" }}>{getDateLabel(linha.dataAnalise)}</div>
+                  </th>
+                  {agendaDates.map((dateISO) => {
+                    const status = getDisponibilidadeStatus(linha, dateISO);
+                    const rowsDia = linha.rowsByAgendaDate.get(dateISO) ?? [];
+                    return (
+                      <td key={`${linha.dataAnalise}-${dateISO}`} style={{ borderTop: `1px solid ${theme.colors.borderSoft}`, padding: 4, textAlign: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectDay(dateISO)}
+                          style={{
+                            ...statusDisponibilidadeStyle(status),
+                            width: 34,
+                            minHeight: 30,
+                            borderRadius: 8,
+                            border: "1px solid",
+                            fontSize: 11,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                          title={`${getFullDateLabel(dateISO)} | ${rowsDia.length} agenda(s) na base de ${getDateLabel(linha.dataAnalise, false)}`}
+                        >
+                          {statusDisponibilidadeLabel(status)}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside style={{ display: "grid", gap: 10, alignContent: "start" }}>
+        {[
+          ["Semana Agenda", semanas],
+          ["Mes da Agenda", meses],
+          ["Data Agenda", agendaDates.map(formatAgendaDateChip)],
+        ].map(([title, values]) => (
+          <section key={title as string} style={{ border: `1px solid ${theme.colors.borderSoft}`, borderRadius: 10, background: "rgba(2,6,23,0.38)", padding: 10 }}>
+            <h3 style={{ margin: "0 0 8px", color: theme.colors.text, fontSize: 12 }}>{title as string}</h3>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(values as string[]).map((value, index) => {
+                const dateISO = title === "Data Agenda" ? agendaDates[index] : null;
+                return (
+                  <button
+                    key={`${value}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      if (dateISO) onSelectDay(dateISO);
+                    }}
+                    style={{
+                      border: `1px solid ${theme.colors.borderSoft}`,
+                      borderRadius: 6,
+                      background: dateISO && selectedDay === dateISO ? "rgba(34,197,94,0.18)" : "rgba(148,163,184,0.12)",
+                      color: dateISO && selectedDay === dateISO ? theme.colors.neonGreen : theme.colors.textSoft,
+                      padding: "6px 8px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: dateISO ? "pointer" : "default",
+                    }}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </aside>
+    </div>
+  );
+}
+
 const mapToGestaoRows = (data: unknown[], vinculos: VinculoViewRow[]) => {
   const vinculoByGestaoId = new Map<string, VinculoViewRow>();
   vinculos.forEach((item) => {
@@ -207,7 +455,7 @@ export function RecebimentoGestaoAgendas({ perfil: _perfil }: Props) {
   const [modo, setModo] = useState<AgendaViewMode>(() => {
     if (typeof window === "undefined") return "hoje";
     const restored = storageReadString(window.localStorage, GESTAO_AGENDAS_STORAGE_KEYS.modo);
-    if (restored === "hoje" || restored === "7dias" || restored === "30dias") return restored;
+    if (restored === "hoje" || restored === "7dias" || restored === "30dias" || restored === "disponibilidade") return restored;
     return "hoje";
   });
 
@@ -330,6 +578,8 @@ export function RecebimentoGestaoAgendas({ perfil: _perfil }: Props) {
   const rowsHoje = useMemo(() => rowsFiltradas.filter((row) => row.data_agenda === todayISO()), [rowsFiltradas]);
 
   const daySummaries = useMemo(() => buildDaySummaries(rowsFiltradas, filtros.periodoInicio, filtros.periodoFim), [rowsFiltradas, filtros.periodoInicio, filtros.periodoFim]);
+  const agendaDates = useMemo(() => buildDateRange(filtros.periodoInicio, filtros.periodoFim), [filtros.periodoInicio, filtros.periodoFim]);
+  const disponibilidadeLinhas = useMemo(() => buildDisponibilidadeLinhas(rowsFiltradas), [rowsFiltradas]);
 
   const summaryByDay = useMemo(() => {
     const map = new Map<string, GestaoAgendaDaySummary>();
@@ -435,6 +685,7 @@ export function RecebimentoGestaoAgendas({ perfil: _perfil }: Props) {
                 ["hoje", "Hoje"],
                 ["7dias", "Próximos 7 dias"],
                 ["30dias", "Próximos 30 dias"],
+                ["disponibilidade", "Disponibilidade"],
               ].map(([value, label]) => (
                 <button
                   key={value}
@@ -635,6 +886,16 @@ export function RecebimentoGestaoAgendas({ perfil: _perfil }: Props) {
               </button>
             </div>
           </div>
+        )}
+
+        {!loading && !emptyStateMessage && modo === "disponibilidade" && (
+          <RecebimentoGestaoAgendasDisponibilidade
+            agendaDates={agendaDates}
+            linhas={disponibilidadeLinhas}
+            selectedDay={selectedDay}
+            onSelectDay={openDay}
+            narrow={isMobile || isTablet}
+          />
         )}
 
         {!loading && !emptyStateMessage && modo === "hoje" && (

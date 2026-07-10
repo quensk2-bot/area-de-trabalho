@@ -1,4 +1,4 @@
-export type AgendaViewMode = "hoje" | "7dias" | "30dias";
+export type AgendaViewMode = "hoje" | "7dias" | "30dias" | "disponibilidade";
 
 export type GestaoAgendaCampoReimportacao = {
   de: unknown;
