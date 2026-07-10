@@ -31,6 +31,7 @@ import {
   RecebimentoPlaceholder,
   RecebimentoTransportadoras,
 } from "./recebimento/RecebimentoPages";
+import { RecebimentoGestaoAgendas } from "./recebimento/RecebimentoGestaoAgendas";
 import {
   PontoExtraAnalise,
   PontoExtraAcompanhamento,
@@ -70,6 +71,7 @@ type MenuKey =
   | "recebimento-noshow-dashboard"
   | "recebimento-noshow-top5"
   | "recebimento-noshow-realizado"
+  | "recebimento-gestao-agendas"
   | "recebimento-confirmacao-agenda"
   | "loja-ponto-dashboard"
   | "loja-ponto-importacao"
@@ -325,6 +327,7 @@ const RECEBIMENTO_ROUTES: Partial<Record<MenuKey, string>> = {
   "recebimento-noshow-dashboard": "/recebimento/noshow/dashboard",
   "recebimento-noshow-top5": "/recebimento/noshow/top5",
   "recebimento-noshow-realizado": "/recebimento/noshow/realizado",
+  "recebimento-gestao-agendas": "/recebimento/gestao-agendas",
   "recebimento-ocorrencias": "/recebimento/ocorrencias",
   "recebimento-relatorios": "/recebimento/relatorios",
 };
@@ -365,6 +368,7 @@ type ShellMenuState = {
     recebimentoConfirmacao: boolean;
     recebimentoPlanejamento: boolean;
     recebimentoNoShow: boolean;
+    recebimentoGestaoAgendas: boolean;
     loja: boolean;
     lojaPontoExtra: boolean;
   };
@@ -377,6 +381,7 @@ const defaultGruposMenuAbertos = () => ({
   recebimentoConfirmacao: false,
   recebimentoPlanejamento: false,
   recebimentoNoShow: false,
+  recebimentoGestaoAgendas: false,
   loja: false,
   lojaPontoExtra: false,
 });
@@ -461,7 +466,8 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       | "recebimento"
       | "recebimentoConfirmacao"
       | "recebimentoPlanejamento"
-        | "recebimentoNoShow"
+      | "recebimentoNoShow"
+      | "recebimentoGestaoAgendas"
       | "loja"
       | "lojaPontoExtra"
   ) => {
@@ -588,6 +594,11 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["recebimento-noshow-top5", "Top 5 No Show"],
         ["recebimento-noshow-realizado", "Recebimento Realizado"],
       ] as [MenuKey, string][],
+    []
+  );
+
+  const recebimentoGestaoAgendasItems = useMemo(
+    () => [["recebimento-gestao-agendas", "Painel de Gestão das Agendas"]] as [MenuKey, string][],
     []
   );
 
@@ -784,6 +795,8 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       content = <RecebimentoNoShowTop5 perfil={perfil} />;
     } else if (menu === "recebimento-noshow-realizado") {
       content = <RecebimentoRealizado perfil={perfil} />;
+    } else if (menu === "recebimento-gestao-agendas") {
+      content = <RecebimentoGestaoAgendas perfil={perfil} />;
     } else if (menu === "recebimento-agenda") {
       content = <RecebimentoAgenda perfil={perfil} />;
     } else if (menu === "recebimento-ocorrencias") {
@@ -998,6 +1011,35 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
                   </button>
                   {gruposMenuAbertos.recebimentoNoShow &&
                     recebimentoNoShowItems.map(([key, label]) => {
+                      const active = menu === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => navegarMenu(key)}
+                          style={{
+                            ...shellStyles.menuButton,
+                            ...(active ? shellStyles.menuButtonActive : {}),
+                          }}
+                        >
+                          <span style={shellStyles.menuButtonLeft}>
+                            <span style={shellStyles.menuBullet} />
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupoMenu("recebimentoGestaoAgendas")}
+                    style={shellStyles.menuSubGroupTitle}
+                  >
+                    <span>04 Gestão das Agendas</span>
+                    <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.recebimentoGestaoAgendas ? "-" : "+"}</span>
+                  </button>
+                  {gruposMenuAbertos.recebimentoGestaoAgendas &&
+                    recebimentoGestaoAgendasItems.map(([key, label]) => {
                       const active = menu === key;
                       return (
                         <button
