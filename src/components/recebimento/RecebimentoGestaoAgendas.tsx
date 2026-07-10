@@ -44,6 +44,8 @@ type VinculoViewRow = {
 };
 
 const db = () => (supabase as any).schema("recebimento");
+const appBasePath = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+const appHref = (path: string) => `${appBasePath}${path}` || path;
 
 const layoutCardStyle: React.CSSProperties = {
   borderRadius: 14,
@@ -63,6 +65,22 @@ const buttonSecondaryStyle: React.CSSProperties = {
   fontWeight: 700,
   padding: "8px 12px",
   cursor: "pointer",
+};
+
+const buttonPrimaryStyle: React.CSSProperties = {
+  border: `1px solid ${theme.colors.neonOrange}`,
+  borderRadius: 999,
+  background: theme.colors.neonOrange,
+  color: "#431407",
+  fontWeight: 800,
+  padding: "8px 12px",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -436,6 +454,9 @@ export function RecebimentoGestaoAgendas({ perfil: _perfil }: Props) {
                 </button>
               ))}
             </div>
+            <a href={appHref("/recebimento/importar-agenda-futura")} style={buttonPrimaryStyle}>
+              <span>Importar Agenda Futura</span>
+            </a>
             <button type="button" style={buttonSecondaryStyle} onClick={() => void carregar()}>
               Atualizar
             </button>
