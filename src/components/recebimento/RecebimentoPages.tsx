@@ -102,12 +102,31 @@ type GestaoAgendaRow = {
   observacao: string | null;
   confirmado_em: string | null;
   confirmado_por: string | null;
+  alterado_na_ultima_importacao: boolean | null;
+  campos_alterados: Record<string, { de: unknown; para: unknown }> | null;
+  ultima_importacao_id: string | null;
+  ultima_atualizacao_importacao: string | null;
   created_at: string | null;
   fornecedor_whatsapp?: string | null;
   fornecedor_email?: string | null;
   transportadora_whatsapp?: string | null;
   transportadora_email?: string | null;
 };
+
+type GestaoAgendaRowCampoReimportacao =
+  | "notas_fiscais"
+  | "horario"
+  | "doca"
+  | "deposito"
+  | "tipo_carga"
+  | "qtd_veiculos"
+  | "tipo_veiculo"
+  | "tipo_volume"
+  | "volumes"
+  | "sku"
+  | "unidade_negocios"
+  | "fornecedor_nome"
+  | "transportadora_nome";
 
 type DashboardItem = {
   id: string;
@@ -133,6 +152,16 @@ type AgendamentoHistorico = {
   created_at: string | null;
   dados_anteriores: unknown;
   dados_novos: unknown;
+};
+
+type LinhaTempoAgenda = {
+  id: string;
+  agendamento_id: string;
+  tipo: string;
+  descricao: string;
+  usuario_id: string | null;
+  created_at: string | null;
+  usuario_nome?: string | null;
 };
 
 type Ocorrencia = {
@@ -782,6 +811,69 @@ type NoShowMetaCapacidadeDashboardRow = {
   meta_recebimento_mes: number | string | null;
 };
 
+type RecebimentoRealizadoAgendamentoRow = {
+  id: string;
+  data_agenda: string | null;
+  horario: string | null;
+  empresa: string | null;
+  transportadora: string | null;
+  fornecedor_nome: string | null;
+  nro_box: string | null;
+  nro_carga: string | null;
+  status_carga: string | null;
+  modalidade: string | null;
+  total_paletes: number | string | null;
+  total_caixas: number | string | null;
+  total_itens: number | string | null;
+  total_conferido: number | string | null;
+  total_recebido: number | string | null;
+  ruptura: number | string | null;
+  nota_fiscal: string | null;
+  confirmacao_status: string | null;
+  confirmacao_observacao: string | null;
+  confirmado_em: string | null;
+  confirmado_por: string | null;
+};
+
+type RecebimentoRealizadoGestaoRow = {
+  id: string;
+  codigo_agenda: string | null;
+  transportadora_nome: string | null;
+  fornecedor_nome: string | null;
+  notas_fiscais: string | null;
+  data_agenda: string | null;
+  horario: string | null;
+  doca: string | null;
+  deposito: string | null;
+  tipo_carga: string | null;
+  tipo_veiculo: string | null;
+  tipo_volume: string | null;
+  volumes: number | string | null;
+  sku: number | string | null;
+  unidade_negocios: string | null;
+  possui_nota: boolean | null;
+  status_confirmacao: string | null;
+  observacao: string | null;
+  confirmado_em: string | null;
+  confirmado_por: string | null;
+  created_at: string | null;
+};
+
+type RecebimentoRealizadoRow = DashboardRow & {
+  uf: string | null;
+  numero_agenda: string | null;
+  numero_nota: string | null;
+  volumes_realizados: number | string | null;
+  sku_realizado: number | string | null;
+  tipo_veiculo: string | null;
+  tipo_carga: string | null;
+  situacao: string | null;
+  observacao_operacional: string | null;
+  confirmacao_status_real: string | null;
+  confirmacao_observacao_real: string | null;
+  status_operacional: string | null;
+};
+
 const importarNoShowWorkbook = async (
   nomeArquivo: string,
   portalRows: NoShowPortalRow[],
@@ -1391,6 +1483,7 @@ const TIPOS_OCORRENCIA = [
 ];
 const STATUS_CONFIRMACAO = ["Pendente", "Confirmado", "Não confirmado", "Sem contato", "Reagendar", "Cancelado"];
 const CANAIS_CONFIRMACAO = ["Telefone", "WhatsApp", "E-mail", "Presencial", "Outro"];
+const TIPOS_LINHA_TEMPO = ["Contato", "Transporte", "Recebimento", "Problema", "Fiscal", "Observação"];
 const cargaDisplayKey = (row: DashboardRow) =>
   row.chave_importacao || row.nro_carga
     ? `${row.chave_importacao ?? ""}|${row.nro_carga ?? ""}`
@@ -1432,6 +1525,8 @@ const formatDateBR = (value: string | null | undefined) => {
   return `${day}/${month}/${year}`;
 };
 
+const formatDateTimeBR = (value: string | null | undefined) => (value ? new Date(value).toLocaleString("pt-BR") : "-");
+
 const copyText = async (value: string) => {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -1445,22 +1540,151 @@ const copyText = async (value: string) => {
   document.body.removeChild(textarea);
 };
 
+const GESTAO_AGENDA_CAMPOS_REIMPORTACAO: GestaoAgendaRowCampoReimportacao[] = [
+  "notas_fiscais",
+  "horario",
+  "doca",
+  "deposito",
+  "tipo_carga",
+  "qtd_veiculos",
+  "tipo_veiculo",
+  "tipo_volume",
+  "volumes",
+  "sku",
+  "unidade_negocios",
+  "fornecedor_nome",
+  "transportadora_nome",
+];
+
+const GESTAO_AGENDA_CAMPOS_REIMPORTACAO_LABELS: Record<GestaoAgendaRowCampoReimportacao, string> = {
+  notas_fiscais: "Notas fiscais",
+  horario: "Horário",
+  doca: "Doca",
+  deposito: "Depósito",
+  tipo_carga: "Tipo de carga",
+  qtd_veiculos: "Qtd veículos",
+  tipo_veiculo: "Tipo veículo",
+  tipo_volume: "Tipo volume",
+  volumes: "Volumes",
+  sku: "SKU",
+  unidade_negocios: "Unidade de negócios",
+  fornecedor_nome: "Fornecedor",
+  transportadora_nome: "Transportadora",
+};
+
+const GESTAO_AGENDA_CAMPOS_NUMERICOS = new Set<GestaoAgendaRowCampoReimportacao>(["qtd_veiculos", "volumes", "sku"]);
+
+const normalizarValorComparacaoGestaoAgenda = (campo: GestaoAgendaRowCampoReimportacao, valor: unknown) => {
+  if (valor === null || valor === undefined) return "";
+  if (GESTAO_AGENDA_CAMPOS_NUMERICOS.has(campo)) {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : 0;
+  }
+  return String(valor).trim().replace(/\s+/g, " ").toLowerCase();
+};
+
+const formatarValorMudancaGestaoAgenda = (campo: GestaoAgendaRowCampoReimportacao, valor: unknown) => {
+  if (valor === null || valor === undefined || valor === "") return "-";
+  if (campo === "horario" && typeof valor === "string") return valor.slice(0, 5);
+  if (GESTAO_AGENDA_CAMPOS_NUMERICOS.has(campo)) {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero.toLocaleString("pt-BR") : String(valor);
+  }
+  return String(valor);
+};
+
+const construirCamposAlteradosGestaoAgenda = (atual: Partial<GestaoAgendaRow>, novo: Partial<GestaoAgendaRow>) => {
+  const alterados: Record<string, { de: unknown; para: unknown }> = {};
+  for (const campo of GESTAO_AGENDA_CAMPOS_REIMPORTACAO) {
+    const atualNormalizado = normalizarValorComparacaoGestaoAgenda(campo, atual[campo]);
+    const novoNormalizado = normalizarValorComparacaoGestaoAgenda(campo, novo[campo]);
+    if (atualNormalizado !== novoNormalizado) {
+      alterados[campo] = { de: atual[campo] ?? null, para: novo[campo] ?? null };
+    }
+  }
+  return alterados;
+};
+
+const normalizeJoinKey = (value: string | null | undefined) => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+const buildRealizadoJoinKey = (
+  data: string | null | undefined,
+  fornecedor: string | null | undefined,
+  transportadora: string | null | undefined,
+  horario: string | null | undefined
+) => [data ?? "", normalizeJoinKey(fornecedor), normalizeJoinKey(transportadora), (horario ?? "").slice(0, 5)].join("|");
+
+const RECEBIMENTO_STORAGE_PREFIX = "scc:v7:recebimento:";
+
+const storageReadJson = <T,>(storage: Storage, key: string): T | null => {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
+const storageWriteJson = (storage: Storage, key: string, value: unknown) => {
+  try {
+    storage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+};
+
+const storageReadObject = <T extends Record<string, unknown>>(storage: Storage, key: string, fallback: T): T => {
+  const parsed = storageReadJson<unknown>(storage, key);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback;
+  return { ...fallback, ...(parsed as Partial<T>) };
+};
+
+const storageReadString = (storage: Storage, key: string): string | null => {
+  const parsed = storageReadJson<unknown>(storage, key);
+  return typeof parsed === "string" ? parsed : null;
+};
+
+const RECEBIMENTO_DASHBOARD_FILTERS_KEY = `${RECEBIMENTO_STORAGE_PREFIX}dashboardFilters`;
+const RECEBIMENTO_DASHBOARD_ABERTOS_KEY = `${RECEBIMENTO_STORAGE_PREFIX}dashboardOpenRows`;
+const RECEBIMENTO_AGENDA_FILTERS_KEY = `${RECEBIMENTO_STORAGE_PREFIX}agendaFilters`;
+const RECEBIMENTO_AGENDA_SELECTION_KEY = `${RECEBIMENTO_STORAGE_PREFIX}agendaSelectedId`;
+const RECEBIMENTO_CONFIRMACAO_FILTERS_KEY = `${RECEBIMENTO_STORAGE_PREFIX}confirmacaoFilters`;
+const RECEBIMENTO_CONFIRMACAO_SELECTION_KEY = `${RECEBIMENTO_STORAGE_PREFIX}confirmacaoSelectedId`;
+
 export function RecebimentoDashboard({ perfil: _perfil }: Props) {
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [itensPorAgendamento, setItensPorAgendamento] = useState<Record<string, DashboardItem[]>>({});
   const [fotosPorOcorrencia, setFotosPorOcorrencia] = useState<Record<string, OcorrenciaFoto[]>>({});
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [filtros, setFiltros] = useState({
-    data: todayISO(),
-    dataFim: todayISO(),
-    status: "",
-    modalidade: "",
-    transportadora: "",
-    secao: "",
-    empresa: "",
+  const [ultimaAtualizacaoDashboard, setUltimaAtualizacaoDashboard] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState(() => {
+    const fallback = {
+      data: todayISO(),
+      dataFim: todayISO(),
+      status: "",
+      modalidade: "",
+      transportadora: "",
+      secao: "",
+      empresa: "",
+    };
+    if (typeof window === "undefined") return fallback;
+    return storageReadObject(window.localStorage, RECEBIMENTO_DASHBOARD_FILTERS_KEY, fallback);
   });
-  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
+  const [abertos, setAbertos] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    return storageReadObject(window.localStorage, RECEBIMENTO_DASHBOARD_ABERTOS_KEY, {} as Record<string, boolean>);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    storageWriteJson(window.localStorage, RECEBIMENTO_DASHBOARD_FILTERS_KEY, filtros);
+  }, [filtros]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    storageWriteJson(window.localStorage, RECEBIMENTO_DASHBOARD_ABERTOS_KEY, abertos);
+  }, [abertos]);
 
   const carregarDashboard = async () => {
     setLoading(true);
@@ -1487,6 +1711,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
     const ids = dashboardRows.map((row) => row.agendamento_id).filter(Boolean);
     if (ids.length === 0) {
       setItensPorAgendamento({});
+      setUltimaAtualizacaoDashboard(new Date().toLocaleString("pt-BR"));
       setLoading(false);
       return;
     }
@@ -1508,6 +1733,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
       }
       setItensPorAgendamento(grouped);
     }
+    setUltimaAtualizacaoDashboard(new Date().toLocaleString("pt-BR"));
     setLoading(false);
   };
 
@@ -1554,13 +1780,122 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
     ];
   }, [rowsFiltradas]);
 
+  const dashboardOnline = !loading && !erro;
+
+  const indicadores = useMemo(() => {
+    const cargas = sumRows(rowsFiltradas, "qtd_cargas");
+    const finalizadas = sumRows(rowsFiltradas, "ind_finalizada");
+    const emConferencia = sumRows(rowsFiltradas, "ind_em_conferencia");
+    const noShow = sumRows(rowsFiltradas, "ind_no_show");
+    const recusadas = sumRows(rowsFiltradas, "ind_recusada");
+    const veiculosNaoPresentes = rowsFiltradas.filter((row) => (row.status_finalizada ?? "").toLowerCase().includes("veículos não presentes")).length;
+    const totalPaletes = sumRows(rowsFiltradas, "total_paletes");
+    const totalCaixas = sumRows(rowsFiltradas, "total_caixas");
+    const valorTotal = sumRows(rowsFiltradas, "valor_total");
+    const rupturaTotal = sumRows(rowsFiltradas, "ruptura_total");
+    const ocorrenciasAbertas = sumRows(rowsFiltradas, "ocorrencias_abertas");
+    const totalConferido = sumRows(rowsFiltradas, "total_conferido");
+    const percConf = totalCaixas > 0 ? totalConferido / totalCaixas : 0;
+    const totalItens = sumRows(rowsFiltradas, "total_itens");
+    const itensCross = sumRows(rowsFiltradas, "itens_cross");
+    const itensArmaz = sumRows(rowsFiltradas, "itens_armaz");
+
+    return [
+      {
+        title: "Status das cargas",
+        cards: [
+          ["Cargas", String(cargas)],
+          ["Finalizadas", String(finalizadas)],
+          ["Em conferência", String(emConferencia)],
+          ["No Show", String(noShow)],
+          ["Recusadas", String(recusadas)],
+          ["Veículos não presentes", String(veiculosNaoPresentes)],
+        ],
+      },
+      {
+        title: "Volume operacional",
+        cards: [
+          ["Itens / Produtos", totalItens.toLocaleString("pt-BR")],
+          ["Cross", itensCross.toLocaleString("pt-BR")],
+          ["Armazenagem", itensArmaz.toLocaleString("pt-BR")],
+          ["Paletes", totalPaletes.toLocaleString("pt-BR")],
+          ["Caixas", totalCaixas.toLocaleString("pt-BR")],
+          ["Valor", formatCurrency(valorTotal)],
+          ["Ruptura", rupturaTotal.toLocaleString("pt-BR")],
+        ],
+      },
+      {
+        title: "Performance",
+        cards: [
+          ["% Conferência", percent(percConf)],
+          ["Ocorrências abertas", String(ocorrenciasAbertas)],
+          ["Capacidade / ocupação", `${sumRows(rowsFiltradas, "qtd_cargas").toLocaleString("pt-BR")} | ${percent(sumRows(rowsFiltradas, "perc_carga") / Math.max(rowsFiltradas.length || 1, 1))}`],
+          [
+            "Última atualização",
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span>{ultimaAtualizacaoDashboard ?? "-"}</span>
+              <span style={{ color: dashboardOnline ? theme.colors.neonGreen : theme.colors.danger, fontWeight: 900 }}>
+                {dashboardOnline ? "🟢 Online" : "🔴 Offline"}
+              </span>
+            </span>,
+          ],
+        ],
+      },
+    ];
+  }, [rowsFiltradas, ultimaAtualizacaoDashboard, dashboardOnline]);
+
   const toggle = (key: string) => setAbertos((prev) => ({ ...prev, [key]: !prev[key] }));
   const selectStyle = inputStyle;
+  const statusNormalizado = (status: string) => status.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const formatNumber = (value: number | string | null | undefined, decimals = 0) =>
     toNumber(value).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   const formatTime = (value: string | null | undefined) => (value ? value.slice(0, 5) : "-");
-  const statusColor = (status: string) =>
-    status === "Finalizada" || status === "Em conferência" ? theme.colors.neonGreen : theme.colors.neonOrange;
+  const statusColor = (status: string) => {
+    const normalized = statusNormalizado(status);
+    if (normalized.includes("finalizada")) return theme.colors.neonGreen;
+    if (normalized.includes("em conferencia")) return theme.colors.neonYellow;
+    if (normalized.includes("no show")) return theme.colors.danger;
+    if (normalized.includes("recusada")) return "#b45309";
+    if (normalized.includes("veiculos nao presentes")) return theme.colors.neonOrange;
+    return theme.colors.textSoft;
+  };
+  const rupturaColor = (value: number | string | null | undefined) => {
+    const ruptura = toNumber(value);
+    if (ruptura <= 0) return theme.colors.neonGreen;
+    if (ruptura <= 10) return theme.colors.neonYellow;
+    if (ruptura <= 30) return theme.colors.neonOrange;
+    return theme.colors.danger;
+  };
+  const cardIconMap: Record<string, string> = {
+    Cargas: "📦",
+    Finalizadas: "✅",
+    "Em conferência": "🟡",
+    "No Show": "🚫",
+    Recusadas: "❌",
+    "Veículos não presentes": "🚚",
+    "Itens / Produtos": "📦",
+    Cross: "🔀",
+    Armazenagem: "🏢",
+    Paletes: "🪵",
+    Caixas: "📦",
+    Valor: "💰",
+    Ruptura: "⚠️",
+    "% Conferência": "📈",
+    "Ocorrências abertas": "📝",
+    "Capacidade / ocupação": "🏭",
+    "Última atualização": "🕒",
+  };
+  const resumoExecutivo = useMemo(
+    () => [
+      { icon: "📅", label: filtros.data === todayISO() ? "Hoje" : formatDateBR(filtros.data), value: "" },
+      { icon: "📦", label: `${sumRows(rowsFiltradas, "qtd_cargas").toLocaleString("pt-BR")} cargas`, value: "" },
+      { icon: "🪵", label: `${sumRows(rowsFiltradas, "total_paletes").toLocaleString("pt-BR")} paletes`, value: "" },
+      { icon: "📦", label: `${sumRows(rowsFiltradas, "total_caixas").toLocaleString("pt-BR")} caixas`, value: "" },
+      { icon: "💰", label: formatCurrency(sumRows(rowsFiltradas, "valor_total")), value: "" },
+      { icon: "⚠️", label: `${sumRows(rowsFiltradas, "ruptura_total").toLocaleString("pt-BR")} rupturas`, value: "" },
+    ],
+    [rowsFiltradas, filtros.data]
+  );
   const indicador = (row: DashboardRow, field: keyof DashboardRow) => formatNumber(row[field] as any);
   const summary = (sourceRows: DashboardRow[]) => ({
     qtd_cargas: sumRows(sourceRows, "qtd_cargas"),
@@ -1794,15 +2129,178 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
       {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
       {loading && <div style={{ color: theme.colors.textMuted }}>Carregando recebimento...</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12 }}>
-        {metrics.map(([label, value]) => (
-          <div key={label} style={{ ...cardStyle, minWidth: 0 }}>
-            <div style={metricLabelStyle}>{label}</div>
-            <div style={{ ...metricValueStyle, fontSize: label === "Valor total" ? 20 : 24, overflowWrap: "anywhere" }}>{value}</div>
+      <div style={{ display: "grid", gap: 12 }}>
+        {indicadores.map((grupo) => (
+          <div key={grupo.title} style={{ ...cardStyle, padding: 12 }}>
+            <div style={{ color: theme.colors.neonOrange, fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
+              {grupo.title}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+              {grupo.cards.map(([label, value]) => (
+                <div key={label} style={{ ...cardStyle, padding: 10, minWidth: 0 }}>
+                  <div style={{ ...metricValueStyle, marginTop: 0, fontSize: label === "Última atualização" ? 13 : 30, lineHeight: 1.05, fontWeight: 900, overflowWrap: "anywhere" }}>
+                    {value}
+                  </div>
+                  <div style={{ ...metricLabelStyle, marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                    <span>{cardIconMap[label] ?? "•"}</span>
+                    <span>{label}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
 
+      <div style={{ ...cardStyle, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, overflowX: "auto", whiteSpace: "nowrap" }}>
+        {resumoExecutivo.map((item) => (
+          <div key={item.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", border: `1px solid ${theme.colors.borderSoft}`, borderRadius: 999, background: "rgba(2,6,23,0.45)", color: theme.colors.textSoft, fontSize: 12, fontWeight: 700 }}>
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: theme.colors.neonOrange, fontWeight: 900, fontSize: 14 }}>Tabela executiva</div>
+            <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Leitura rápida das cargas com expansão para os detalhes operacionais.</div>
+          </div>
+          <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Clique na linha para expandir</div>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 1160, borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: theme.colors.textMuted, textAlign: "left", background: "#020617" }}>
+                {[
+                  "Status",
+                  "Fornecedor",
+                  "Transportadora",
+                  "Carga",
+                  "Hora",
+                  "Paletes",
+                  "Itens",
+                  "Valor",
+                  "Ruptura",
+                  "Ações",
+                ].map((col) => (
+                  <th key={col} style={{ padding: 10, borderBottom: `1px solid ${theme.colors.borderSoft}`, whiteSpace: "nowrap" }}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rowsFiltradas.map((row) => {
+                const rowKey = `dashboard:${row.agendamento_id}`;
+                const open = !!abertos[rowKey];
+                const itens = itensPorAgendamento[row.agendamento_id] ?? [];
+                return (
+                  <React.Fragment key={row.agendamento_id}>
+                    <tr style={{ cursor: "pointer", background: open ? "rgba(15,23,42,0.9)" : undefined }} onClick={() => toggle(rowKey)}>
+                      <td style={{ padding: 10, color: statusColor(row.status_recebimento_calculado ?? row.status_finalizada ?? "") }}>{row.status_recebimento_calculado ?? row.status_finalizada ?? "Agenda"}</td>
+                      <td style={{ padding: 10 }}>{row.fornecedor_nome ?? "-"}</td>
+                      <td style={{ padding: 10 }}>{row.transportadora ?? "-"}</td>
+                      <td style={{ padding: 10 }}>{row.nro_carga ?? "-"}</td>
+                      <td style={{ padding: 10 }}>{formatTime(row.hora_chegada ?? row.horario)}</td>
+                      <td style={{ padding: 10 }}>{formatNumber(row.total_paletes)}</td>
+                      <td style={{ padding: 10 }}>{formatNumber(row.total_itens)}</td>
+                      <td style={{ padding: 10 }}>{formatCurrency(toNumber(row.valor_total))}</td>
+                      <td style={{ padding: 10, color: rupturaColor(row.ruptura_total), fontWeight: 900 }}>{formatNumber(row.ruptura_total)}</td>
+                      <td style={{ padding: 10 }}>
+                        <span style={{ color: theme.colors.neonGreen, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span>{open ? "👁" : "▶"}</span>
+                          Detalhes
+                        </span>
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td colSpan={10} style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, background: "rgba(2,6,23,0.72)" }}>
+                          <div style={{ display: "grid", gap: 12 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                              {[
+                                ["Estivada", formatNumber(row.estivada)],
+                                ["Repaletizada", formatNumber(row.repaletizada)],
+                                ["Paletizada", formatNumber(row.paletizada)],
+                                ["Itens Cross", formatNumber(row.itens_cross)],
+                                ["Itens Armaz", formatNumber(row.itens_armaz)],
+                                ["% Conferência", percent(toNumber(row.perc_conferencia))],
+                                ["% Carga", percent(toNumber(row.perc_carga))],
+                                ["Ocorrências abertas", formatNumber(row.ocorrencias_abertas)],
+                              ].map(([label, value]) => (
+                                <div key={label} style={{ ...cardStyle, padding: 10 }}>
+                                  <div style={metricLabelStyle}>{label}</div>
+                                  <div style={{ ...metricValueStyle, fontSize: 16 }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div style={{ overflowX: "auto" }}>
+                              <table style={{ width: "100%", minWidth: 960, borderCollapse: "collapse", fontSize: 12 }}>
+                                <thead>
+                                  <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+                                    {[
+                                      "Código produto",
+                                      "Descrição produto",
+                                      "Seção",
+                                      "Modalidade original",
+                                      "Modalidade compra",
+                                      "Norma",
+                                      "Palete",
+                                      "Gerada",
+                                      "Conferida",
+                                      "Recebida",
+                                      "Valor",
+                                      "Ruptura",
+                                    ].map((col) => (
+                                      <th key={col} style={{ padding: 7, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {itens.map((item) => (
+                                    <tr key={item.id}>
+                                      <td style={{ padding: 7 }}>{item.codigo_produto ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{item.descricao_produto ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{item.secao ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{item.modalidade_original ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{item.modalidade_compra ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{item.norma ?? "-"}</td>
+                                      <td style={{ padding: 7 }}>{formatNumber(item.palete)}</td>
+                                      <td style={{ padding: 7 }}>{formatNumber(item.gerada)}</td>
+                                      <td style={{ padding: 7 }}>{formatNumber(item.conferida)}</td>
+                                      <td style={{ padding: 7 }}>{formatNumber(item.recebida)}</td>
+                                      <td style={{ padding: 7 }}>{formatCurrency(toNumber(item.valor))}</td>
+                                      <td style={{ padding: 7 }}>{formatNumber(item.ruptura)}</td>
+                                    </tr>
+                                  ))}
+                                  {itens.length === 0 && (
+                                    <tr>
+                                      <td colSpan={12} style={{ padding: 10, color: theme.colors.textMuted }}>Nenhum item encontrado para esta carga.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {rowsFiltradas.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={10} style={{ padding: 14, color: theme.colors.textMuted }}>Nenhum dado encontrado para os filtros.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <details style={{ ...cardStyle, overflowX: "auto", padding: 0, marginTop: 12 }}>
+        <summary style={{ padding: 12, cursor: "pointer", color: theme.colors.neonOrange, fontWeight: 900 }}>Visão consolidada</summary>
       <div style={{ ...cardStyle, overflowX: "auto", padding: 0 }}>
         <table style={{ width: "100%", minWidth: 3400, borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
@@ -1930,6 +2428,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
           </tbody>
         </table>
       </div>
+      </details>
     </section>
   );
 }
@@ -2156,14 +2655,22 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
   const [selectedTransportadoraContatoId, setSelectedTransportadoraContatoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [filtros, setFiltros] = useState({
-    data: todayISO(),
-    dataFim: todayISO(),
-    status: "",
-    fornecedor: "",
-    transportadora: "",
-    unidade: "",
-    possuiNota: "",
+  const [filtros, setFiltros] = useState(() => {
+    const fallback = {
+      data: todayISO(),
+      dataFim: todayISO(),
+      status: "",
+      fornecedor: "",
+      transportadora: "",
+      unidade: "",
+      possuiNota: "",
+    };
+    if (typeof window === "undefined") return fallback;
+    return storageReadObject(window.localStorage, RECEBIMENTO_CONFIRMACAO_FILTERS_KEY, fallback);
+  });
+  const [selecionadaPersistidaId, setSelecionadaPersistidaId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return storageReadString(window.sessionStorage, RECEBIMENTO_CONFIRMACAO_SELECTION_KEY);
   });
   const [registro, setRegistro] = useState({
     canal: "WhatsApp",
@@ -2178,6 +2685,36 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
 
   const formatNumber = (value: number | string | null | undefined) => toNumber(value).toLocaleString("pt-BR");
   const formatTime = (value: string | null | undefined) => (value ? value.slice(0, 5) : "-");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    storageWriteJson(window.localStorage, RECEBIMENTO_CONFIRMACAO_FILTERS_KEY, filtros);
+  }, [filtros]);
+
+  useEffect(() => {
+    if (!selecionadaPersistidaId) return;
+    const encontrada = rows.find((row) => row.id === selecionadaPersistidaId) ?? null;
+    if (!encontrada) {
+      if (selecionada) {
+        setSelecionada(null);
+      }
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(RECEBIMENTO_CONFIRMACAO_SELECTION_KEY);
+      }
+      return;
+    }
+    if (selecionada?.id !== encontrada.id || selecionada !== encontrada) {
+      setSelecionada(encontrada);
+    }
+  }, [rows, selecionadaPersistidaId]);
+
+  const limparSelecaoConfirmacao = () => {
+    setSelecionada(null);
+    setSelecionadaPersistidaId(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(RECEBIMENTO_CONFIRMACAO_SELECTION_KEY);
+    }
+  };
 
   const carregar = async () => {
     setLoading(true);
@@ -2256,8 +2793,7 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
       `Transportadora: ${row.transportadora_nome ?? "-"}`,
       `CD/Unidade: ${row.unidade_negocios ?? row.deposito ?? "-"}`,
       `Data: ${formatDateBR(row.data_agenda)}`,
-      `Horário agendado: ${formatTime(row.horario)}`,
-      "Apresentação: favor se apresentar até as 10:00 da manhã ou dará No Show.",
+      "Apresentação: favor se apresentar conforme a prioridade operacional do CD e manter contato na chegada.",
       `Notas fiscais: ${row.notas_fiscais || "sem nota informada"}`,
       `Tipo de carga: ${row.tipo_carga || "-"}`,
       `Tipo de volume: ${row.tipo_volume || "-"}`,
@@ -2273,6 +2809,10 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
 
   const abrirDetalhe = async (row: GestaoAgendaRow) => {
     setSelecionada(row);
+    setSelecionadaPersistidaId(row.id);
+    if (typeof window !== "undefined") {
+      storageWriteJson(window.sessionStorage, RECEBIMENTO_CONFIRMACAO_SELECTION_KEY, row.id);
+    }
     setSelectedFornecedorContatoId(null);
     setSelectedTransportadoraContatoId(null);
     setRegistro({
@@ -2317,6 +2857,8 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
         observacao: observacao || row.observacao,
         confirmado_em: new Date().toISOString(),
         confirmado_por: perfil.id,
+        alterado_na_ultima_importacao: false,
+        campos_alterados: null,
       })
       .eq("id", row.id);
     if (error) {
@@ -2426,6 +2968,15 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
 
   const selectedFornecedorContato = selecionada ? getSelectedFornecedorContato(selecionada) : null;
   const selectedTransportadoraContato = selecionada ? getSelectedTransportadoraContato(selecionada) : null;
+  const selectedCamposAlterados = selecionada?.campos_alterados ?? null;
+  const selectedCamposAlteradosEntries = Object.entries(selectedCamposAlterados ?? {}) as Array<[
+    GestaoAgendaRowCampoReimportacao,
+    { de: unknown; para: unknown }
+  ]>;
+  const highlightCellStyle = (campo: GestaoAgendaRowCampoReimportacao): React.CSSProperties =>
+    selectedCamposAlterados?.[campo]
+      ? { background: "rgba(239,68,68,0.14)", boxShadow: "inset 0 0 0 1px rgba(239,68,68,0.35)", borderRadius: 6 }
+      : {};
 
   const handlePrefillRegistro = (canal: string, contato: { nome: string; tipo?: string | null; cargo?: string | null; id: string }, origem: string) => {
     setRegistro((prev) => ({
@@ -2507,19 +3058,29 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
             <tbody>
               {rowsFiltradas.map((row) => {
                 const links = contactLinks(row);
+                const rowAlterado = !!row.alterado_na_ultima_importacao;
                 return (
-                  <tr key={row.id} style={{ cursor: "pointer" }} onClick={() => void abrirDetalhe(row)}>
-                    <td style={{ padding: 8 }}>{row.codigo_agenda ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{formatDateBR(row.data_agenda)}</td>
-                    <td style={{ padding: 8 }}>{formatTime(row.horario)}</td>
-                    <td style={{ padding: 8 }}>{row.doca ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{row.fornecedor_nome ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{row.transportadora_nome ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{row.notas_fiscais ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{row.tipo_carga ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{row.tipo_volume ?? "-"}</td>
-                    <td style={{ padding: 8 }}>{formatNumber(row.volumes)}</td>
-                    <td style={{ padding: 8 }}>{formatNumber(row.sku)}</td>
+                  <tr key={row.id} style={{ cursor: "pointer", background: rowAlterado ? "rgba(239,68,68,0.06)" : undefined }} onClick={() => void abrirDetalhe(row)}>
+                    <td style={{ padding: 8, ...highlightCellStyle("notas_fiscais") }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span>{row.codigo_agenda ?? "-"}</span>
+                        {rowAlterado && (
+                          <span style={{ padding: "3px 8px", borderRadius: 999, background: "rgba(239,68,68,0.14)", color: "#fecaca", fontSize: 11, fontWeight: 800 }}>
+                            Alterado
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: 8, ...highlightCellStyle("horario") }}>{formatDateBR(row.data_agenda)}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("horario") }}>{formatTime(row.horario)}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("doca") }}>{row.doca ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("fornecedor_nome") }}>{row.fornecedor_nome ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("transportadora_nome") }}>{row.transportadora_nome ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("notas_fiscais") }}>{row.notas_fiscais ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("tipo_carga") }}>{row.tipo_carga ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("tipo_volume") }}>{row.tipo_volume ?? "-"}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("volumes") }}>{formatNumber(row.volumes)}</td>
+                    <td style={{ padding: 8, ...highlightCellStyle("sku") }}>{formatNumber(row.sku)}</td>
                     <td style={{ padding: 8, color: row.status_confirmacao === "Confirmado" ? theme.colors.neonGreen : theme.colors.neonOrange }}>{row.status_confirmacao ?? "Pendente"}</td>
                     <td style={{ padding: 8 }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
@@ -2552,7 +3113,7 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                   Centro de controle da confirmação | {formatDateBR(selecionada.data_agenda)} às {formatTime(selecionada.horario)}
                 </p>
               </div>
-              <button type="button" style={buttonSecondaryStyle} onClick={() => setSelecionada(null)}>Voltar para lista</button>
+              <button type="button" style={buttonSecondaryStyle} onClick={() => limparSelecaoConfirmacao()}>Voltar para lista</button>
             </div>
 
             <div style={{ ...cardStyle, marginTop: 14, background: "rgba(2,6,23,0.42)" }}>
@@ -2651,6 +3212,18 @@ export function RecebimentoConfirmacaoAgenda({ perfil }: Props) {
                   <div><strong>Doca:</strong> {selecionada.doca ?? "-"}</div>
                   <div><strong>Data/Horário:</strong> {formatDateBR(selecionada.data_agenda)} às {formatTime(selecionada.horario)}</div>
                 </div>
+                {selectedCamposAlteradosEntries.length > 0 && (
+                  <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${theme.colors.borderSoft}`, background: "rgba(239,68,68,0.08)" }}>
+                    <div style={{ color: theme.colors.danger, fontWeight: 900, marginBottom: 8 }}>Campos alterados na última importação</div>
+                    <div style={{ display: "grid", gap: 8, color: theme.colors.textSoft, fontSize: 13 }}>
+                      {selectedCamposAlteradosEntries.map(([campo, valores]) => (
+                        <div key={campo}>
+                          <strong>{GESTAO_AGENDA_CAMPOS_REIMPORTACAO_LABELS[campo]}:</strong> {formatarValorMudancaGestaoAgenda(campo, valores.de)} → {formatarValorMudancaGestaoAgenda(campo, valores.para)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ marginTop: 12 }}>
                   <div style={{ color: theme.colors.text, fontWeight: 800, marginBottom: 8 }}>Contatos da transportadora</div>
                   <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
@@ -2798,6 +3371,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [itensPorAgendamento, setItensPorAgendamento] = useState<Record<string, DashboardItem[]>>({});
   const [historicoPorAgendamento, setHistoricoPorAgendamento] = useState<Record<string, AgendamentoHistorico[]>>({});
+  const [linhaTempoPorAgendamento, setLinhaTempoPorAgendamento] = useState<Record<string, LinhaTempoAgenda[]>>({});
   const [ocorrenciasPorAgendamento, setOcorrenciasPorAgendamento] = useState<Record<string, Ocorrencia[]>>({});
   const [fotosPorOcorrencia, setFotosPorOcorrencia] = useState<Record<string, OcorrenciaFoto[]>>({});
   const [selecionada, setSelecionada] = useState<DashboardRow | null>(null);
@@ -2806,17 +3380,60 @@ export function RecebimentoAgenda({ perfil }: Props) {
   const [mostrarNovaOcorrencia, setMostrarNovaOcorrencia] = useState(false);
   const [novaOcorrencia, setNovaOcorrencia] = useState({ tipo: TIPOS_OCORRENCIA[0], item_id: "", descricao: "" });
   const [novaOcorrenciaFotos, setNovaOcorrenciaFotos] = useState<File[]>([]);
-  const [filtros, setFiltros] = useState({
-    data: todayISO(),
-    empresa: "",
-    status: "",
-    transportadora: "",
+  const [novaLinhaTempo, setNovaLinhaTempo] = useState({ tipo: TIPOS_LINHA_TEMPO[0], descricao: "" });
+  const [salvandoLinhaTempo, setSalvandoLinhaTempo] = useState(false);
+  const [filtros, setFiltros] = useState(() => {
+    const fallback = {
+      data: todayISO(),
+      empresa: "",
+      status: "",
+      transportadora: "",
+    };
+    if (typeof window === "undefined") return fallback;
+    return storageReadObject(window.localStorage, RECEBIMENTO_AGENDA_FILTERS_KEY, fallback);
+  });
+
+  const [selecionadaPersistidaId, setSelecionadaPersistidaId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return storageReadString(window.sessionStorage, RECEBIMENTO_AGENDA_SELECTION_KEY);
   });
 
   const formatNumber = (value: number | string | null | undefined, decimals = 0) =>
     toNumber(value).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   const formatTime = (value: string | null | undefined) => (value ? value.slice(0, 5) : "-");
   const cargaKey = (row: DashboardRow) => cargaDisplayKey(row);
+
+  const selecionarAgenda = (row: DashboardRow | null) => {
+    setSelecionada(row);
+    const nextId = row?.agendamento_id ?? null;
+    setSelecionadaPersistidaId(nextId);
+    if (typeof window !== "undefined") {
+      if (nextId) storageWriteJson(window.sessionStorage, RECEBIMENTO_AGENDA_SELECTION_KEY, nextId);
+      else window.sessionStorage.removeItem(RECEBIMENTO_AGENDA_SELECTION_KEY);
+    }
+  };
+
+  const limparSelecaoAgenda = () => selecionarAgenda(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    storageWriteJson(window.localStorage, RECEBIMENTO_AGENDA_FILTERS_KEY, filtros);
+  }, [filtros]);
+
+  useEffect(() => {
+    if (!selecionadaPersistidaId) return;
+    const encontrada = rows.find((row) => row.agendamento_id === selecionadaPersistidaId) ?? null;
+    if (!encontrada) {
+      if (selecionada) selecionarAgenda(null);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(RECEBIMENTO_AGENDA_SELECTION_KEY);
+      }
+      return;
+    }
+    if (selecionada?.agendamento_id !== encontrada.agendamento_id || selecionada !== encontrada) {
+      setSelecionada(encontrada);
+    }
+  }, [rows, selecionadaPersistidaId]);
 
   const carregarAgenda = async () => {
     setLoading(true);
@@ -2834,6 +3451,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
       setRows([]);
       setItensPorAgendamento({});
       setHistoricoPorAgendamento({});
+      setLinhaTempoPorAgendamento({});
       setOcorrenciasPorAgendamento({});
       setFotosPorOcorrencia({});
       setLoading(false);
@@ -2846,6 +3464,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
     if (ids.length === 0) {
       setItensPorAgendamento({});
       setHistoricoPorAgendamento({});
+      setLinhaTempoPorAgendamento({});
       setOcorrenciasPorAgendamento({});
       setFotosPorOcorrencia({});
       setLoading(false);
@@ -2855,6 +3474,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
     const [
       { data: itens, error: itensError },
       { data: historico, error: historicoError },
+      { data: linhaTempo, error: linhaTempoError },
       { data: ocorrencias, error: ocorrenciasError },
     ] = await Promise.all([
       db()
@@ -2865,6 +3485,11 @@ export function RecebimentoAgenda({ perfil }: Props) {
       db()
         .from("agendamento_historico")
         .select("id,agendamento_id,acao,created_at,dados_anteriores,dados_novos")
+        .in("agendamento_id", ids)
+        .order("created_at", { ascending: false }),
+      db()
+        .from("agendamento_linha_tempo")
+        .select("id,agendamento_id,tipo,descricao,usuario_id,created_at")
         .in("agendamento_id", ids)
         .order("created_at", { ascending: false }),
       db()
@@ -2896,6 +3521,39 @@ export function RecebimentoAgenda({ perfil }: Props) {
         grouped[item.agendamento_id].push(item);
       }
       setHistoricoPorAgendamento(grouped);
+    }
+
+    if (linhaTempoError) {
+      console.error("Erro ao carregar linha do tempo da agenda:", linhaTempoError);
+      setLinhaTempoPorAgendamento({});
+    } else {
+      const timelineRows = (linhaTempo ?? []) as LinhaTempoAgenda[];
+      const usuarioIds = Array.from(new Set(timelineRows.map((item) => item.usuario_id).filter((value): value is string => !!value)));
+      const usuariosPorId: Record<string, string> = {};
+
+      if (usuarioIds.length > 0) {
+        const { data: usuarios, error: usuariosError } = await db()
+          .from("usuarios")
+          .select("id,nome")
+          .in("id", usuarioIds);
+        if (usuariosError) {
+          console.error("Erro ao carregar usuários da linha do tempo:", usuariosError);
+        } else {
+          for (const usuario of (usuarios ?? []) as Array<{ id: string; nome: string }>) {
+            usuariosPorId[usuario.id] = usuario.nome;
+          }
+        }
+      }
+
+      const grouped: Record<string, LinhaTempoAgenda[]> = {};
+      for (const item of timelineRows) {
+        if (!grouped[item.agendamento_id]) grouped[item.agendamento_id] = [];
+        grouped[item.agendamento_id].push({
+          ...item,
+          usuario_nome: item.usuario_id ? usuariosPorId[item.usuario_id] ?? null : null,
+        });
+      }
+      setLinhaTempoPorAgendamento(grouped);
     }
 
     if (ocorrenciasError) {
@@ -2939,6 +3597,35 @@ export function RecebimentoAgenda({ perfil }: Props) {
   useEffect(() => {
     void carregarAgenda();
   }, [filtros.data]);
+
+  const salvarLinhaTempo = async () => {
+    if (!selecionada) return;
+    const descricao = novaLinhaTempo.descricao.trim();
+    if (!descricao) {
+      setErro("Informe a descrição da linha do tempo.");
+      return;
+    }
+
+    setSalvandoLinhaTempo(true);
+    setErro(null);
+    const { error } = await db().from("agendamento_linha_tempo").insert({
+      agendamento_id: selecionada.agendamento_id,
+      tipo: novaLinhaTempo.tipo,
+      descricao,
+      usuario_id: perfil.id,
+    });
+
+    if (error) {
+      console.error("Erro ao salvar linha do tempo:", error);
+      setErro("Erro ao salvar linha do tempo.");
+      setSalvandoLinhaTempo(false);
+      return;
+    }
+
+    setNovaLinhaTempo({ tipo: TIPOS_LINHA_TEMPO[0], descricao: "" });
+    await carregarAgenda();
+    setSalvandoLinhaTempo(false);
+  };
 
   const rowsFiltradas = useMemo(() => {
     return rows.filter((row) => {
@@ -2993,6 +3680,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
 
   const itensSelecionados = selecionada ? itensPorAgendamento[selecionada.agendamento_id] ?? [] : [];
   const historicoSelecionado = selecionada ? historicoPorAgendamento[selecionada.agendamento_id] ?? [] : [];
+  const linhaTempoSelecionada = selecionada ? linhaTempoPorAgendamento[selecionada.agendamento_id] ?? [] : [];
   const ocorrenciasSelecionadas = selecionada ? ocorrenciasPorAgendamento[selecionada.agendamento_id] ?? [] : [];
 
   const salvarOcorrenciaAgenda = async () => {
@@ -3105,7 +3793,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
                       <button
                         type="button"
                         key={cargaKey(row)}
-                        onClick={() => setSelecionada(row)}
+                        onClick={() => selecionarAgenda(row)}
                         style={{
                           ...statusStyle(row.status_recebimento_calculado),
                           borderWidth: 1,
@@ -3139,7 +3827,7 @@ export function RecebimentoAgenda({ perfil }: Props) {
                 <h2 style={{ margin: 0, color: theme.colors.neonOrange, fontSize: 18 }}>Carga {selecionada.nro_carga ?? "-"}</h2>
                 <p style={descStyle}>Box {selecionada.nro_box ?? "-"} | {formatTime(selecionada.hora_chegada ?? selecionada.horario)}</p>
               </div>
-              <button type="button" style={buttonSecondaryStyle} onClick={() => setSelecionada(null)}>Fechar</button>
+              <button type="button" style={buttonSecondaryStyle} onClick={() => limparSelecaoAgenda()}>Fechar</button>
             </div>
 
             <div style={{ display: "grid", gap: 8, marginTop: 12, color: theme.colors.textSoft, fontSize: 13 }}>
@@ -3255,6 +3943,44 @@ export function RecebimentoAgenda({ perfil }: Props) {
                 </div>
               ))}
               {ocorrenciasSelecionadas.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 13 }}>Nenhuma ocorrência registrada.</div>}
+            </div>
+
+            <h3 style={{ color: theme.colors.text, fontSize: 15, margin: "16px 0 8px" }}>Linha do Tempo da Carga</h3>
+            <div style={{ ...cardStyle, padding: 12, display: "grid", gap: 10 }}>
+              <select
+                style={inputStyle}
+                value={novaLinhaTempo.tipo}
+                onChange={(e) => setNovaLinhaTempo({ ...novaLinhaTempo, tipo: e.target.value })}
+              >
+                {TIPOS_LINHA_TEMPO.map((tipo) => (
+                  <option key={tipo} value={tipo}>
+                    {tipo}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                style={{ ...inputStyle, minHeight: 88 }}
+                placeholder="Registrar observação operacional, contato, problema ou andamento da carga"
+                value={novaLinhaTempo.descricao}
+                onChange={(e) => setNovaLinhaTempo({ ...novaLinhaTempo, descricao: e.target.value })}
+              />
+              <button type="button" style={buttonPrimaryStyle} onClick={() => void salvarLinhaTempo()} disabled={salvandoLinhaTempo}>
+                {salvandoLinhaTempo ? "Salvando..." : "Salvar registro"}
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              {linhaTempoSelecionada.map((item) => (
+                <div key={item.id} style={{ borderTop: `1px solid ${theme.colors.borderSoft}`, paddingTop: 8 }}>
+                  <div style={{ color: theme.colors.neonOrange, fontWeight: 800 }}>{item.tipo}</div>
+                  <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>{formatDateTimeBR(item.created_at)}</div>
+                  <div style={{ color: theme.colors.textSoft, fontSize: 13, marginTop: 4 }}>{item.descricao}</div>
+                  <div style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                    {item.usuario_nome ?? item.usuario_id ?? "-"}
+                  </div>
+                </div>
+              ))}
+              {linhaTempoSelecionada.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 13 }}>Nenhum registro na linha do tempo.</div>}
             </div>
 
             <h3 style={{ color: theme.colors.text, fontSize: 15, margin: "16px 0 8px" }}>Histórico da carga</h3>
@@ -4556,7 +5282,7 @@ const importarGestaoAgendaRows = async (
           .upsert({ fornecedor_id: fornecedorId, transportadora_id: transportadoraId }, { onConflict: "fornecedor_id,transportadora_id" });
       }
 
-      const payload = {
+      const payloadBase = {
         codigo_agenda: row.codigo_agenda,
         transportadora_nome: row.transportadora_nome || null,
         fornecedor_nome: row.fornecedor_nome || null,
@@ -4575,6 +5301,8 @@ const importarGestaoAgendaRows = async (
         fornecedor_id: fornecedorId,
         transportadora_id: transportadoraId,
         possui_nota: row.notas_fiscais.trim().length > 0,
+        ultima_importacao_id: importacaoId,
+        ultima_atualizacao_importacao: new Date().toISOString(),
       };
 
       const { data: existente, error: existeError } = await db()
@@ -4585,12 +5313,36 @@ const importarGestaoAgendaRows = async (
         .maybeSingle();
       if (existeError) throw existeError;
 
-      const { error } = await db()
+      const { data: existenteCompleto } = await db()
         .from("gestao_agenda")
-        .upsert(payload, { onConflict: "codigo_agenda" });
-      if (error) throw error;
-      if (existente?.id) agendasAtualizadas += 1;
-      else agendasNovas += 1;
+        .select("*")
+        .eq("codigo_agenda", row.codigo_agenda)
+        .maybeSingle();
+
+      if (existente?.id && existenteCompleto) {
+        const camposAlterados = construirCamposAlteradosGestaoAgenda(existenteCompleto as GestaoAgendaRow, payloadBase as GestaoAgendaRow);
+        const updatePayload = {
+          ...payloadBase,
+          alterado_na_ultima_importacao: Object.keys(camposAlterados).length > 0,
+          campos_alterados: Object.keys(camposAlterados).length > 0 ? camposAlterados : null,
+        };
+
+        const { error } = await db()
+          .from("gestao_agenda")
+          .update(updatePayload)
+          .eq("id", existente.id);
+        if (error) throw error;
+        agendasAtualizadas += 1;
+      } else {
+        const insertPayload = {
+          ...payloadBase,
+          alterado_na_ultima_importacao: false,
+          campos_alterados: null,
+        };
+        const { error } = await db().from("gestao_agenda").insert(insertPayload);
+        if (error) throw error;
+        agendasNovas += 1;
+      }
     } catch (e: any) {
       erros.push(`Linha ${index + 2}: ${e?.message ?? "erro ao importar"}`);
     }
@@ -5225,6 +5977,8 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
   const [topRows, setTopRows] = useState<NoShowTopFornecedorRow[]>([]);
   const [baseRows, setBaseRows] = useState<NoShowBasePortalDashboardRow[]>([]);
   const [metaRows, setMetaRows] = useState<NoShowMetaCapacidadeDashboardRow[]>([]);
+  const [abertosExec, setAbertosExec] = useState<Record<string, boolean>>({});
+  const [ultimaAtualizacaoNoShow, setUltimaAtualizacaoNoShow] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [filtros, setFiltros] = useState({
@@ -5233,6 +5987,8 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
     uf: "",
     fornecedor: "",
     status: "",
+    empresa: "",
+    grupo: "",
   });
 
   const carregarDashboard = async () => {
@@ -5274,6 +6030,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
     setTopRows(nextTopRows);
     setBaseRows(nextBaseRows);
     setMetaRows(nextMetaRows);
+    setUltimaAtualizacaoNoShow(new Date().toLocaleString("pt-BR"));
 
     setFiltros((prev) => {
       if (prev.mes || prev.ano) return prev;
@@ -5309,6 +6066,28 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
     () => Array.from(new Set(baseRows.map((row) => noShowStatusLabel(row)).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [baseRows]
   );
+  const empresasDisponiveis = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          baseRows
+            .map((row) => String((row as any).empresa ?? (row as any).cd ?? "").trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
+  const gruposDisponiveis = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          baseRows
+            .map((row) => String((row as any).grupo ?? (row as any).tipo_carga ?? "").trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [baseRows]
+  );
 
   const baseRowsFiltradas = useMemo(() => {
     const fornecedorFiltro = filtros.fornecedor.trim().toLowerCase();
@@ -5318,12 +6097,16 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
       const uf = (row.uf ?? "").trim();
       const fornecedor = (row.fornecedor_nome ?? "").toLowerCase();
       const status = noShowStatusLabel(row);
+      const empresa = String((row as any).empresa ?? (row as any).cd ?? "").trim();
+      const grupo = String((row as any).grupo ?? (row as any).tipo_carga ?? "").trim();
 
       if (filtros.mes && mes !== filtros.mes) return false;
       if (filtros.ano && ano !== filtros.ano) return false;
       if (filtros.uf && uf !== filtros.uf) return false;
       if (fornecedorFiltro && !fornecedor.includes(fornecedorFiltro)) return false;
       if (filtros.status && status !== filtros.status) return false;
+      if (filtros.empresa && empresa !== filtros.empresa) return false;
+      if (filtros.grupo && grupo !== filtros.grupo) return false;
       return true;
     });
   }, [baseRows, filtros]);
@@ -5340,7 +6123,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
   );
 
   const resumoConsolidado = useMemo(() => {
-    if (!filtros.fornecedor && !filtros.status) {
+    if (!filtros.fornecedor && !filtros.status && !filtros.empresa && !filtros.grupo) {
       return resumoRows.filter((row) => {
         if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
         if (filtros.ano && String(row.ano ?? "") !== filtros.ano) return false;
@@ -5418,7 +6201,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
   }, [baseRowsFiltradas, filtros, metaRows, resumoRows]);
 
   const top5Fornecedores = useMemo(() => {
-    if (!filtros.fornecedor && !filtros.status) {
+    if (!filtros.fornecedor && !filtros.status && !filtros.empresa && !filtros.grupo) {
       return topRows
         .filter((row) => {
           if (filtros.mes && padMonth(row.mes) !== filtros.mes) return false;
@@ -5511,7 +6294,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
   }, [baseRowsFiltradas, metasFiltradas]);
 
   const consolidadoOperacional = useMemo(() => {
-    if (filtros.fornecedor || filtros.status) {
+    if (filtros.fornecedor || filtros.status || filtros.empresa || filtros.grupo) {
       return {
         produtos: indicadores.produtos,
         paletes: indicadores.paletes,
@@ -5538,23 +6321,227 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
     );
   }, [dashboardRows, filtros, indicadores]);
 
-  const cards = [
-    ["Total agendas", String(indicadores.totalAgendas)],
-    ["Recebidas", String(indicadores.recebidas)],
-    ["Não recebidas", String(indicadores.naoRecebidas)],
-    ["Total No Show", String(indicadores.totalNoShow)],
-    ["% No Show", percent(indicadores.percentualNoShow)],
-    ["Média recebidas/dia", indicadores.mediaRecebidasDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
-    ["Média No Show/dia", indicadores.mediaNoShowDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
-    ["Capacidade dia", indicadores.capacidadeDia.toLocaleString("pt-BR")],
-    ["Meta recebimento mês", indicadores.metaRecebimentoMes.toLocaleString("pt-BR")],
-    ["% recebido", percent(indicadores.percentualRecebido)],
-    ["Eficiência", percent(indicadores.eficiencia)],
-    ["Acurácia", percent(indicadores.acuracia)],
-    ["Realizado", String(indicadores.realizado)],
-    ["Não realizado", String(indicadores.naoRealizado)],
-    ["Abandono", String(indicadores.abandono)],
+  const noShowStatusColor = (value: number) => {
+    if (value <= 0.05) return theme.colors.neonGreen;
+    if (value <= 0.1) return theme.colors.neonYellow;
+    if (value <= 0.2) return theme.colors.neonOrange;
+    return theme.colors.danger;
+  };
+
+  const statusFornecedor = (percentual: number) => {
+    if (percentual <= 0.05) return "Controlado";
+    if (percentual <= 0.1) return "Atenção";
+    if (percentual <= 0.2) return "Alerta";
+    return "Crítico";
+  };
+
+  const dashboardOnline = !loading && !erro;
+  const mesAnoLabel = filtros.mes && filtros.ano ? `${filtros.mes}/${filtros.ano}` : "Período geral";
+  const fornecedoresCriticos = top5Fornecedores.filter((row) => toNumber(row.percentual_no_show) > 0.1).length;
+
+  const kpiGrupos = [
+    {
+      title: "Status",
+      cards: [
+        ["📅 Agendas", indicadores.totalAgendas.toLocaleString("pt-BR")],
+        ["✅ Recebidas", indicadores.recebidas.toLocaleString("pt-BR")],
+        ["❌ Não recebidas", indicadores.naoRecebidas.toLocaleString("pt-BR")],
+        ["🚫 No Show", indicadores.totalNoShow.toLocaleString("pt-BR")],
+        ["⚫ Não realizado", indicadores.naoRealizado.toLocaleString("pt-BR")],
+        ["⚠ Abandono", indicadores.abandono.toLocaleString("pt-BR")],
+      ],
+    },
+    {
+      title: "Volume",
+      cards: [
+        ["📦 Produtos", consolidadoOperacional.produtos.toLocaleString("pt-BR")],
+        ["🪵 Paletes", consolidadoOperacional.paletes.toLocaleString("pt-BR")],
+        ["📦 Caixas", consolidadoOperacional.caixas.toLocaleString("pt-BR")],
+        ["💰 Valor", formatCurrency(consolidadoOperacional.valor_total)],
+      ],
+    },
+    {
+      title: "Performance",
+      cards: [
+        ["📈 % Recebido", percent(indicadores.percentualRecebido)],
+        ["🎯 Meta", indicadores.metaRecebimentoMes.toLocaleString("pt-BR")],
+        ["🏭 Capacidade", indicadores.capacidadeDia.toLocaleString("pt-BR")],
+        ["📊 Média recebidas/dia", indicadores.mediaRecebidasDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
+        ["📉 Média No Show/dia", indicadores.mediaNoShowDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
+        ["✔ Eficiência", percent(indicadores.eficiencia)],
+        ["✔ Acurácia", percent(indicadores.acuracia)],
+        ["🟢 Última atualização", `${ultimaAtualizacaoNoShow ?? "-"} | ${dashboardOnline ? "🟢 Online" : "🔴 Offline"}`],
+      ],
+    },
   ];
+
+  const resumoBarra = [
+    `📅 ${mesAnoLabel}`,
+    `${indicadores.totalAgendas.toLocaleString("pt-BR")} agendas`,
+    `${indicadores.capacidadeDia.toLocaleString("pt-BR")} capacidade`,
+    `${indicadores.metaRecebimentoMes.toLocaleString("pt-BR")} meta`,
+    `${indicadores.mediaRecebidasDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} média recebidas`,
+    `${indicadores.mediaNoShowDia.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} média No Show`,
+    `${fornecedoresCriticos.toLocaleString("pt-BR")} fornecedores críticos`,
+  ];
+
+  const seriesRecebimentoMeta = useMemo(() => {
+    const grouped = new Map<string, { label: string; recebidas: number; meta: number }>();
+    for (const row of resumoConsolidado) {
+      const month = padMonth(row.mes);
+      const key = `${row.ano ?? "-"}-${month}`;
+      const current = grouped.get(key) ?? { label: `${month}/${row.ano ?? "-"}`, recebidas: 0, meta: 0 };
+      current.recebidas += toNumber(row.recebidas);
+      current.meta += toNumber(row.meta_recebimento_mes);
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, value]) => value)
+      .slice(-8);
+  }, [resumoConsolidado]);
+
+  const seriesNoShowDia = useMemo(() => {
+    const grouped = new Map<string, number>();
+    for (const row of baseRowsFiltradas) {
+      if (!row.data_recebimento) continue;
+      const key = row.data_recebimento;
+      const current = grouped.get(key) ?? 0;
+      grouped.set(key, current + (row.no_show ? 1 : 0));
+    }
+    return Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, value]) => ({ label: formatDateBR(date), value }))
+      .slice(-10);
+  }, [baseRowsFiltradas]);
+
+  const modalidadePie = useMemo(() => {
+    const grouped = new Map<string, number>();
+    for (const row of baseRowsFiltradas) {
+      const key = String((row as any).modalidade ?? (row as any).tipo_carga ?? noShowStatusLabel(row) ?? "Sem modalidade").trim() || "Sem modalidade";
+      grouped.set(key, (grouped.get(key) ?? 0) + 1);
+    }
+    const entries = Array.from(grouped.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const total = entries.reduce((acc, [, value]) => acc + value, 0) || 1;
+    const palette = [theme.colors.neonGreen, theme.colors.neonOrange, theme.colors.neonYellow, "#38bdf8", "#a78bfa"];
+    let cursor = 0;
+    const slices = entries.map(([label, value], index) => {
+      const pct = (value / total) * 100;
+      const start = cursor;
+      const end = cursor + pct;
+      cursor = end;
+      return { label, value, color: palette[index % palette.length], start, end };
+    });
+    return {
+      slices,
+      gradient: slices.map((slice) => `${slice.color} ${slice.start.toFixed(2)}% ${slice.end.toFixed(2)}%`).join(", ") || `${theme.colors.borderSoft} 0% 100%`,
+    };
+  }, [baseRowsFiltradas]);
+
+  const tabelaExecutiva = useMemo(() => {
+    const grouped = new Map<string, {
+      fornecedor: string;
+      agendas: number;
+      recebidas: number;
+      naoRecebidas: number;
+      noShow: number;
+      ultimoRecebimento: string | null;
+      datas: Set<string>;
+      paletes: number;
+      caixas: number;
+      valor: number;
+      ufs: Set<string>;
+      statusBreakdown: Map<string, number>;
+    }>();
+
+    for (const row of baseRowsFiltradas) {
+      const fornecedor = (row.fornecedor_nome ?? "Não informado").trim() || "Não informado";
+      const current = grouped.get(fornecedor) ?? {
+        fornecedor,
+        agendas: 0,
+        recebidas: 0,
+        naoRecebidas: 0,
+        noShow: 0,
+        ultimoRecebimento: null,
+        datas: new Set<string>(),
+        paletes: 0,
+        caixas: 0,
+        valor: 0,
+        ufs: new Set<string>(),
+        statusBreakdown: new Map<string, number>(),
+      };
+      current.agendas += 1;
+      if (row.concluido) current.recebidas += 1;
+      if (row.no_show) current.noShow += 1;
+      current.paletes += toNumber(row.paletes);
+      current.caixas += toNumber(row.caixas);
+      current.valor += toNumber(row.valor);
+      if (row.data_recebimento) current.datas.add(row.data_recebimento);
+      if (row.uf) current.ufs.add(row.uf);
+      const status = noShowStatusLabel(row);
+      current.statusBreakdown.set(status, (current.statusBreakdown.get(status) ?? 0) + 1);
+      if (row.concluido && row.data_recebimento && (!current.ultimoRecebimento || row.data_recebimento > current.ultimoRecebimento)) {
+        current.ultimoRecebimento = row.data_recebimento;
+      }
+      grouped.set(fornecedor, current);
+    }
+
+    return Array.from(grouped.values())
+      .map((item) => {
+        const naoRecebidas = item.agendas - item.recebidas;
+        const percentual = item.agendas > 0 ? item.noShow / item.agendas : 0;
+        const dias = Math.max(item.datas.size, 1);
+        const mediaDiaria = item.recebidas / dias;
+        const statusPrincipal = Array.from(item.statusBreakdown.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Sem status";
+        return {
+          ...item,
+          naoRecebidas,
+          percentual,
+          mediaDiaria,
+          statusPrincipal,
+        };
+      })
+      .sort((a, b) => b.percentual - a.percentual || b.noShow - a.noShow);
+  }, [baseRowsFiltradas]);
+
+  const lineChart = (
+    labels: string[],
+    seriesA: number[],
+    seriesB?: number[],
+    colorA = theme.colors.neonGreen,
+    colorB = theme.colors.neonOrange
+  ) => {
+    const width = 520;
+    const height = 180;
+    const padding = 24;
+    const allValues = [...seriesA, ...(seriesB ?? [])];
+    const max = Math.max(...allValues, 1);
+    const toPoints = (values: number[]) =>
+      values
+        .map((value, index) => {
+          const x = padding + (index * (width - padding * 2)) / Math.max(values.length - 1, 1);
+          const y = height - padding - (value / max) * (height - padding * 2);
+          return `${x},${y}`;
+        })
+        .join(" ");
+
+    return (
+      <div style={{ display: "grid", gap: 8 }}>
+        <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 200 }}>
+          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke={theme.colors.borderSoft} strokeWidth={1} />
+          <polyline fill="none" stroke={colorA} strokeWidth={2.5} points={toPoints(seriesA)} />
+          {seriesB && <polyline fill="none" stroke={colorB} strokeWidth={2.5} points={toPoints(seriesB)} />}
+        </svg>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", color: theme.colors.textMuted, fontSize: 11 }}>
+          {labels.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <section style={pageStyle}>
@@ -5563,8 +6550,8 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
         <p style={descStyle}>Painel consolidado do No Show com filtros operacionais, metas e ranking de fornecedores.</p>
       </div>
 
-      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-        <select style={inputStyle} value={filtros.mes} onChange={(e) => setFiltros({ ...filtros, mes: e.target.value })}>
+      <div style={{ ...cardStyle, display: "flex", gap: 8, flexWrap: "nowrap", overflowX: "auto" }}>
+        <select style={{ ...inputStyle, minWidth: 120 }} value={filtros.mes} onChange={(e) => setFiltros({ ...filtros, mes: e.target.value })}>
           <option value="">Mês</option>
           {mesesDisponiveis.map((mes) => (
             <option key={mes} value={mes}>
@@ -5572,7 +6559,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
             </option>
           ))}
         </select>
-        <select style={inputStyle} value={filtros.ano} onChange={(e) => setFiltros({ ...filtros, ano: e.target.value })}>
+        <select style={{ ...inputStyle, minWidth: 120 }} value={filtros.ano} onChange={(e) => setFiltros({ ...filtros, ano: e.target.value })}>
           <option value="">Ano</option>
           {anosDisponiveis.map((ano) => (
             <option key={ano} value={ano}>
@@ -5580,7 +6567,7 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
             </option>
           ))}
         </select>
-        <select style={inputStyle} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
+        <select style={{ ...inputStyle, minWidth: 100 }} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
           <option value="">UF</option>
           {ufsDisponiveis.map((uf) => (
             <option key={uf} value={uf}>
@@ -5589,12 +6576,12 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
           ))}
         </select>
         <input
-          style={inputStyle}
+          style={{ ...inputStyle, minWidth: 220 }}
           placeholder="Fornecedor"
           value={filtros.fornecedor}
           onChange={(e) => setFiltros({ ...filtros, fornecedor: e.target.value })}
         />
-        <select style={inputStyle} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
+        <select style={{ ...inputStyle, minWidth: 180 }} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
           <option value="">Status</option>
           {statusDisponiveis.map((status) => (
             <option key={status} value={status}>
@@ -5602,139 +6589,250 @@ export function RecebimentoNoShowDashboard({ perfil: _perfil }: Props) {
             </option>
           ))}
         </select>
-        <button type="button" style={buttonSecondaryStyle} onClick={() => setFiltros({ mes: "", ano: "", uf: "", fornecedor: "", status: "" })}>
+        <select
+          style={{ ...inputStyle, minWidth: 160 }}
+          value={filtros.empresa}
+          onChange={(e) => setFiltros({ ...filtros, empresa: e.target.value })}
+          disabled={empresasDisponiveis.length === 0}
+        >
+          <option value="">Empresa (CD)</option>
+          {empresasDisponiveis.map((empresa) => (
+            <option key={empresa} value={empresa}>
+              {empresa}
+            </option>
+          ))}
+        </select>
+        <select
+          style={{ ...inputStyle, minWidth: 140 }}
+          value={filtros.grupo}
+          onChange={(e) => setFiltros({ ...filtros, grupo: e.target.value })}
+          disabled={gruposDisponiveis.length === 0}
+        >
+          <option value="">Grupo</option>
+          {gruposDisponiveis.map((grupo) => (
+            <option key={grupo} value={grupo}>
+              {grupo}
+            </option>
+          ))}
+        </select>
+        <button type="button" style={{ ...buttonSecondaryStyle, whiteSpace: "nowrap" }} onClick={() => setFiltros({ mes: "", ano: "", uf: "", fornecedor: "", status: "", empresa: "", grupo: "" })}>
           Limpar filtros
         </button>
       </div>
 
       {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
 
-      <div style={gridStyle}>
-        {cards.map(([label, value]) => (
-          <div key={label} style={cardStyle}>
-            <div style={metricLabelStyle}>{label}</div>
-            <div style={metricValueStyle}>{value}</div>
+      <div style={{ display: "grid", gap: 12 }}>
+        {kpiGrupos.map((grupo) => (
+          <div key={grupo.title} style={{ ...cardStyle, padding: 12 }}>
+            <div style={{ color: theme.colors.neonOrange, fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
+              {grupo.title}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+              {grupo.cards.map(([label, value]) => (
+                <div key={label} style={{ ...cardStyle, padding: 10, minWidth: 0 }}>
+                  <div style={{ ...metricValueStyle, marginTop: 0, fontSize: label.includes("Última atualização") ? 13 : 30, lineHeight: 1.05, fontWeight: 900, overflowWrap: "anywhere" }}>
+                    {value}
+                  </div>
+                  <div style={{ ...metricLabelStyle, marginTop: 6, fontSize: 11 }}>{label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
 
-      <div style={gridStyle}>
-        <div style={cardStyle}>
-          <div style={metricLabelStyle}>Produtos</div>
-          <div style={metricValueStyle}>{consolidadoOperacional.produtos.toLocaleString("pt-BR")}</div>
-        </div>
-        <div style={cardStyle}>
-          <div style={metricLabelStyle}>Paletes</div>
-          <div style={metricValueStyle}>{consolidadoOperacional.paletes.toLocaleString("pt-BR")}</div>
-        </div>
-        <div style={cardStyle}>
-          <div style={metricLabelStyle}>Caixas</div>
-          <div style={metricValueStyle}>{consolidadoOperacional.caixas.toLocaleString("pt-BR")}</div>
-        </div>
-        <div style={cardStyle}>
-          <div style={metricLabelStyle}>Valor total</div>
-          <div style={{ ...metricValueStyle, fontSize: 20 }}>{formatCurrency(consolidadoOperacional.valor_total)}</div>
-        </div>
+      <div style={{ ...cardStyle, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, overflowX: "auto", whiteSpace: "nowrap", border: "none", background: "rgba(2,6,23,0.35)" }}>
+        {resumoBarra.map((item) => (
+          <span key={item} style={{ color: theme.colors.textSoft, fontSize: 12, fontWeight: 700, padding: "3px 2px" }}>
+            {item}
+          </span>
+        ))}
       </div>
 
-      <div style={{ ...cardStyle, overflowX: "auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-          <div>
-            <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Resumo mensal</div>
-            <div style={descStyle}>
-              {filtros.fornecedor || filtros.status
-                ? "Consolidado recalculado a partir da base portal para respeitar filtros de fornecedor e status."
-                : "Consolidado carregado a partir da view mensal do No Show."}
+      <div style={{ ...cardStyle, display: "grid", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={{ ...metricLabelStyle, marginBottom: 8 }}>Recebimento x Meta (linha)</div>
+            {lineChart(
+              seriesRecebimentoMeta.map((item) => item.label),
+              seriesRecebimentoMeta.map((item) => item.recebidas),
+              seriesRecebimentoMeta.map((item) => item.meta),
+              theme.colors.neonGreen,
+              theme.colors.neonOrange
+            )}
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={{ ...metricLabelStyle, marginBottom: 8 }}>No Show por dia (linha)</div>
+            {lineChart(
+              seriesNoShowDia.map((item) => item.label),
+              seriesNoShowDia.map((item) => item.value),
+              undefined,
+              theme.colors.danger
+            )}
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={{ ...metricLabelStyle, marginBottom: 10 }}>Recebidas x Não recebidas (barra)</div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {[
+                { label: "Recebidas", value: indicadores.recebidas, color: theme.colors.neonGreen },
+                { label: "Não recebidas", value: indicadores.naoRecebidas, color: theme.colors.danger },
+              ].map((item) => {
+                const total = Math.max(indicadores.totalAgendas, 1);
+                const width = (item.value / total) * 100;
+                return (
+                  <div key={item.label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft }}>
+                      <span>{item.label}</span>
+                      <span>{item.value.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${width}%`, height: "100%", background: item.color }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void carregarDashboard()} disabled={loading}>
-            {loading ? "Atualizando..." : "Atualizar"}
-          </button>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={{ ...metricLabelStyle, marginBottom: 10 }}>Modalidade (pizza)</div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ width: 130, height: 130, borderRadius: "50%", background: `conic-gradient(${modalidadePie.gradient})` }} />
+              <div style={{ display: "grid", gap: 6 }}>
+                {modalidadePie.slices.map((slice) => (
+                  <div key={slice.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: theme.colors.textSoft }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: slice.color, display: "inline-block" }} />
+                    <span>{slice.label}</span>
+                    <span style={{ color: theme.colors.textMuted }}>({slice.value})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle, padding: 10 }}>
+            <div style={{ ...metricLabelStyle, marginBottom: 10 }}>Top fornecedores (barra horizontal)</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {top5Fornecedores.map((row) => {
+                const pct = toNumber(row.percentual_no_show);
+                return (
+                  <div key={`${row.fornecedor_nome}-${row.ranking}`}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: theme.colors.textSoft }}>
+                      <span>{row.fornecedor_nome ?? "Não informado"}</span>
+                      <span>{percent(pct)}</span>
+                    </div>
+                    <div style={{ marginTop: 4, height: 8, borderRadius: 999, background: "rgba(51,65,85,0.55)", overflow: "hidden" }}>
+                      <div style={{ width: `${Math.min(pct * 100, 100)}%`, height: "100%", background: noShowStatusColor(pct) }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {top5Fornecedores.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Sem dados para o gráfico.</div>}
+            </div>
+          </div>
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8 }}>UF</th>
-              <th style={{ textAlign: "left", padding: 8 }}>Mês</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Ano</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
-              <th style={{ textAlign: "right", padding: 8 }}>% No Show</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Média receb./dia</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Média No Show/dia</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Capacidade dia</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Meta mês</th>
-              <th style={{ textAlign: "right", padding: 8 }}>% recebido</th>
-            </tr>
-          </thead>
-          <tbody>
-            {resumoConsolidado.length === 0 ? (
-              <tr>
-                <td colSpan={13} style={{ padding: 12, color: theme.colors.textSoft }}>
-                  Nenhum dado encontrado para os filtros selecionados.
-                </td>
-              </tr>
-            ) : (
-              resumoConsolidado.map((row, index) => (
-                <tr key={`${row.uf ?? "uf"}-${row.mes ?? "mes"}-${row.ano ?? index}`}>
-                  <td style={{ padding: 8 }}>{row.uf ?? "-"}</td>
-                  <td style={{ padding: 8 }}>{padMonth(row.mes) || "-"}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{row.ano ?? "-"}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.agendas_mes).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.recebidas).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.total_no_show).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.media_recebidas_dia).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.media_no_show_dia).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.capacidade_dia).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.meta_recebimento_mes).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_recebido))}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
       </div>
 
-      <div style={{ ...cardStyle, overflowX: "auto" }}>
-        <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Top 5 fornecedores com maior No Show</div>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720, marginTop: 10 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8 }}>Rank</th>
-              <th style={{ textAlign: "left", padding: 8 }}>Fornecedor</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
-              <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
-              <th style={{ textAlign: "right", padding: 8 }}>% No Show</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top5Fornecedores.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ padding: 12, color: theme.colors.textSoft }}>
-                  Nenhum fornecedor encontrado para os filtros selecionados.
-                </td>
+      <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+        <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Top fornecedores (executivo)</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {top5Fornecedores.map((row, index) => {
+            const pct = toNumber(row.percentual_no_show);
+            return (
+              <div key={`${row.fornecedor_nome ?? "fornecedor"}-${index}`} style={{ ...cardStyle, padding: 10, borderColor: noShowStatusColor(pct), background: "rgba(2,6,23,0.5)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <strong style={{ color: theme.colors.text }}>{toNumber(row.ranking) || index + 1}. {row.fornecedor_nome ?? "Não informado"}</strong>
+                  <span style={{ color: noShowStatusColor(pct), fontWeight: 900 }}>{percent(pct)}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginTop: 8, fontSize: 12, color: theme.colors.textSoft }}>
+                  <span>Agendas: {toNumber(row.agendas).toLocaleString("pt-BR")}</span>
+                  <span>No Show: {toNumber(row.no_show).toLocaleString("pt-BR")}</span>
+                  <span>Recebidas: {toNumber(row.recebidas).toLocaleString("pt-BR")}</span>
+                  <span>Não recebidas: {toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</span>
+                </div>
+              </div>
+            );
+          })}
+          {top5Fornecedores.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Nenhum fornecedor encontrado para os filtros selecionados.</div>}
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, overflow: "hidden", padding: 0 }}>
+        <div style={{ padding: 12, borderBottom: `1px solid ${theme.colors.borderSoft}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: theme.colors.neonOrange, fontWeight: 900, fontSize: 14 }}>Tabela executiva</div>
+            <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>Visão resumida por fornecedor com abertura de detalhes completos.</div>
+          </div>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 1150, borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: theme.colors.textMuted, textAlign: "left", background: "#020617" }}>
+                <th style={{ padding: 10 }}>Fornecedor</th>
+                <th style={{ textAlign: "right", padding: 8 }}>Agendas</th>
+                <th style={{ textAlign: "right", padding: 8 }}>Recebidas</th>
+                <th style={{ textAlign: "right", padding: 8 }}>Não recebidas</th>
+                <th style={{ textAlign: "right", padding: 8 }}>No Show</th>
+                <th style={{ textAlign: "right", padding: 8 }}>%</th>
+                <th style={{ textAlign: "right", padding: 8 }}>Média diária</th>
+                <th style={{ textAlign: "center", padding: 8 }}>Último recebimento</th>
+                <th style={{ textAlign: "center", padding: 8 }}>Status</th>
+                <th style={{ textAlign: "center", padding: 8 }}>Ações</th>
               </tr>
-            ) : (
-              top5Fornecedores.map((row, index) => (
-                <tr key={`${row.fornecedor_nome ?? "fornecedor"}-${index}`}>
-                  <td style={{ padding: 8 }}>{toNumber(row.ranking) || index + 1}</td>
-                  <td style={{ padding: 8 }}>{row.fornecedor_nome ?? "Não informado"}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.agendas).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.recebidas).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.nao_recebidas).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{toNumber(row.no_show).toLocaleString("pt-BR")}</td>
-                  <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
+            </thead>
+            <tbody>
+              {tabelaExecutiva.map((row) => {
+                const key = row.fornecedor;
+                const aberto = !!abertosExec[key];
+                const status = statusFornecedor(row.percentual);
+                const color = noShowStatusColor(row.percentual);
+                return (
+                  <React.Fragment key={key}>
+                    <tr style={{ borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                      <td style={{ padding: 10 }}>{row.fornecedor}</td>
+                      <td style={{ padding: 10, textAlign: "right" }}>{row.agendas.toLocaleString("pt-BR")}</td>
+                      <td style={{ padding: 10, textAlign: "right" }}>{row.recebidas.toLocaleString("pt-BR")}</td>
+                      <td style={{ padding: 10, textAlign: "right" }}>{row.naoRecebidas.toLocaleString("pt-BR")}</td>
+                      <td style={{ padding: 10, textAlign: "right" }}>{row.noShow.toLocaleString("pt-BR")}</td>
+                      <td style={{ padding: 10, textAlign: "right", color, fontWeight: 900 }}>{percent(row.percentual)}</td>
+                      <td style={{ padding: 10, textAlign: "right" }}>{row.mediaDiaria.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                      <td style={{ padding: 10, textAlign: "center" }}>{row.ultimoRecebimento ? formatDateBR(row.ultimoRecebimento) : "-"}</td>
+                      <td style={{ padding: 10, textAlign: "center", color, fontWeight: 800 }}>{status}</td>
+                      <td style={{ padding: 10, textAlign: "center" }}>
+                        <button type="button" style={{ ...buttonSecondaryStyle, padding: "4px 10px" }} onClick={() => setAbertosExec((prev) => ({ ...prev, [key]: !prev[key] }))}>
+                          {aberto ? "👁 Detalhes" : "▶ Detalhes"}
+                        </button>
+                      </td>
+                    </tr>
+                    {aberto && (
+                      <tr>
+                        <td colSpan={10} style={{ padding: 12, background: "rgba(2,6,23,0.72)", borderTop: `1px solid ${theme.colors.borderSoft}` }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                            <div style={cardStyle}><div style={metricLabelStyle}>UFs</div><div style={{ ...metricValueStyle, marginTop: 4, fontSize: 14 }}>{Array.from(row.ufs).join(", ") || "-"}</div></div>
+                            <div style={cardStyle}><div style={metricLabelStyle}>Paletes</div><div style={{ ...metricValueStyle, marginTop: 4, fontSize: 16 }}>{row.paletes.toLocaleString("pt-BR")}</div></div>
+                            <div style={cardStyle}><div style={metricLabelStyle}>Caixas</div><div style={{ ...metricValueStyle, marginTop: 4, fontSize: 16 }}>{row.caixas.toLocaleString("pt-BR")}</div></div>
+                            <div style={cardStyle}><div style={metricLabelStyle}>Valor</div><div style={{ ...metricValueStyle, marginTop: 4, fontSize: 16 }}>{formatCurrency(row.valor)}</div></div>
+                            <div style={cardStyle}><div style={metricLabelStyle}>Status principal</div><div style={{ ...metricValueStyle, marginTop: 4, fontSize: 14 }}>{row.statusPrincipal}</div></div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {tabelaExecutiva.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={10} style={{ padding: 12, color: theme.colors.textSoft }}>
+                    Nenhum dado encontrado para os filtros selecionados.
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );
@@ -5876,8 +6974,7 @@ export function RecebimentoNoShowTop5({ perfil: _perfil }: Props) {
         })
         .slice()
         .sort((a, b) => toNumber(b.no_show) - toNumber(a.no_show) || toNumber(b.agendas) - toNumber(a.agendas))
-        .slice(0, 5)
-        .map((row, index) => ({ ...row, ranking: index + 1 }));
+        .slice(0, 5);
     }
 
     const grouped = new Map<string, NoShowTopFornecedorRow>();
@@ -6029,6 +7126,552 @@ export function RecebimentoNoShowTop5({ perfil: _perfil }: Props) {
                   <td style={{ padding: 8, textAlign: "right" }}>{percent(toNumber(row.percentual_no_show))}</td>
                 </tr>
               ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function RecebimentoRealizado({ perfil }: Props) {
+  const [rows, setRows] = useState<RecebimentoRealizadoRow[]>([]);
+  const [itensPorAgendamento, setItensPorAgendamento] = useState<Record<string, DashboardItem[]>>({});
+  const [historicoPorAgendamento, setHistoricoPorAgendamento] = useState<Record<string, ConfirmacaoHistorico[]>>({});
+  const [gestaoPorChave, setGestaoPorChave] = useState<Record<string, RecebimentoRealizadoGestaoRow>>({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState({
+    dataInicial: todayISO(),
+    dataFinal: todayISO(),
+    uf: "",
+    fornecedor: "",
+    transportadora: "",
+    status: "",
+    numeroAgenda: "",
+    numeroNota: "",
+    buscaRapida: "",
+  });
+
+  const carregar = async () => {
+    setLoading(true);
+    setErro(null);
+
+    const [dashboardResult, agendamentosResult, gestaoResult] = await Promise.all([
+      db()
+        .from("vw_recebimento_dashboard")
+        .select("*")
+        .gte("data_agenda", filtros.dataInicial)
+        .lte("data_agenda", filtros.dataFinal)
+        .order("data_agenda", { ascending: true })
+        .order("horario", { ascending: true }),
+      db()
+        .from("agendamentos")
+        .select("id,data_agenda,horario,empresa,nro_box,nro_carga,status_carga,modalidade,total_paletes,total_caixas,total_itens,total_conferido,total_recebido,ruptura,nota_fiscal,confirmacao_status,confirmacao_observacao,confirmado_em,confirmado_por,fornecedor_nome,transportadora")
+        .gte("data_agenda", filtros.dataInicial)
+        .lte("data_agenda", filtros.dataFinal)
+        .order("data_agenda", { ascending: true })
+        .order("horario", { ascending: true }),
+      db()
+        .from("gestao_agenda")
+        .select("id,codigo_agenda,transportadora_nome,fornecedor_nome,notas_fiscais,data_agenda,horario,doca,deposito,tipo_carga,tipo_veiculo,tipo_volume,volumes,sku,unidade_negocios,possui_nota,status_confirmacao,observacao,confirmado_em,confirmado_por,created_at")
+        .gte("data_agenda", filtros.dataInicial)
+        .lte("data_agenda", filtros.dataFinal)
+        .order("data_agenda", { ascending: true })
+        .order("horario", { ascending: true }),
+    ]);
+
+    const firstError = dashboardResult.error ?? agendamentosResult.error ?? gestaoResult.error;
+    if (firstError) {
+      console.error("Erro ao carregar recebimento realizado:", firstError);
+      setErro("Erro ao carregar os dados do recebimento realizado.");
+      setRows([]);
+      setItensPorAgendamento({});
+      setHistoricoPorAgendamento({});
+      setGestaoPorChave({});
+      setLoading(false);
+      return;
+    }
+
+    const baseRows = (dashboardResult.data ?? []) as DashboardRow[];
+    const agendamentoRows = (agendamentosResult.data ?? []) as RecebimentoRealizadoAgendamentoRow[];
+    const gestaoRows = (gestaoResult.data ?? []) as RecebimentoRealizadoGestaoRow[];
+
+    const agendaById = new Map<string, RecebimentoRealizadoAgendamentoRow>();
+    for (const row of agendamentoRows) agendaById.set(row.id, row);
+
+    const gestaoByKey = new Map<string, RecebimentoRealizadoGestaoRow>();
+    for (const row of gestaoRows) {
+      gestaoByKey.set(buildRealizadoJoinKey(row.data_agenda, row.fornecedor_nome, row.transportadora_nome, row.horario), row);
+      if (row.codigo_agenda) {
+        gestaoByKey.set(row.codigo_agenda, row);
+      }
+    }
+
+    const mergedRows: RecebimentoRealizadoRow[] = baseRows.map((row) => {
+      const agenda = agendaById.get(row.agendamento_id);
+      const gestao =
+        gestaoByKey.get(buildRealizadoJoinKey(row.data_agenda, row.fornecedor_nome, row.transportadora, row.hora_chegada ?? row.horario)) ??
+        gestaoByKey.get(row.nro_carga ?? "") ??
+        null;
+
+      return {
+        ...row,
+        uf: gestao?.unidade_negocios ?? agenda?.empresa ?? row.empresa ?? null,
+        numero_agenda: row.nro_carga ?? agenda?.nro_carga ?? gestao?.codigo_agenda ?? null,
+        numero_nota: agenda?.nota_fiscal ?? row.nota_fiscal ?? gestao?.notas_fiscais ?? null,
+        volumes_realizados: gestao?.volumes ?? agenda?.total_recebido ?? row.total_recebido,
+        sku_realizado: gestao?.sku ?? row.total_itens,
+        tipo_veiculo: gestao?.tipo_veiculo ?? agenda?.modalidade ?? null,
+        tipo_carga: gestao?.tipo_carga ?? agenda?.status_carga ?? row.modalidade_calculada ?? null,
+        situacao: agenda?.confirmacao_status ?? row.status_finalizada ?? row.status_recebimento_calculado ?? null,
+        observacao_operacional: agenda?.confirmacao_observacao ?? gestao?.observacao ?? row.confirmacao_observacao ?? null,
+        confirmacao_status_real: agenda?.confirmacao_status ?? row.confirmacao_status ?? null,
+        confirmacao_observacao_real: agenda?.confirmacao_observacao ?? row.confirmacao_observacao ?? null,
+        status_operacional: row.status_recebimento_calculado,
+      };
+    });
+
+    const ids = mergedRows.map((row) => row.agendamento_id).filter(Boolean);
+    if (ids.length > 0) {
+      const [itensResult, historicoResult] = await Promise.all([
+        db()
+          .from("agendamento_itens")
+          .select("id,agendamento_id,codigo_produto,descricao_produto,secao,modalidade_original,modalidade_compra,norma,palete,gerada,conferida,recebida,valor,ruptura")
+          .in("agendamento_id", ids)
+          .order("codigo_produto", { ascending: true }),
+        db()
+          .from("confirmacao_agenda_historico")
+          .select("id,agendamento_id,usuario_id,canal,contato_nome,contato_tipo,resultado,observacao,created_at")
+          .in("agendamento_id", ids)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (itensResult.error) {
+        console.error("Erro ao carregar itens do recebimento realizado:", itensResult.error);
+        setItensPorAgendamento({});
+      } else {
+        const grouped: Record<string, DashboardItem[]> = {};
+        for (const item of (itensResult.data ?? []) as DashboardItem[]) {
+          if (!grouped[item.agendamento_id]) grouped[item.agendamento_id] = [];
+          grouped[item.agendamento_id].push(item);
+        }
+        setItensPorAgendamento(grouped);
+      }
+
+      if (historicoResult.error) {
+        console.error("Erro ao carregar histórico da confirmação:", historicoResult.error);
+        setHistoricoPorAgendamento({});
+      } else {
+        const grouped: Record<string, ConfirmacaoHistorico[]> = {};
+        for (const item of (historicoResult.data ?? []) as ConfirmacaoHistorico[]) {
+          if (!grouped[item.agendamento_id ?? ""]) grouped[item.agendamento_id ?? ""] = [];
+          if (item.agendamento_id) grouped[item.agendamento_id].push(item);
+        }
+        setHistoricoPorAgendamento(grouped);
+      }
+    } else {
+      setItensPorAgendamento({});
+      setHistoricoPorAgendamento({});
+    }
+
+    const gestaoMap: Record<string, RecebimentoRealizadoGestaoRow> = {};
+    for (const row of gestaoRows) {
+      const key = buildRealizadoJoinKey(row.data_agenda, row.fornecedor_nome, row.transportadora_nome, row.horario);
+      gestaoMap[key] = row;
+      if (row.codigo_agenda) gestaoMap[row.codigo_agenda] = row;
+    }
+
+    setRows(mergedRows);
+    setGestaoPorChave(gestaoMap);
+    setExpandedId((current) => (current && mergedRows.some((row) => row.agendamento_id === current) ? current : mergedRows[0]?.agendamento_id ?? null));
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void carregar();
+  }, [filtros.dataInicial, filtros.dataFinal]);
+
+  const rowsFiltradas = useMemo(() => {
+    const pesquisa = filtros.buscaRapida.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (filtros.uf && (row.uf ?? "") !== filtros.uf) return false;
+      if (filtros.fornecedor && !(row.fornecedor_nome ?? "").toLowerCase().includes(filtros.fornecedor.toLowerCase())) return false;
+      if (filtros.transportadora && !(row.transportadora ?? "").toLowerCase().includes(filtros.transportadora.toLowerCase())) return false;
+      if (filtros.status && row.status_operacional !== filtros.status) return false;
+      if (filtros.numeroAgenda && !(row.numero_agenda ?? "").toLowerCase().includes(filtros.numeroAgenda.toLowerCase())) return false;
+      if (filtros.numeroNota && !(row.numero_nota ?? "").toLowerCase().includes(filtros.numeroNota.toLowerCase())) return false;
+      if (pesquisa) {
+        const bag = [
+          row.data_agenda,
+          row.hora_chegada,
+          row.uf,
+          row.fornecedor_nome,
+          row.transportadora,
+          row.numero_agenda,
+          row.numero_nota,
+          row.status_operacional,
+          row.situacao,
+          row.observacao_operacional,
+          row.tipo_carga,
+          row.tipo_veiculo,
+        ]
+          .map((value) => (value ?? "").toLowerCase())
+          .join(" |");
+        if (!bag.includes(pesquisa)) return false;
+      }
+      return true;
+    });
+  }, [rows, filtros]);
+
+  useEffect(() => {
+    if (!expandedId) return;
+    if (!rowsFiltradas.some((row) => row.agendamento_id === expandedId)) {
+      setExpandedId(rowsFiltradas[0]?.agendamento_id ?? null);
+    }
+  }, [expandedId, rowsFiltradas]);
+
+  const ufOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => (row.uf ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [rows]
+  );
+  const statusOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.status_operacional ?? "").filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [rows]
+  );
+
+  const resumo = useMemo(() => {
+    const recebido = rowsFiltradas.filter((row) => toNumber(row.total_recebido) > 0).length;
+    const naoRecebido = rowsFiltradas.length - recebido;
+    const finalizadas = rowsFiltradas.filter((row) => statusIncludes(row.status_operacional, ["finaliz"])).length;
+    const conferencia = rowsFiltradas.filter((row) => statusIncludes(row.status_operacional, ["conferên", "conferencia"])).length;
+    const noShow = rowsFiltradas.filter((row) => statusIncludes(row.status_operacional, ["no show", "noshow"])).length;
+    const abandono = rowsFiltradas.filter((row) => statusIncludes(row.status_operacional, ["abandono"])).length;
+    const recusadas = rowsFiltradas.filter((row) => statusIncludes(row.status_operacional, ["recus"])).length;
+    return [
+      ["Agendas", String(rowsFiltradas.length)],
+      ["Recebidas", String(recebido)],
+      ["Não Recebidas", String(naoRecebido)],
+      ["No Show", String(noShow)],
+      ["Abandono", String(abandono)],
+      ["Recusadas", String(recusadas)],
+      ["Em Conferência", String(conferencia)],
+      ["Finalizadas", String(finalizadas)],
+    ];
+  }, [rowsFiltradas]);
+
+  const statusBadgeStyle = (status: string | null): React.CSSProperties => {
+    const text = (status ?? "").toLowerCase();
+    if (text.includes("finaliz")) return { borderColor: "#22c55e", background: "rgba(34,197,94,0.14)", color: "#bbf7d0" };
+    if (text.includes("confer")) return { borderColor: "#38bdf8", background: "rgba(56,189,248,0.14)", color: "#bae6fd" };
+    if (text.includes("no show")) return { borderColor: "#ef4444", background: "rgba(239,68,68,0.14)", color: "#fecaca" };
+    if (text.includes("recus")) return { borderColor: "#fb923c", background: "rgba(251,146,60,0.14)", color: "#fed7aa" };
+    return { borderColor: theme.colors.textMuted, background: "rgba(148,163,184,0.10)", color: theme.colors.textSoft };
+  };
+
+  const formatTime = (value: string | null | undefined) => (value ? value.slice(0, 5) : "-");
+  const formatNumber = (value: number | string | null | undefined, decimals = 0) =>
+    toNumber(value).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+
+  const copyRow = async (row: RecebimentoRealizadoRow) => {
+    const payload = {
+      data: formatDateBR(row.data_agenda),
+      hora: formatTime(row.horario),
+      uf: row.uf,
+      fornecedor: row.fornecedor_nome,
+      transportadora: row.transportadora,
+      numero_agenda: row.numero_agenda,
+      numero_nota: row.numero_nota,
+      volumes: row.volumes_realizados,
+      sku: row.sku_realizado,
+      paletes: row.total_paletes,
+      caixas: row.total_caixas,
+      tipo_veiculo: row.tipo_veiculo,
+      tipo_carga: row.tipo_carga,
+      status: row.status_operacional,
+      situacao: row.situacao,
+      observacao: row.observacao_operacional,
+    };
+    await copyText(JSON.stringify(payload, null, 2));
+  };
+
+  const selectedRow = rowsFiltradas.find((row) => row.agendamento_id === expandedId) ?? null;
+  const selectedItems = selectedRow ? itensPorAgendamento[selectedRow.agendamento_id] ?? [] : [];
+  const selectedHistorico = selectedRow ? historicoPorAgendamento[selectedRow.agendamento_id] ?? [] : [];
+  const selectedGestao = selectedRow ? gestaoPorChave[buildRealizadoJoinKey(selectedRow.data_agenda, selectedRow.fornecedor_nome, selectedRow.transportadora, selectedRow.hora_chegada ?? selectedRow.horario)] ?? null : null;
+
+  return (
+    <section style={pageStyle}>
+      <div style={headerStyle}>
+        <div>
+          <h1 style={titleStyle}>Recebimento Realizado</h1>
+          <p style={descStyle}>Painel operacional do recebimento realizado com detalhamento por carga, item e histórico de confirmação.</p>
+        </div>
+        <button type="button" style={buttonSecondaryStyle} onClick={() => void carregar()} disabled={loading}>
+          {loading ? "Atualizando..." : "Atualizar"}
+        </button>
+      </div>
+
+      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        <input type="date" style={inputStyle} value={filtros.dataInicial} onChange={(e) => setFiltros({ ...filtros, dataInicial: e.target.value })} />
+        <input type="date" style={inputStyle} value={filtros.dataFinal} onChange={(e) => setFiltros({ ...filtros, dataFinal: e.target.value })} />
+        <select style={inputStyle} value={filtros.uf} onChange={(e) => setFiltros({ ...filtros, uf: e.target.value })}>
+          <option value="">UF</option>
+          {ufOptions.map((uf) => (
+            <option key={uf} value={uf}>
+              {uf}
+            </option>
+          ))}
+        </select>
+        <input style={inputStyle} placeholder="Fornecedor" value={filtros.fornecedor} onChange={(e) => setFiltros({ ...filtros, fornecedor: e.target.value })} />
+        <input
+          style={inputStyle}
+          placeholder="Transportadora"
+          value={filtros.transportadora}
+          onChange={(e) => setFiltros({ ...filtros, transportadora: e.target.value })}
+        />
+        <select style={inputStyle} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
+          <option value="">Status</option>
+          {statusOptions.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <input style={inputStyle} placeholder="Nº Agenda" value={filtros.numeroAgenda} onChange={(e) => setFiltros({ ...filtros, numeroAgenda: e.target.value })} />
+        <input style={inputStyle} placeholder="Nº Nota" value={filtros.numeroNota} onChange={(e) => setFiltros({ ...filtros, numeroNota: e.target.value })} />
+        <input style={inputStyle} placeholder="Pesquisa rápida" value={filtros.buscaRapida} onChange={(e) => setFiltros({ ...filtros, buscaRapida: e.target.value })} />
+        <button type="button" style={buttonSecondaryStyle} onClick={() => setFiltros({ dataInicial: todayISO(), dataFinal: todayISO(), uf: "", fornecedor: "", transportadora: "", status: "", numeroAgenda: "", numeroNota: "", buscaRapida: "" })}>
+          Limpar filtros
+        </button>
+      </div>
+
+      {erro && <div style={{ ...cardStyle, color: theme.colors.danger }}>{erro}</div>}
+
+      <div style={gridStyle}>
+        {resumo.map(([label, value]) => (
+          <div key={label} style={cardStyle}>
+            <div style={metricLabelStyle}>{label}</div>
+            <div style={metricValueStyle}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...cardStyle, overflowX: "auto", padding: 0 }}>
+        <table style={{ width: "100%", minWidth: 1540, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+              {[
+                "Data",
+                "Hora",
+                "UF",
+                "Fornecedor",
+                "Transportadora",
+                "Número Agenda",
+                "Número Nota",
+                "Volumes",
+                "SKU",
+                "Paletes",
+                "Caixas",
+                "Tipo Veículo",
+                "Tipo Carga",
+                "Status",
+                "Situação",
+                "Observação",
+                "Ações",
+              ].map((col) => (
+                <th key={col} style={{ padding: 8, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowsFiltradas.length === 0 ? (
+              <tr>
+                <td colSpan={17} style={{ padding: 12, color: theme.colors.textMuted }}>
+                  Nenhum recebimento encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            ) : (
+              rowsFiltradas.map((row) => {
+                const isExpanded = expandedId === row.agendamento_id;
+                const badge = statusBadgeStyle(row.status_operacional);
+                return (
+                  <React.Fragment key={row.agendamento_id}>
+                    <tr
+                      style={{ cursor: "pointer", background: isExpanded ? "rgba(15,23,42,0.85)" : "transparent" }}
+                      onClick={() => setExpandedId((current) => (current === row.agendamento_id ? null : row.agendamento_id))}
+                    >
+                      <td style={{ padding: 8 }}>{formatDateBR(row.data_agenda)}</td>
+                      <td style={{ padding: 8 }}>{formatTime(row.hora_chegada ?? row.horario)}</td>
+                      <td style={{ padding: 8 }}>{row.uf ?? row.empresa ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{row.fornecedor_nome ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{row.transportadora ?? row.transportadora_cadastro_nome ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{row.numero_agenda ?? row.nro_carga ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{row.numero_nota ?? row.nota_fiscal ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{formatNumber(row.volumes_realizados)}</td>
+                      <td style={{ padding: 8 }}>{formatNumber(row.sku_realizado)}</td>
+                      <td style={{ padding: 8 }}>{formatNumber(row.total_paletes)}</td>
+                      <td style={{ padding: 8 }}>{formatNumber(row.total_caixas)}</td>
+                      <td style={{ padding: 8 }}>{row.tipo_veiculo ?? "-"}</td>
+                      <td style={{ padding: 8 }}>{row.tipo_carga ?? "-"}</td>
+                      <td style={{ padding: 8 }}>
+                        <span style={{ ...badge, borderWidth: 1, borderStyle: "solid", borderRadius: 999, padding: "4px 10px", fontWeight: 800 }}>
+                          {row.status_operacional ?? "Agenda"}
+                        </span>
+                      </td>
+                      <td style={{ padding: 8 }}>{row.situacao ?? row.status_finalizada ?? "-"}</td>
+                      <td style={{ padding: 8, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.observacao_operacional ?? "-"}</td>
+                      <td style={{ padding: 8 }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                          <button type="button" style={buttonSecondaryStyle} onClick={() => setExpandedId((current) => (current === row.agendamento_id ? null : row.agendamento_id))}>
+                            {isExpanded ? "Ocultar" : "Visualizar"}
+                          </button>
+                          <button type="button" style={buttonSecondaryStyle} onClick={() => void copyRow(row)}>
+                            Copiar dados
+                          </button>
+                          <button type="button" style={buttonSecondaryStyle} onClick={() => window.alert("Exportar Excel em breve")}>Exportar Excel</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={17} style={{ padding: 0, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>
+                          <div style={{ padding: 14, background: "rgba(2,6,23,0.56)" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                              {[
+                                ["Fornecedor", row.fornecedor_nome ?? "-"],
+                                ["Transportadora", row.transportadora ?? row.transportadora_cadastro_nome ?? "-"],
+                                ["Notas", row.numero_nota ?? row.nota_fiscal ?? selectedGestao?.notas_fiscais ?? "-"],
+                                ["Volumes", formatNumber(row.volumes_realizados)],
+                                ["Itens", formatNumber(row.total_itens)],
+                                ["Status operacional", row.status_operacional ?? "-"],
+                                ["Situação", row.situacao ?? row.status_finalizada ?? "-"],
+                                ["UF", row.uf ?? row.empresa ?? "-"],
+                              ].map(([label, value]) => (
+                                <div key={label} style={cardStyle}>
+                                  <div style={metricLabelStyle}>{label}</div>
+                                  <div style={{ ...metricValueStyle, fontSize: 16, overflowWrap: "anywhere" }}>{String(value)}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.8fr)", gap: 12, marginTop: 12 }}>
+                              <div style={cardStyle}>
+                                <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Dados completos</div>
+                                <div style={{ display: "grid", gap: 8, marginTop: 10, color: theme.colors.textSoft, fontSize: 13 }}>
+                                  <div><strong>Data/Hora:</strong> {formatDateBR(row.data_agenda)} {formatTime(row.hora_chegada ?? row.horario)}</div>
+                                  <div><strong>Fornecedor:</strong> {row.fornecedor_nome ?? "-"}</div>
+                                  <div><strong>Transportadora:</strong> {row.transportadora ?? row.transportadora_cadastro_nome ?? "-"}</div>
+                                  <div><strong>Notas:</strong> {row.numero_nota ?? row.nota_fiscal ?? selectedGestao?.notas_fiscais ?? "-"}</div>
+                                  <div><strong>Volumes:</strong> {formatNumber(row.volumes_realizados)}</div>
+                                  <div><strong>Itens:</strong> {formatNumber(row.total_itens)}</div>
+                                  <div><strong>Status operacional:</strong> {row.status_operacional ?? "-"}</div>
+                                  <div><strong>Observação:</strong> {row.observacao_operacional ?? selectedGestao?.observacao ?? "-"}</div>
+                                </div>
+                              </div>
+
+                              <div style={cardStyle}>
+                                <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Botões</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                                  <button type="button" style={buttonSecondaryStyle} onClick={() => setExpandedId((current) => (current === row.agendamento_id ? null : row.agendamento_id))}>
+                                    Visualizar
+                                  </button>
+                                  <button type="button" style={buttonSecondaryStyle} onClick={() => void copyRow(row)}>
+                                    Copiar dados
+                                  </button>
+                                  <button type="button" style={buttonSecondaryStyle} onClick={() => window.alert("Exportar Excel em breve")}>Exportar Excel</button>
+                                </div>
+
+                                <div style={{ marginTop: 14 }}>
+                                  <div style={{ ...metricLabelStyle, marginBottom: 6 }}>Status operacional</div>
+                                  <span style={{ ...badge, borderWidth: 1, borderStyle: "solid", borderRadius: 999, padding: "4px 10px", fontWeight: 800 }}>
+                                    {row.status_operacional ?? "Agenda"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginTop: 12 }}>
+                              <div style={cardStyle}>
+                                <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Itens</div>
+                                <div style={{ overflowX: "auto", marginTop: 10 }}>
+                                  <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 12 }}>
+                                    <thead>
+                                      <tr style={{ color: theme.colors.textMuted, textAlign: "left" }}>
+                                        {[
+                                          "Código",
+                                          "Produto",
+                                          "Seção",
+                                          "Modalidade original",
+                                          "Modalidade compra",
+                                          "Norma",
+                                          "Palete",
+                                          "Gerada",
+                                          "Conferida",
+                                          "Recebida",
+                                          "Valor",
+                                          "Ruptura",
+                                        ].map((col) => (
+                                          <th key={col} style={{ padding: 7, borderBottom: `1px solid ${theme.colors.borderSoft}` }}>{col}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {selectedItems.map((item) => (
+                                        <tr key={item.id}>
+                                          <td style={{ padding: 7 }}>{item.codigo_produto ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{item.descricao_produto ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{item.secao ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{item.modalidade_original ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{item.modalidade_compra ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{item.norma ?? "-"}</td>
+                                          <td style={{ padding: 7 }}>{formatNumber(item.palete)}</td>
+                                          <td style={{ padding: 7 }}>{formatNumber(item.gerada)}</td>
+                                          <td style={{ padding: 7 }}>{formatNumber(item.conferida)}</td>
+                                          <td style={{ padding: 7 }}>{formatNumber(item.recebida)}</td>
+                                          <td style={{ padding: 7 }}>{formatCurrency(toNumber(item.valor))}</td>
+                                          <td style={{ padding: 7 }}>{formatNumber(item.ruptura)}</td>
+                                        </tr>
+                                      ))}
+                                      {selectedItems.length === 0 && (
+                                        <tr>
+                                          <td colSpan={12} style={{ padding: 10, color: theme.colors.textMuted }}>Nenhum item encontrado.</td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+
+                              <div style={cardStyle}>
+                                <div style={{ ...metricValueStyle, marginTop: 0, fontSize: 18 }}>Histórico da confirmação</div>
+                                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                                  {selectedHistorico.map((item) => (
+                                    <div key={item.id} style={{ borderTop: `1px solid ${theme.colors.borderSoft}`, paddingTop: 8 }}>
+                                      <div style={{ color: theme.colors.neonGreen, fontWeight: 800 }}>{item.resultado ?? "-"}</div>
+                                      <div style={{ color: theme.colors.textMuted, fontSize: 12 }}>
+                                        {item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-"} | {item.canal ?? "-"}
+                                      </div>
+                                      <div style={{ color: theme.colors.textSoft, fontSize: 12 }}>
+                                        {item.contato_nome ?? "-"} {item.contato_tipo ? `(${item.contato_tipo})` : ""}
+                                      </div>
+                                      {item.observacao && <div style={{ color: theme.colors.textSoft, fontSize: 12 }}>{item.observacao}</div>}
+                                    </div>
+                                  ))}
+                                  {selectedHistorico.length === 0 && <div style={{ color: theme.colors.textMuted, fontSize: 13 }}>Nenhum histórico encontrado.</div>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

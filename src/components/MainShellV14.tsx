@@ -26,6 +26,7 @@ import {
   RecebimentoNoShowDashboard,
   RecebimentoNoShowImportacao,
   RecebimentoNoShowTop5,
+  RecebimentoRealizado,
   RecebimentoOcorrencias,
   RecebimentoPlaceholder,
   RecebimentoTransportadoras,
@@ -308,7 +309,8 @@ const shellStyles: Record<string, CSSProperties> = {
   },
 };
 
-const STORAGE_MENU_KEY = "eqf_v14_menu_main";
+const STORAGE_LAST_ROUTE_KEY = "scc:v7:lastRoute";
+const STORAGE_MENU_STATE_KEY = "scc:v7:menuState";
 const STORAGE_EXEC_KEY = "eqf_v14_exec_rotina";
 
 const RECEBIMENTO_ROUTES: Partial<Record<MenuKey, string>> = {
@@ -354,6 +356,59 @@ const menuFromPath = (path: string): MenuKey | null => {
   return (found?.[0] as MenuKey | undefined) ?? null;
 };
 
+type ShellMenuState = {
+  menu: MenuKey;
+  gruposMenuAbertos: {
+    supply: boolean;
+    kpiSetor: boolean;
+    recebimento: boolean;
+    recebimentoConfirmacao: boolean;
+    recebimentoPlanejamento: boolean;
+    recebimentoNoShow: boolean;
+    loja: boolean;
+    lojaPontoExtra: boolean;
+  };
+};
+
+const defaultGruposMenuAbertos = () => ({
+  supply: false,
+  kpiSetor: false,
+  recebimento: false,
+  recebimentoConfirmacao: false,
+  recebimentoPlanejamento: false,
+  recebimentoNoShow: false,
+  loja: false,
+  lojaPontoExtra: false,
+});
+
+const readShellMenuState = (): ShellMenuState | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_MENU_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ShellMenuState> | null;
+    if (!parsed?.menu) return null;
+    return {
+      menu: parsed.menu,
+      gruposMenuAbertos: {
+        ...defaultGruposMenuAbertos(),
+        ...(parsed.gruposMenuAbertos ?? {}),
+      },
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeShellMenuState = (state: ShellMenuState) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_MENU_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+};
+
 export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
   const isN3 = perfil.nivel === "N3";
   const cardStyleN3: CSSProperties = isN3
@@ -376,25 +431,28 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     if (typeof window === "undefined") return "agenda";
     const byPath = menuFromPath(window.location.pathname);
     if (byPath) return byPath;
-    const stored = window.localStorage.getItem(STORAGE_MENU_KEY) as MenuKey | null;
-    if (stored && stored !== "overview") return stored;
+    const stored = readShellMenuState();
+    if (stored?.menu && stored.menu !== "overview") return stored.menu;
     return "agenda";
   });
-  const [gruposMenuAbertos, setGruposMenuAbertos] = useState({
-    supply: false,
-    kpiSetor: false,
-    recebimento: false,
-    recebimentoConfirmacao: false,
-    recebimentoPlanejamento: false,
-    recebimentoNoShow: false,
-    loja: false,
-    lojaPontoExtra: false,
-  });
+  const [gruposMenuAbertos, setGruposMenuAbertos] = useState(() => readShellMenuState()?.gruposMenuAbertos ?? defaultGruposMenuAbertos());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_MENU_KEY, menu);
-  }, [menu]);
+    const route = RECEBIMENTO_ROUTES[menu] || LOJA_ROUTES[menu] || window.location.pathname;
+    window.localStorage.setItem(STORAGE_LAST_ROUTE_KEY, route);
+    writeShellMenuState({ menu, gruposMenuAbertos });
+  }, [menu, gruposMenuAbertos]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopState = () => {
+      const byPath = menuFromPath(window.location.pathname);
+      if (byPath) setMenu(byPath);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const toggleGrupoMenu = (
     grupo:
@@ -725,12 +783,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     } else if (menu === "recebimento-noshow-top5") {
       content = <RecebimentoNoShowTop5 perfil={perfil} />;
     } else if (menu === "recebimento-noshow-realizado") {
-      content = (
-        <RecebimentoPlaceholder
-          titulo="Recebimento Realizado"
-          descricao="Visão de recebimento realizado em construção. Aqui será detalhado o consolidado operacional do No Show."
-        />
-      );
+      content = <RecebimentoRealizado perfil={perfil} />;
     } else if (menu === "recebimento-agenda") {
       content = <RecebimentoAgenda perfil={perfil} />;
     } else if (menu === "recebimento-ocorrencias") {
