@@ -43,6 +43,7 @@ import {
   PontoExtraProcessamento,
   PontoExtraRelatorio,
 } from "./loja/PontoExtraPages";
+import { PontoExtraSimulador } from "./loja/ponto-extra/PontoExtraSimulador";
 
 type Props = {
   perfil: Usuario;
@@ -78,6 +79,7 @@ type MenuKey =
   | "loja-ponto-cubagem"
   | "loja-ponto-capas"
   | "loja-ponto-processamento"
+  | "loja-ponto-simulador"
   | "loja-ponto-analise"
   | "loja-ponto-exportacao"
   | "loja-ponto-acompanhamento"
@@ -338,6 +340,7 @@ const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
   "loja-ponto-cubagem": "/loja/ponto-extra/cubagem",
   "loja-ponto-capas": "/loja/ponto-extra/capas",
   "loja-ponto-processamento": "/loja/ponto-extra/processamento",
+  "loja-ponto-simulador": "/loja/ponto-extra/simulador",
   "loja-ponto-analise": "/loja/ponto-extra/analise",
   "loja-ponto-exportacao": "/loja/ponto-extra/exportacao",
   "loja-ponto-acompanhamento": "/loja/ponto-extra/acompanhamento",
@@ -610,6 +613,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
         ["loja-ponto-cubagem", "Cubagem"],
         ["loja-ponto-capas", "Capas de Ponta"],
         ["loja-ponto-processamento", "Processar Ponto Extra"],
+        ["loja-ponto-simulador", "Simulador de Ponta"],
         ["loja-ponto-analise", "Analise da Sugestao"],
         ["loja-ponto-exportacao", "Exportacao"],
         ["loja-ponto-acompanhamento", "Acompanhamento"],
@@ -827,8 +831,10 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       content = <PontoExtraCapas />;
     } else if (menu === "loja-ponto-processamento") {
       content = <PontoExtraProcessamento />;
+    } else if (menu === "loja-ponto-simulador") {
+      content = <PontoExtraSimulador perfil={perfil} />;
     } else if (menu === "loja-ponto-analise") {
-      content = <PontoExtraAnalise />;
+      content = <PontoExtraAnalise perfil={perfil} />;
     } else if (menu === "loja-ponto-exportacao") {
       content = <PontoExtraExportacao />;
     } else if (menu === "loja-ponto-acompanhamento") {

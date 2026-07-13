@@ -3,6 +3,14 @@ import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabaseClient";
 import { theme } from "../../styles";
 import type { Usuario } from "../../types";
+import {
+  calcularM3Alvo,
+  calcularMinMaxSugerido,
+  calcularOcupacaoProduto,
+  calcularStatusSimulacao,
+  percentualAbastecimentoOficial,
+} from "./ponto-extra/pontoExtraOcupacaoUtils";
+import { chavePontaOperacional, isMesVigenciaValido } from "./ponto-extra/pontoExtraSharedUtils";
 
 type Props = { perfil: Usuario };
 
@@ -60,6 +68,7 @@ type PontaCodigoPonta = {
   mes_vigencia: string;
   descricao_ponta: string | null;
   cod_ponta: string | null;
+  seq_vigencia?: string | null;
   ativo: boolean;
 };
 
@@ -729,6 +738,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
             mes_vigencia: /^\d{4}-\d{2}$/.test(mes) ? mes : currentMonthKey(),
             descricao_ponta: String(row.DESCRICAO_PONTA ?? row.DESCRICAO ?? row.DESCRICAO_DA_PONTA ?? "").trim(),
             cod_ponta: String(row.COD_PONTA ?? row.CODIGO_PONTA ?? row.PONTA ?? "").trim().toUpperCase(),
+            seq_vigencia: String(row.SEQ_VIGENCIA ?? row.SEQVIGENCIA ?? row.SEQ_VIG ?? "").trim(),
             ativo: true,
             importacao_id: importacao.id,
           };
@@ -1790,6 +1800,7 @@ export function PontoExtraCapas() {
         mes_vigencia: string;
         descricao_ponta: string | null | undefined;
         cod_ponta: string | null | undefined;
+        seq_vigencia?: string | null | undefined;
         ativo: boolean | null | undefined;
         updated_at: string;
       }>();
@@ -1802,6 +1813,7 @@ export function PontoExtraCapas() {
           mes_vigencia: linha.mes_vigencia,
           descricao_ponta: linha.descricao_ponta,
           cod_ponta: linha.cod_ponta,
+          seq_vigencia: linha.seq_vigencia,
           ativo: linha.ativo,
           updated_at: now,
         };
@@ -2035,7 +2047,7 @@ export function PontoExtraCapas() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                {["Acoes", "Loja", "Cod. setor", "Nome setor", "Mes", "Descricao da ponta", "Cod. ponta", "Ativo"].map((header) => (
+                {["Acoes", "Loja", "Cod. setor", "Nome setor", "Mes", "Descricao da ponta", "Cod. ponta", "Seq. vigencia", "Ativo"].map((header) => (
                   <th key={header} style={thStyle}>{header}</th>
                 ))}
               </tr>
@@ -2090,6 +2102,14 @@ export function PontoExtraCapas() {
                         onChange={(e) => atualizarLinha(index, "cod_ponta", e.target.value.toUpperCase())}
                         placeholder="Preencher apos cadastro externo"
                         style={{ ...inputStyle, minWidth: 160 }}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={linha.seq_vigencia ?? ""}
+                        onChange={(e) => atualizarLinha(index, "seq_vigencia", e.target.value)}
+                        placeholder="Ex.: 62660"
+                        style={{ ...inputStyle, minWidth: 100 }}
                       />
                     </td>
                     <td style={tdStyle}>
@@ -2179,6 +2199,10 @@ export function PontoExtraProcessamento() {
   }
 
   async function processar() {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setErro("Selecione o mes de vigencia antes de processar.");
+      return;
+    }
     setLoading(true);
     setErro(null);
     setMensagem(null);
@@ -2322,18 +2346,23 @@ export function PontoExtraProcessamento() {
           : somaPorPonta.get(chaveTexto(item.loja, item.numeroPonta, item.codPonta || "SEM_CODIGO_PONTA", item.setorCodigo, item.tipoPonta)) ?? 0;
         const participacao = !item.foraReparticao && somaMedia > 0 ? item.mediaVenda / somaMedia : 0;
         const m3Ponta = totalM3Cubagem(item.cubagem);
+        const percentualAbast = percentualAbastecimentoOficial(item.cubagem);
+        const m3Alvo = calcularM3Alvo(m3Ponta, percentualAbast);
         const m3Capacidade = m3Ponta * participacao;
         const m3Unid = toNumber(item.media?.m3_unid);
         const unidadeSugerida = m3Unid > 0 ? m3Capacidade / m3Unid : 0;
         const qtdeEmbCompraOriginal = toNumber(item.media?.qtde_emb_compra);
-        const embalagemInvalida = qtdeEmbCompraOriginal <= 0;
-        const qtdeEmbCompra = embalagemInvalida ? 1 : qtdeEmbCompraOriginal;
+        const { estqMinimo, estqMaximo, qtdeEmbCompra, embalagemInvalida } = calcularMinMaxSugerido(unidadeSugerida, qtdeEmbCompraOriginal);
         const caixasSugeridas = qtdeEmbCompra > 0 ? unidadeSugerida / qtdeEmbCompra : 0;
-        const estqMinimo = Math.ceil(unidadeSugerida);
-        const estqMaximo = Math.ceil(unidadeSugerida);
         const parMin = toNumber(item.media?.par_min);
         const parMax = toNumber(item.media?.par_max);
         const codPonta = item.codPonta;
+        const seqVigencia = String(item.capa?.seq_vigencia ?? "").trim();
+        const ocupacao = calcularOcupacaoProduto({
+          foraReparticao: item.foraReparticao,
+          m3Capacidade,
+          m3Alvo,
+        });
         const rowBase = {
           m3_unid: m3Unid,
           unidade_sugerida: unidadeSugerida,
@@ -2343,6 +2372,9 @@ export function PontoExtraProcessamento() {
           fora_reparticao: item.foraReparticao,
           m3_capacidade: m3Capacidade,
           m3_ponta: m3Ponta,
+          m3_alvo: m3Alvo,
+          m3_ocupado: ocupacao.m3_ocupado,
+          percentual_ocupacao: ocupacao.percentual_ocupacao,
           codigo_produto: item.codigo,
           descricao_produto: item.media?.descricao_produto ?? "",
           media_venda_un_dia: item.mediaVenda,
@@ -2372,7 +2404,11 @@ export function PontoExtraProcessamento() {
           soma_media_ponta: somaMedia,
           participacao,
           m3_ponta: m3Ponta,
+          m3_alvo: m3Alvo,
+          percentual_abastecimento: percentualAbast,
           m3_capacidade: m3Capacidade,
+          m3_ocupado: ocupacao.m3_ocupado,
+          percentual_ocupacao: ocupacao.percentual_ocupacao,
           m3_unid: m3Unid,
           unidade_sugerida: unidadeSugerida,
           qtde_emb_compra: qtdeEmbCompra,
@@ -2380,6 +2416,7 @@ export function PontoExtraProcessamento() {
           caixas_sugeridas: caixasSugeridas,
           estoque_cd: item.estoqueCd,
           cod_ponta: codPonta,
+          seq_vigencia: seqVigencia || null,
           descricao_ponta: item.capa?.descricao_ponta ?? "",
           mes_vigencia: mesVigencia,
           status_codigo_ponta: codPonta ? "COM_CODIGO_PONTA" : "SEM_CODIGO_PONTA",
@@ -2400,7 +2437,19 @@ export function PontoExtraProcessamento() {
         };
       });
 
-      const { error: deleteError } = await lojaDb.from("ponta_processada").delete().not("id", "is", null);
+      const utilizadoPorPonta = new Map<string, number>();
+      for (const row of payload) {
+        const key = chavePontaOperacional(row);
+        if (row.fora_reparticao) continue;
+        utilizadoPorPonta.set(key, (utilizadoPorPonta.get(key) ?? 0) + toNumber(row.m3_ocupado));
+      }
+      for (const row of payload) {
+        const key = chavePontaOperacional(row);
+        const m3Utilizado = utilizadoPorPonta.get(key) ?? 0;
+        row.status_simulacao = calcularStatusSimulacao(m3Utilizado, toNumber(row.m3_alvo));
+      }
+
+      const { error: deleteError } = await lojaDb.from("ponta_processada").delete().eq("mes_vigencia", mesVigencia);
       if (deleteError) throw deleteError;
       if (payload.length) await insertInChunks("ponta_processada", payload, 600);
 
@@ -2575,7 +2624,8 @@ export function PontoExtraProcessamento() {
   );
 }
 
-export function PontoExtraAnalise() {
+export function PontoExtraAnalise({ perfil }: { perfil?: Usuario }) {
+  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
   const [rows, setRows] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -2591,12 +2641,18 @@ export function PontoExtraAnalise() {
   });
 
   async function carregar() {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setRows([]);
+      setErro("Selecione o mes de vigencia para analisar.");
+      return;
+    }
     setLoading(true);
     setErro(null);
     try {
       const { data, error } = await lojaDb
         .from("ponta_processada")
         .select("*")
+        .eq("mes_vigencia", mesVigencia)
         .order("loja", { ascending: true })
         .order("cod_ponta", { ascending: true })
         .limit(1000);
@@ -2612,10 +2668,18 @@ export function PontoExtraAnalise() {
 
   useEffect(() => {
     void carregar();
-  }, []);
+  }, [mesVigencia]);
 
   async function aprovar(id: string, aprovado: boolean) {
-    const { error } = await lojaDb.from("ponta_processada").update({ aprovado }).eq("id", id);
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setErro("Selecione o mes de vigencia antes de aprovar.");
+      return;
+    }
+    const { error } = await lojaDb.from("ponta_processada").update({
+      aprovado,
+      aprovado_por: aprovado && perfil?.id ? perfil.id : null,
+      aprovado_em: aprovado ? new Date().toISOString() : null,
+    }).eq("id", id);
     if (error) {
       setErro(error.message);
       return;
@@ -2625,10 +2689,19 @@ export function PontoExtraAnalise() {
 
   async function atualizarAprovacao(ids: string[], aprovado: boolean) {
     if (ids.length === 0) return;
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setErro("Selecione o mes de vigencia antes de aprovar.");
+      return;
+    }
     setErro(null);
+    const payload = {
+      aprovado,
+      aprovado_por: aprovado && perfil?.id ? perfil.id : null,
+      aprovado_em: aprovado ? new Date().toISOString() : null,
+    };
     for (let index = 0; index < ids.length; index += 300) {
       const chunk = ids.slice(index, index + 300);
-      const { error } = await lojaDb.from("ponta_processada").update({ aprovado }).in("id", chunk);
+      const { error } = await lojaDb.from("ponta_processada").update(payload).in("id", chunk);
       if (error) {
         setErro(error.message);
         return;
@@ -2791,6 +2864,10 @@ export function PontoExtraAnalise() {
       </div>
       <div style={cardStyle}>
         <div style={{ ...gridStyle, alignItems: "end" }}>
+          <label>
+            <span style={descStyle}>Mes vigencia *</span>
+            <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value || currentMonthKey())} style={inputStyle} />
+          </label>
           {[
             ["codPonta", "Cod. ponta"],
             ["descPonta", "Descricao da ponta"],
@@ -2809,10 +2886,13 @@ export function PontoExtraAnalise() {
               />
             </label>
           ))}
-          <button type="button" onClick={() => void carregar()} disabled={loading} style={buttonStyle}>
+          <button type="button" onClick={() => void carregar()} disabled={loading || !isMesVigenciaValido(mesVigencia)} style={buttonStyle}>
             {loading ? "Carregando..." : "Atualizar"}
           </button>
         </div>
+        {!isMesVigenciaValido(mesVigencia) && (
+          <div style={{ marginTop: 12, color: "#fbbf24" }}>Selecione o mes de vigencia para analisar e aprovar produtos.</div>
+        )}
         {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
       </div>
       <div style={gridStyle}>
@@ -3017,13 +3097,20 @@ export function PontoExtraAnalise() {
 }
 
 export function PontoExtraExportacao() {
+  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
   const [rows, setRows] = useState<Record<string, any>[]>([]);
   const [erro, setErro] = useState<string | null>(null);
 
   async function carregar() {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setRows([]);
+      setErro("Selecione o mes de vigencia para exportar.");
+      return;
+    }
     const { data, error } = await lojaDb
       .from("ponta_processada")
       .select("*")
+      .eq("mes_vigencia", mesVigencia)
       .eq("aprovado", true)
       .eq("fora_reparticao", false)
       .not("cod_ponta", "is", null)
@@ -3032,14 +3119,19 @@ export function PontoExtraExportacao() {
       setErro(error.message);
       return;
     }
+    setErro(null);
     setRows((data ?? []).filter((item: any) => String(item.cod_ponta ?? "").trim()));
   }
 
   useEffect(() => {
     void carregar();
-  }, []);
+  }, [mesVigencia]);
 
   function exportarProdutos() {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setErro("Selecione o mes de vigencia antes de exportar.");
+      return;
+    }
     downloadCsv(
       "ponto_extra_produtos.csv",
       ["SEQPONTOEXTRA", "SEQPRODUTO", "STATUS"],
@@ -3052,6 +3144,10 @@ export function PontoExtraExportacao() {
   }
 
   function exportarQuantidade() {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setErro("Selecione o mes de vigencia antes de exportar.");
+      return;
+    }
     downloadCsv(
       "ponto_extra_quantidade.csv",
       ["SEQPONTOEXTRA", "SEQPRODUTO", "NROEMPRESA", "SEQVIGENCIA", "ESTQMINIMO", "ESTQMAXIMO", "DTAVIGENCIAINICIO", "DTAVIGENCIAFIM", "STATUS"],
@@ -3059,7 +3155,7 @@ export function PontoExtraExportacao() {
         SEQPONTOEXTRA: item.cod_ponta,
         SEQPRODUTO: item.codigo_produto,
         NROEMPRESA: item.loja,
-        SEQVIGENCIA: item.mes_vigencia,
+        SEQVIGENCIA: item.seq_vigencia || item.mes_vigencia,
         ESTQMINIMO: Math.ceil(toNumber(item.estqminimo_sugerido)),
         ESTQMAXIMO: Math.ceil(toNumber(item.estqmaximo_sugerido)),
         DTAVIGENCIAINICIO: item.dtavigenciainicio,
@@ -3081,12 +3177,19 @@ export function PontoExtraExportacao() {
         <MetricCard label="Pontas" value={new Set(rows.map((item) => item.cod_ponta)).size} />
       </div>
       <div style={cardStyle}>
+        <div style={{ ...gridStyle, alignItems: "end", marginBottom: 12 }}>
+          <label>
+            <span style={descStyle}>Mes vigencia *</span>
+            <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value || currentMonthKey())} style={inputStyle} />
+          </label>
+        </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <button type="button" onClick={exportarProdutos} disabled={rows.length === 0} style={buttonStyle}>Exportar Produtos</button>
-          <button type="button" onClick={exportarQuantidade} disabled={rows.length === 0} style={buttonStyle}>Exportar Quantidade</button>
+          <button type="button" onClick={exportarProdutos} disabled={rows.length === 0 || !isMesVigenciaValido(mesVigencia)} style={buttonStyle}>Exportar Produtos</button>
+          <button type="button" onClick={exportarQuantidade} disabled={rows.length === 0 || !isMesVigenciaValido(mesVigencia)} style={buttonStyle}>Exportar Quantidade</button>
           <button type="button" onClick={() => void carregar()} style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}>Atualizar</button>
         </div>
-        {rows.length === 0 && <div style={{ marginTop: 12, color: "#fbbf24" }}>Nenhum produto aprovado para exportacao. Aprove os itens elegiveis na Analise da Sugestao.</div>}
+        {!isMesVigenciaValido(mesVigencia) && <div style={{ marginTop: 12, color: "#fbbf24" }}>Selecione o mes de vigencia para exportar.</div>}
+        {rows.length === 0 && isMesVigenciaValido(mesVigencia) && <div style={{ marginTop: 12, color: "#fbbf24" }}>Nenhum produto aprovado para exportacao nesta vigencia. Aprove os itens elegiveis na Analise ou no Simulador.</div>}
         {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
       </div>
     </section>
@@ -3094,21 +3197,31 @@ export function PontoExtraExportacao() {
 }
 
 export function PontoExtraAcompanhamento() {
+  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
   const [rows, setRows] = useState<Record<string, any>[]>([]);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isMesVigenciaValido(mesVigencia)) {
+      setRows([]);
+      setErro("Selecione o mes de vigencia para acompanhar.");
+      return;
+    }
     lojaDb
       .from("ponta_processada")
       .select("*")
+      .eq("mes_vigencia", mesVigencia)
       .eq("aprovado", true)
       .order("loja", { ascending: true })
       .limit(500)
       .then(({ data, error }) => {
         if (error) setErro(error.message);
-        else setRows((data ?? []) as Record<string, any>[]);
+        else {
+          setErro(null);
+          setRows((data ?? []) as Record<string, any>[]);
+        }
       });
-  }, []);
+  }, [mesVigencia]);
 
   return (
     <section style={pageStyle}>
@@ -3117,7 +3230,14 @@ export function PontoExtraAcompanhamento() {
         <p style={descStyle}>A ponta e PLUS: estoque total = PAR normal da loja + sugestao da ponta.</p>
       </div>
       <div style={cardStyle}>
+        <div style={{ ...gridStyle, alignItems: "end", marginBottom: 12 }}>
+          <label>
+            <span style={descStyle}>Mes vigencia *</span>
+            <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value || currentMonthKey())} style={inputStyle} />
+          </label>
+        </div>
         <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Pontas aprovadas</h2>
+        {!isMesVigenciaValido(mesVigencia) && <div style={{ color: "#fbbf24" }}>Selecione o mes de vigencia para acompanhar.</div>}
         {erro && <div style={{ color: "#f87171" }}>{erro}</div>}
         <div style={{ overflowX: "auto" }}>
           <table style={tableStyle}>
