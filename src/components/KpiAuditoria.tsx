@@ -1,4 +1,4 @@
-// Tela de auditoria de rotinas para N1/N2 com filtros de data e regional
+// Tela de auditoria de rotinas para N1/N2/N3 com filtros de data e regional
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { Usuario } from "../types";
@@ -12,23 +12,21 @@ type ExecucaoRow = {
   executor_id: string;
   inicio_em: string | null;
   finalizado_em: string | null;
-  pausado_total_segundos: number;
+  pausado_total_segundos?: number | null;
   created_at: string;
-  regional_id: number | null;
 };
 
 type RotinaInfo = {
   id: string;
   titulo: string;
   responsavel_id: string;
+  departamento_id: number | null;
+  setor_id: number | null;
   regional_id: number | null;
   grupo_id: number | null;
 };
 
 type UsuarioInfo = { id: string; nome: string; nivel: string };
-
-type AnexoInfo = { execucao_id: number; storage_path: string };
-
 type GrupoOption = { id: number; nome: string };
 
 function startOfDayISO(d: string) {
@@ -40,7 +38,7 @@ function endOfDayISO(d: string) {
   return dt.toISOString();
 }
 
-const formatDateTime = (v: string | null) => (v ? new Date(v).toLocaleString("pt-BR") : "—");
+const formatDateTime = (v: string | null) => (v ? new Date(v).toLocaleString("pt-BR") : "-");
 const formatSeconds = (s: number | null | undefined) => {
   if (!s || s <= 0) return "0s";
   const h = Math.floor(s / 3600);
@@ -81,7 +79,6 @@ export function KpiAuditoria({ perfil }: Props) {
     })[]
   >([]);
 
-  // Regionais (apenas N1)
   useEffect(() => {
     if (perfil.nivel !== "N1") return;
     supabase
@@ -102,7 +99,6 @@ export function KpiAuditoria({ perfil }: Props) {
         let q = supabase.from("grupos").select("id,nome,departamento_id,setor_id,regional_id,ativo").eq("ativo", true);
         if (perfil.departamento_id) q = q.eq("departamento_id", perfil.departamento_id);
         if (perfil.setor_id) q = q.eq("setor_id", perfil.setor_id);
-
         if (perfil.nivel === "N2" && perfil.regional_id) q = q.eq("regional_id", perfil.regional_id);
         if (perfil.nivel === "N1" && regionalFiltro !== "todas") q = q.eq("regional_id", regionalFiltro);
 
@@ -125,22 +121,14 @@ export function KpiAuditoria({ perfil }: Props) {
       setLoading(true);
       setErro(null);
 
-      // Execuções no intervalo
+      // rotina_execucoes neste schema nao tem dep/setor/regional; escopo sera aplicado via rotinas
       let q = supabase
         .from("rotina_execucoes")
-        .select("id,rotina_id,executor_id,inicio_em,finalizado_em,pausado_total_segundos,created_at,regional_id,departamento_id,setor_id");
+        .select("id,rotina_id,executor_id,inicio_em,finalizado_em,created_at")
+        .gte("created_at", startOfDayISO(dataIni))
+        .lt("created_at", endOfDayISO(dataFim));
 
-      q = q.gte("created_at", startOfDayISO(dataIni)).lt("created_at", endOfDayISO(dataFim));
-
-      // Escopo por nível
-      if (perfil.departamento_id) q = q.eq("departamento_id", perfil.departamento_id);
-      if (perfil.setor_id) q = q.eq("setor_id", perfil.setor_id);
-
-      if (perfil.nivel === "N1") {
-        if (regionalFiltro !== "todas") q = q.eq("regional_id", regionalFiltro);
-      } else if (perfil.nivel === "N2") {
-        if (perfil.regional_id) q = q.eq("regional_id", perfil.regional_id);
-      } else if (perfil.nivel === "N3") {
+      if (perfil.nivel === "N3") {
         q = q.eq("executor_id", perfil.id);
       }
 
@@ -148,15 +136,20 @@ export function KpiAuditoria({ perfil }: Props) {
       if (exErr) throw exErr;
       let execs = (exData as ExecucaoRow[]) ?? [];
 
-      // Carregar usuários para map de nível/nome
-      const userIds = Array.from(new Set(execs.map((e) => e.executor_id)));
-      const { data: userData } = await supabase.from("usuarios").select("id,nome,nivel").in("id", userIds);
-      const userMap: Record<string, UsuarioInfo> = {};
-      (userData ?? []).forEach((u: any) => {
-        userMap[String(u.id)] = { id: String(u.id), nome: String(u.nome ?? "Usuário"), nivel: String(u.nivel ?? "") };
-      });
+      if (execs.length === 0) {
+        setRows([]);
+        return;
+      }
 
-      // N2 só pode ver N3 e ele mesmo
+      const userIds = Array.from(new Set(execs.map((e) => e.executor_id).filter(Boolean)));
+      const userMap: Record<string, UsuarioInfo> = {};
+      if (userIds.length) {
+        const { data: userData } = await supabase.from("usuarios").select("id,nome,nivel").in("id", userIds);
+        (userData ?? []).forEach((u: any) => {
+          userMap[String(u.id)] = { id: String(u.id), nome: String(u.nome ?? "Usuario"), nivel: String(u.nivel ?? "") };
+        });
+      }
+
       if (perfil.nivel === "N2") {
         execs = execs.filter((e) => {
           const n = userMap[e.executor_id]?.nivel;
@@ -164,11 +157,15 @@ export function KpiAuditoria({ perfil }: Props) {
         });
       }
 
-      // Rotinas
-      const rotinaIds = Array.from(new Set(execs.map((e) => e.rotina_id)));
+      const rotinaIds = Array.from(new Set(execs.map((e) => e.rotina_id).filter(Boolean)));
+      if (rotinaIds.length === 0) {
+        setRows([]);
+        return;
+      }
+
       const { data: rotData } = await supabase
         .from("rotinas")
-        .select("id,titulo,responsavel_id,regional_id,grupo_id")
+        .select("id,titulo,responsavel_id,departamento_id,setor_id,regional_id,grupo_id")
         .in("id", rotinaIds);
       const rotMap: Record<string, RotinaInfo> = {};
       (rotData ?? []).forEach((r: any) => {
@@ -176,45 +173,70 @@ export function KpiAuditoria({ perfil }: Props) {
           id: String(r.id),
           titulo: String(r.titulo ?? "Rotina"),
           responsavel_id: String(r.responsavel_id ?? ""),
+          departamento_id: r.departamento_id ?? null,
+          setor_id: r.setor_id ?? null,
           regional_id: r.regional_id ?? null,
           grupo_id: r.grupo_id ?? null,
         };
       });
 
+      if (perfil.departamento_id) {
+        execs = execs.filter((e) => rotMap[e.rotina_id]?.departamento_id === perfil.departamento_id);
+      }
+      if (perfil.setor_id) {
+        execs = execs.filter((e) => rotMap[e.rotina_id]?.setor_id === perfil.setor_id);
+      }
+      if (perfil.nivel === "N1" && regionalFiltro !== "todas") {
+        execs = execs.filter((e) => rotMap[e.rotina_id]?.regional_id === regionalFiltro);
+      }
+      if (perfil.nivel === "N2" && perfil.regional_id) {
+        execs = execs.filter((e) => rotMap[e.rotina_id]?.regional_id === perfil.regional_id);
+      }
       if (grupoFiltro !== "todos") {
         execs = execs.filter((e) => rotMap[e.rotina_id]?.grupo_id === grupoFiltro);
       }
 
-      // Anexos
+      const responsavelIds = Array.from(new Set(Object.values(rotMap).map((r) => r.responsavel_id).filter(Boolean)));
+      const faltantesResp = responsavelIds.filter((id) => !userMap[id]);
+      if (faltantesResp.length) {
+        const { data: respData } = await supabase.from("usuarios").select("id,nome,nivel").in("id", faltantesResp);
+        (respData ?? []).forEach((u: any) => {
+          userMap[String(u.id)] = { id: String(u.id), nome: String(u.nome ?? "Usuario"), nivel: String(u.nivel ?? "") };
+        });
+      }
+
       const exIds = execs.map((e) => e.id);
-      const { data: anData } = await supabase
-        .from("rotina_anexos")
-        .select("execucao_id,storage_path")
-        .in("execucao_id", exIds);
       const anexosMap: Record<number, string[]> = {};
-      (anData ?? []).forEach((a: any) => {
-        const arr = anexosMap[a.execucao_id] ?? [];
-        arr.push(String(a.storage_path ?? ""));
-        anexosMap[a.execucao_id] = arr;
-      });
+      if (exIds.length) {
+        const { data: anData } = await supabase
+          .from("rotina_anexos")
+          .select("execucao_id,storage_path")
+          .in("execucao_id", exIds);
+        (anData ?? []).forEach((a: any) => {
+          const arr = anexosMap[a.execucao_id] ?? [];
+          arr.push(String(a.storage_path ?? ""));
+          anexosMap[a.execucao_id] = arr;
+        });
+      }
 
       const rowsBuild = execs
         .map((e) => {
           const rot = rotMap[e.rotina_id];
           const execUser = userMap[e.executor_id];
           const duracaoSeg =
-            e.inicio_em && e.finalizado_em ? Math.max(0, Math.floor((new Date(e.finalizado_em).getTime() - new Date(e.inicio_em).getTime()) / 1000)) : null;
+            e.inicio_em && e.finalizado_em
+              ? Math.max(0, Math.floor((new Date(e.finalizado_em).getTime() - new Date(e.inicio_em).getTime()) / 1000))
+              : null;
           return {
             ...e,
             rotinaTitulo: rot?.titulo ?? "Rotina",
-            responsavel: rot ? rot.responsavel_id : "-",
+            responsavel: rot ? (userMap[rot.responsavel_id]?.nome ?? rot.responsavel_id) : "-",
             executor: execUser?.nome ?? e.executor_id,
             executorNivel: execUser?.nivel ?? "",
             anexos: anexosMap[e.id] ?? [],
             duracaoSeg,
           };
         })
-        // ordena por data desc (created_at)
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
       setRows(rowsBuild);
@@ -237,13 +259,13 @@ export function KpiAuditoria({ perfil }: Props) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: theme.colors.textSoft ?? "#e5e7eb" }}>Auditoria de rotinas</div>
         <div style={{ fontSize: 12, color: theme.colors.textMuted ?? "#9ca3af" }}>
-          N1 filtra por regional; N2 vê apenas sua regional e N3.
+          N1 filtra por regional; N2 ve apenas sua regional e N3.
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ fontSize: 12, color: theme.colors.textSoft ?? "#e5e7eb" }}>
-          Data início
+          Data inicio
           <input
             type="date"
             value={dataIni}
@@ -326,7 +348,7 @@ export function KpiAuditoria({ perfil }: Props) {
             <div>Data (criada)</div>
             <div>Rotina</div>
             <div>Executor</div>
-            <div>Início</div>
+            <div>Inicio</div>
             <div>Fim</div>
             <div>Pausado</div>
             <div>Anexos</div>
@@ -360,7 +382,7 @@ export function KpiAuditoria({ perfil }: Props) {
               <div>{formatSeconds(r.pausado_total_segundos)}</div>
               <div style={{ fontSize: 11 }}>
                 {r.anexos.length === 0
-                  ? "—"
+                  ? "-"
                   : r.anexos.map((a, i) => (
                       <div key={i}>
                         <a href={a} target="_blank" rel="noreferrer" style={{ color: theme.colors.neonGreen ?? "#22c55e" }}>

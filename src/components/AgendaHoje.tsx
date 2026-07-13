@@ -78,6 +78,11 @@ function addDaysYMD(dateISO: string, delta: number) {
   d.setDate(d.getDate() + delta);
   return ymdLocal(d);
 }
+function diffDays(startISO: string, endISO: string): number {
+  const start = new Date(`${startISO}T00:00:00`).getTime();
+  const end = new Date(`${endISO}T00:00:00`).getTime();
+  return Math.floor((end - start) / 86400000);
+}
 function weekday_1_7(dateISO: string): string {
   const d = new Date(`${dateISO}T00:00:00`);
   const js = d.getDay(); // 0..6
@@ -150,6 +155,12 @@ function buildAgendaDoDia(rotinasBase: Rotina[], dateISO: string) {
 
     if (p === "semanal") {
       return r.data_inicio <= dateISO && matchDiaSemana(r.dia_semana, dateISO);
+    }
+
+    if (p === "quinzenal") {
+      if (r.data_inicio > dateISO) return false;
+      const dias = diffDays(r.data_inicio, dateISO);
+      return dias >= 0 && dias % 14 === 0;
     }
 
     if (p === "mensal") {
@@ -372,21 +383,18 @@ export function AgendaHoje({ perfil, filtroInicial, autoScrollToHour = true, onA
                 `and(tipo.eq.avulsa,data_inicio.eq.${dataRef})`,
                 `and(tipo.eq.normal,periodicidade.eq.diaria,data_inicio.lte.${dataRef})`,
                 `and(tipo.eq.normal,periodicidade.eq.semanal,data_inicio.lte.${dataRef})`,
+                `and(tipo.eq.normal,periodicidade.eq.quinzenal,data_inicio.lte.${dataRef})`,
                 `and(tipo.eq.normal,periodicidade.eq.mensal,data_inicio.lte.${dataRef})`,
               ].join(",")
             : [
                 `and(tipo.eq.avulsa,data_inicio.gte.${dataIni},data_inicio.lte.${dataFim})`,
-                `and(tipo.eq.normal,data_inicio.lte.${dataFim},periodicidade.in.(diaria,semanal,mensal))`,
+                `and(tipo.eq.normal,data_inicio.lte.${dataFim},periodicidade.in.(diaria,semanal,quinzenal,mensal))`,
               ].join(",")
         );
 
 
       // base por escopo do usuario:
-      // N3 fica preso ao proprio grupo quando existir;
-      // N2 enxerga a regional inteira, independentemente do grupo do lider.
-      if (perfil.nivel === "N3" && perfil.grupo_id) {
-        q = q.eq("grupo_id", perfil.grupo_id);
-      }
+      // N2/N3 enxerga somente sua regional.
       if ((perfil.nivel === "N2" || perfil.nivel === "N3") && perfil.regional_id) {
         q = q.eq("regional_id", perfil.regional_id);
       }

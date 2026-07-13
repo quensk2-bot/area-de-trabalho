@@ -654,9 +654,20 @@ const mapGestaoAgendaRowToNoShowPortalRow = (row: GestaoAgendaImportRow) => {
   };
 };
 
+const UTF8_BOM = "\uFEFF";
+
+const readTextFile = async (file: File) => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes).replace(/^\uFEFF/, "");
+  }
+};
+
 const parseNoShowWorkbook = async (file: File) => {
   if (/\.(txt|csv)$/i.test(file.name)) {
-    return parseNoShowPlanningText(await file.text());
+    return parseNoShowPlanningText(await readTextFile(file));
   }
 
   const gestaoAgendaRows = await parseGestaoAgendaRows(file);
@@ -2129,7 +2140,7 @@ export function RecebimentoDashboard({ perfil: _perfil }: Props) {
         row.ind_abandono,
       ].map(csvEscape).join(";")
     );
-    const blob = new Blob([[header.map(csvEscape).join(";"), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([UTF8_BOM, [header.map(csvEscape).join(";"), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -5431,7 +5442,7 @@ const parseGestaoAgendaRows = async (file: File) => {
   const rows =
     file.name.toLowerCase().endsWith(".xlsx") || file.type.includes("spreadsheet")
       ? await parseXlsxTable(file)
-      : parseDelimitedTable(await file.text());
+      : parseDelimitedTable(await readTextFile(file));
   return rows
     .filter((row) => getCell(row, "CODIGO_AGENDA") || getCell(row, "FORNECEDOR") || getCell(row, "HORARIO"))
     .map((row): GestaoAgendaImportRow => {
@@ -5461,7 +5472,7 @@ const isGestaoAgendaFile = async (file: File) => {
     const rows = await parseXlsxTable(file);
     return rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "CODIGO_AGENDA");
   }
-  const firstLine = (await file.text()).split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
+  const firstLine = (await readTextFile(file)).split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
   return splitDelimitedLine(firstLine).map(normalizeHeader).includes("CODIGO_AGENDA");
 };
 
@@ -5822,7 +5833,7 @@ export function RecebimentoImportacao({ perfil }: Props) {
       setErro("Este arquivo e de Agenda Futura. Use o menu Importar Agenda Futura.");
       return;
     }
-    const text = await file.text();
+    const text = await readTextFile(file);
     const linhas = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const grupos = new Set<string>();
     let itens = 0;

@@ -399,7 +399,7 @@ function downloadCsv(filename: string, headers: string[], rows: Record<string, u
     headers.join(";"),
     ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(";")),
   ].join("\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

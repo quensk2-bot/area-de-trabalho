@@ -389,19 +389,11 @@ export const KpiPageV14: React.FC<Props> = ({ perfil }) => {
       let eq = supabase
         .from("rotina_execucoes")
         .select(
-          "id,rotina_id,executor_id,created_at,inicio_em,pausado_em,finalizado_em,pausado_total_segundos,duracao_total_segundos,departamento_id,setor_id,regional_id"
+          "id,rotina_id,executor_id,created_at,inicio_em,pausado_em,finalizado_em,duracao_total_segundos"
         )
         .gte("created_at", startOfDayLocalToUTC(range.ini))
         .lt("created_at", endOfDayLocalToUTCExclusive(range.fim))
         .order("id", { ascending: false });
-
-      // mesmo escopo das rotinas:
-      if (perfil.departamento_id) eq = eq.eq("departamento_id", perfil.departamento_id);
-      if (perfil.setor_id) eq = eq.eq("setor_id", perfil.setor_id);
-
-      if (perfil.nivel === "N2" && perfil.regional_id) {
-        eq = eq.eq("regional_id", perfil.regional_id);
-      }
 
       if (perfil.nivel === "N3") {
         // N3: só as execuções dele (executor_id)
@@ -411,7 +403,8 @@ export const KpiPageV14: React.FC<Props> = ({ perfil }) => {
       const { data: exData, error: exErr } = await eq;
       if (exErr) throw exErr;
 
-      const execucoes = (exData ?? []) as Execucao[];
+      const rotinaIdsEscopo = new Set(rotinasBase.map((r) => r.id));
+      const execucoes = ((exData ?? []) as Execucao[]).filter((e) => rotinaIdsEscopo.has(e.rotina_id));
       const rotinaById = new Map<string, Rotina>();
       rotinasBase.forEach((r) => rotinaById.set(r.id, r));
 
@@ -514,8 +507,8 @@ export const KpiPageV14: React.FC<Props> = ({ perfil }) => {
       });
 
       const execFinalizadas = execucoes.filter((e) => !!e.finalizado_em);
-      const execComPausa = execucoes.filter((e) => (e.pausado_total_segundos ?? 0) > 0);
-      const tempoPausaTotalSeg = execComPausa.reduce((acc, e) => acc + (e.pausado_total_segundos ?? 0), 0);
+      const execComPausa = execucoes.filter((e) => !!e.pausado_em && !e.finalizado_em);
+      const tempoPausaTotalSeg = 0;
       const tempoExecTotalSeg = execFinalizadas.reduce((acc, e) => acc + (calcDuracaoExecSeg(e) ?? 0), 0);
 
       let atrasoInicioTotalSeg = 0;
@@ -605,7 +598,7 @@ export const KpiPageV14: React.FC<Props> = ({ perfil }) => {
       ...rows.map((r) => headers.map((h) => String(r[h] ?? "")).join(";")),
     ].join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

@@ -269,6 +269,11 @@ function dayOfMonth(dateISO: string): number {
   const d = new Date(`${dateISO}T00:00:00`);
   return d.getDate();
 }
+function diffDays(startISO: string, endISO: string): number {
+  const start = new Date(`${startISO}T00:00:00`).getTime();
+  const end = new Date(`${endISO}T00:00:00`).getTime();
+  return Math.floor((end - start) / 86400000);
+}
 function startOfDayUTC(dateISO: string): string {
   return new Date(`${dateISO}T00:00:00.000Z`).toISOString();
 }
@@ -486,6 +491,7 @@ export function ExecucaoAoVivoBoard2({ perfil }: Props) {
               `and(tipo.eq.avulsa,data_inicio.eq.${hojeISO})`,
               `and(tipo.eq.normal,periodicidade.eq.diaria,data_inicio.lte.${hojeISO})`,
               `and(tipo.eq.normal,periodicidade.eq.semanal,data_inicio.lte.${hojeISO},dia_semana.eq.${weekday_1_7(hojeISO)})`,
+              `and(tipo.eq.normal,periodicidade.eq.quinzenal,data_inicio.lte.${hojeISO})`,
               `and(tipo.eq.normal,periodicidade.eq.mensal,data_inicio.lte.${hojeISO})`,
             ].join(",")
           );
@@ -500,6 +506,13 @@ export function ExecucaoAoVivoBoard2({ perfil }: Props) {
           if ((r.periodicidade ?? "") !== "mensal") return true;
           if (!r.data_inicio) return false;
           return dayOfMonth(r.data_inicio) === domAlvo;
+        });
+
+        rotinasHoje = rotinasHoje.filter((r) => {
+          if ((r.periodicidade ?? "") !== "quinzenal") return true;
+          if (!r.data_inicio) return false;
+          const dias = diffDays(r.data_inicio, hojeISO);
+          return dias >= 0 && dias % 14 === 0;
         });
 
         const pendentesVirtuais: ExecucaoRow[] = rotinasHoje

@@ -10,6 +10,7 @@ type Rotina = {
   id: string;
   titulo: string;
   responsavel_id: string;
+  responsavel?: { nome?: string | null } | null;
   departamento_id: number | null;
   setor_id: number | null;
   regional_id: number | null;
@@ -104,7 +105,7 @@ export default function RotinasAtivasAdmin({ perfil }: Props) {
 
       let q = supabase
         .from("rotinas")
-        .select("id,titulo,responsavel_id,departamento_id,setor_id,regional_id,data_inicio,data_fim,periodicidade,horario_inicio,status,rotina_padrao_id");
+        .select("id,titulo,responsavel_id,responsavel:usuarios!rotinas_responsavel_id_fkey(nome),departamento_id,setor_id,regional_id,data_inicio,data_fim,periodicidade,horario_inicio,status,rotina_padrao_id");
 
       if (perfil.departamento_id) q = q.eq("departamento_id", perfil.departamento_id);
       if (perfil.setor_id) q = q.eq("setor_id", perfil.setor_id);
@@ -205,7 +206,7 @@ export default function RotinasAtivasAdmin({ perfil }: Props) {
     await carregar();
   };
 
-  const labelResp = (id: string) => usuarios.find((u) => u.id === id)?.nome ?? id;
+  const labelResp = (rotina: Rotina) => rotina.responsavel?.nome ?? usuarios.find((u) => u.id === rotina.responsavel_id)?.nome ?? rotina.responsavel_id;
   const labelRegional = (id: number | null) => {
     if (id == null) return "-";
     return regioes.find((r) => r.id === id)?.nome ?? `Regional ${id}`;
@@ -355,7 +356,7 @@ export default function RotinasAtivasAdmin({ perfil }: Props) {
                   {r.periodicidade} • {formatTime(r.horario_inicio)}
                 </div>
               </div>
-              <div>{labelResp(r.responsavel_id)}</div>
+              <div>{labelResp(r)}</div>
               <div>{labelRegional(r.regional_id)}</div>
               <div>{formatDate(r.data_inicio)}</div>
               <div>
