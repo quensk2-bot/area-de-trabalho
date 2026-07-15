@@ -1,0 +1,5 @@
+Coluna Extra;Código Empresa;Código Produto;Qtd Saída Outras;Outro Campo
+X;103;2505088;1,5;Y
+X;103;2505088;2,0;Y
+X;104;2505088;1;Y
+X;104;2505088;1;Y
