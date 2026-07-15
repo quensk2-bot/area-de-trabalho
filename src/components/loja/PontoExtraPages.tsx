@@ -510,12 +510,92 @@ function alertasPontoExtra(item: Record<string, any>) {
   return alertas;
 }
 
-async function insertInChunks(tableName: string, payload: Record<string, unknown>[], chunkSize = 800) {
+async function insertInChunks(
+  tableName: string,
+  payload: Record<string, unknown>[],
+  chunkSize = 800,
+  onProgress?: (gravados: number, total: number) => void,
+) {
   for (let index = 0; index < payload.length; index += chunkSize) {
     const chunk = payload.slice(index, index + chunkSize);
     const { error } = await lojaDb.from(tableName).insert(chunk);
     if (error) throw error;
+    onProgress?.(Math.min(index + chunk.length, payload.length), payload.length);
   }
+}
+
+function mapLinhaMediaVenda(row: Record<string, unknown>, importacaoId: string) {
+  const categoriaRaw = String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR"));
+  const categoriaParsed = parseCategoriaMedia(categoriaRaw);
+  const setorInfo = extrairSetorLinhaMedia(row, categoriaParsed);
+  const codigoProduto = normalizeCodigoProduto(getRowValue(row, "CODIGO_PRODUTO", "SEQPRODUTO", "CODPRODUTO", "CODIGO", "COD"));
+  if (!codigoProduto) return null;
+  const loja = normalizeLojaKey(getRowValue(row, "LOJA", "CODIGO_LOJA", "EMPRESA"));
+  if (!loja) return null;
+  return {
+    importacao_id: importacaoId,
+    loja,
+    codigo_produto: codigoProduto,
+    seqproduto: codigoProduto,
+    descricao_produto: String(getRowValue(row, "DESCRICAO_PRODUTO", "DESCCOMPLETA", "PRODUTO", "DESCRICAO")),
+    codigo_fornecedor: String(getRowValue(row, "CODIGO_FORNECEDOR", "COD_FORNECEDOR", "CODFORN")),
+    fornecedor: String(getRowValue(row, "FORNECEDOR", "RAZAO")),
+    status: String(getRowValue(row, "STATUS")),
+    media_venda_un_dia: toNumber(getRowValue(row, "MEDIA_VENDA_UN_DIA", "MEDIAVENDAUNDIA", "MEDIA_VENDA", "MEDIA")),
+    media_venda_gp: toNumber(getRowValue(row, "MEDIA_VENDA_GP", "MEDIAVENDAGP")),
+    estoque: toNumber(getRowValue(row, "ESTOQUE")),
+    par_min: toNumber(getRowValue(row, "PAR_MIN", "PARMIN")),
+    par_max: toNumber(getRowValue(row, "PAR_MAX", "PARMAX")),
+    pend_compra: toNumber(getRowValue(row, "PEND_COMPRA", "PENDCPA")),
+    qtde_emb_compra: toNumber(getRowValue(row, "QTDE_EMBCPA", "QTDE_EMB_COMPRA", "QTD_EMB_COMPRA", "EMBCPA", "EMBALAGEM_COMPRA")),
+    embalagem_compra: String(getRowValue(row, "EMBALAGEM_COMPRA", "EMBCPA")),
+    categoria: categoriaRaw,
+    setor: String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2")) || categoriaParsed.setor_n2,
+    grupo: String(getRowValue(row, "GRUPO", "GRUPO_N3")),
+    custo_liquido: toNumber(getRowValue(row, "CUSTO_LIQUIDO")),
+    peso_unid: toNumber(getRowValue(row, "PESO_UNID", "PESOUNID")),
+    m3_unid: toNumber(getRowValue(row, "M3_UNID", "M3_CX")),
+    peso_cx: toNumber(getRowValue(row, "PESO_CX", "PESOCX")),
+    m3_cx: toNumber(getRowValue(row, "M3_CX", "M3CX")),
+    categoria_n1: categoriaParsed.categoria_n1,
+    setor_n2: categoriaParsed.setor_n2,
+    grupo_n3: categoriaParsed.grupo_n3,
+    subgrupo_n4: categoriaParsed.subgrupo_n4,
+    tipo_n5: categoriaParsed.tipo_n5,
+    setor_codigo: setorInfo.setor_codigo,
+    setor_nome: setorInfo.setor_nome,
+  };
+}
+
+async function importarMediaVendaEmLotes(
+  importacaoId: string,
+  rows: Record<string, unknown>[],
+  onProgress: (gravados: number, total: number) => void,
+) {
+  const LOTE_MAPA = 4000;
+  const CHUNK_INSERT = 400;
+  let gravados = 0;
+  const buffer: Record<string, unknown>[] = [];
+
+  for (const row of rows) {
+    const mapped = mapLinhaMediaVenda(row, importacaoId);
+    if (!mapped) continue;
+    buffer.push(mapped);
+    if (buffer.length >= LOTE_MAPA) {
+      await insertInChunks("ponta_media_venda", buffer, CHUNK_INSERT);
+      gravados += buffer.length;
+      onProgress(gravados, rows.length);
+      buffer.length = 0;
+    }
+  }
+
+  if (buffer.length) {
+    await insertInChunks("ponta_media_venda", buffer, CHUNK_INSERT);
+    gravados += buffer.length;
+    onProgress(gravados, rows.length);
+  }
+
+  return gravados;
 }
 
 async function obterUltimaImportacaoId(tipo: string) {
@@ -781,11 +861,13 @@ async function reconstruirCacheSetoresDaMedia(importacaoId: string) {
 }
 
 async function sincronizarSetoresDaMedia(importacaoId: string, payload: Array<Record<string, unknown>>) {
-  try {
-    const gravados = await gravarSetoresDaMedia(importacaoId, payload);
-    if (gravados > 0) return gravados;
-  } catch (err) {
-    console.warn("Cache local de setores falhou, tentando rebuild no banco:", err);
+  if (payload.length) {
+    try {
+      const gravados = await gravarSetoresDaMedia(importacaoId, payload);
+      if (gravados > 0) return gravados;
+    } catch (err) {
+      console.warn("Cache local de setores falhou, tentando rebuild no banco:", err);
+    }
   }
 
   try {
@@ -1069,63 +1151,30 @@ export function PontoExtraImportacao({ perfil }: Props) {
         const avisoTipo = tipo !== effectiveTipo ? " Arquivo identificado como Estoque CDs." : "";
         setMensagem(`Estoque CD importado: ${payload.length} produtos gravados.${avisoTipo}`);
       } else if (effectiveTipo === "media_venda") {
-        const payload = rows
-          .map((row) => {
-            const categoriaRaw = String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR"));
-            const categoriaParsed = parseCategoriaMedia(categoriaRaw);
-            const setorInfo = extrairSetorLinhaMedia(row, categoriaParsed);
-            const codigoProduto = normalizeCodigoProduto(getRowValue(row, "CODIGO_PRODUTO", "SEQPRODUTO", "CODPRODUTO", "CODIGO", "COD"));
-            return {
-              importacao_id: importacao.id,
-              loja: normalizeLojaKey(getRowValue(row, "LOJA", "CODIGO_LOJA", "EMPRESA")),
-              codigo_produto: codigoProduto,
-              seqproduto: codigoProduto,
-              descricao_produto: String(getRowValue(row, "DESCRICAO_PRODUTO", "DESCCOMPLETA", "PRODUTO", "DESCRICAO")),
-              codigo_fornecedor: String(getRowValue(row, "CODIGO_FORNECEDOR", "COD_FORNECEDOR", "CODFORN")),
-              fornecedor: String(getRowValue(row, "FORNECEDOR", "RAZAO")),
-              status: String(getRowValue(row, "STATUS")),
-              media_venda_un_dia: toNumber(getRowValue(row, "MEDIA_VENDA_UN_DIA", "MEDIAVENDAUNDIA", "MEDIA_VENDA", "MEDIA")),
-              media_venda_gp: toNumber(getRowValue(row, "MEDIA_VENDA_GP", "MEDIAVENDAGP")),
-              estoque: toNumber(getRowValue(row, "ESTOQUE")),
-              par_min: toNumber(getRowValue(row, "PAR_MIN", "PARMIN")),
-              par_max: toNumber(getRowValue(row, "PAR_MAX", "PARMAX")),
-              pend_compra: toNumber(getRowValue(row, "PEND_COMPRA", "PENDCPA")),
-              qtde_emb_compra: toNumber(getRowValue(row, "QTDE_EMBCPA", "QTDE_EMB_COMPRA", "QTD_EMB_COMPRA", "EMBCPA", "EMBALAGEM_COMPRA")),
-              embalagem_compra: String(getRowValue(row, "EMBALAGEM_COMPRA", "EMBCPA")),
-              categoria: categoriaRaw,
-              setor: String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2")) || categoriaParsed.setor_n2,
-              grupo: String(getRowValue(row, "GRUPO", "GRUPO_N3")),
-              custo_liquido: toNumber(getRowValue(row, "CUSTO_LIQUIDO")),
-              peso_unid: toNumber(getRowValue(row, "PESO_UNID", "PESOUNID")),
-              m3_unid: toNumber(getRowValue(row, "M3_UNID", "M3_CX")),
-              peso_cx: toNumber(getRowValue(row, "PESO_CX", "PESOCX")),
-              m3_cx: toNumber(getRowValue(row, "M3_CX", "M3CX")),
-              categoria_n1: categoriaParsed.categoria_n1,
-              setor_n2: categoriaParsed.setor_n2,
-              grupo_n3: categoriaParsed.grupo_n3,
-              subgrupo_n4: categoriaParsed.subgrupo_n4,
-              tipo_n5: categoriaParsed.tipo_n5,
-              setor_codigo: setorInfo.setor_codigo,
-              setor_nome: setorInfo.setor_nome,
-              payload: row,
-            };
-          })
-          .filter((row) => row.codigo_produto);
+        if (rows.length > 50000) {
+          setMensagem(`Importando ${rows.length} linhas de media. Aguarde — arquivos grandes podem levar alguns minutos.`);
+        }
 
-        if (payload.length === 0) {
+        const totalGravados = await importarMediaVendaEmLotes(importacao.id, rows, (gravados, total) => {
+          setMensagem(`Importando media de venda: ${gravados.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")} linhas...`);
+        });
+
+        if (totalGravados === 0) {
           setErro("Nenhuma linha valida de media de venda encontrada. Confira se existe SEQPRODUTO ou CODIGO_PRODUTO.");
           return;
         }
 
-        await insertInChunks("ponta_media_venda", payload);
-        const totalSetores = await sincronizarSetoresDaMedia(importacao.id, payload);
+        const totalSetores = await sincronizarSetoresDaMedia(importacao.id, []);
         if (totalSetores <= 0) {
           setMensagem(
-            `Media de venda importada: ${payload.length} produtos gravados. Aviso: nenhum setor identificado — confira a coluna CATEGORIA do arquivo.`,
+            `Media de venda importada: ${totalGravados.toLocaleString("pt-BR")} produtos gravados. Aviso: nenhum setor identificado — confira a coluna CATEGORIA do arquivo.`,
           );
           return;
         }
-        setMensagem(`Media de venda importada: ${payload.length} produtos e ${totalSetores} setores disponiveis para Capas COM5.`);
+        await lojaDb.from("ponta_importacoes").update({ total_linhas: totalGravados }).eq("id", importacao.id);
+        setMensagem(
+          `Media de venda importada: ${totalGravados.toLocaleString("pt-BR")} produtos e ${totalSetores} setores disponiveis para Capas COM5.`,
+        );
       } else if (effectiveTipo === "codigo_pontas") {
         const payload = rows
           .map((row) => {
