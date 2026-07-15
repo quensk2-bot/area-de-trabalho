@@ -26,6 +26,12 @@ import { PontoExtraAcompanhamentoGondola } from "./ponto-extra/PontoExtraAcompan
 import { enriquecerRowsAcompanhamentoEstoque } from "./ponto-extra/pontoExtraAcompanhamentoUtils";
 import { PontoExtraHub } from "./ponto-extra/PontoExtraHub";
 import { PontoExtraPageShell } from "./ponto-extra/PontoExtraPageShell";
+import {
+  buildBasePontaRowsFromMatrix,
+  formatResumoBasePonta,
+  parseBasePontaComercial,
+  type BasePontaParseResult,
+} from "./ponto-extra/pontoExtraBasePontaImport";
 import { fetchPontoExtraWorkflowSnapshot, getMesVigenciaPersistido, setMesVigenciaPersistido } from "./ponto-extra/pontoExtraWorkflow";
 
 type Props = { perfil: Usuario };
@@ -716,19 +722,28 @@ function buildRowsFromMatrix(matrix: unknown[][]) {
   }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim()));
 }
 
-async function readRows(file: File): Promise<Record<string, unknown>[]> {
+async function readRows(file: File, tipoImportacao = "base_ponta"): Promise<Record<string, unknown>[]> {
   const buffer = await file.arrayBuffer();
   if (/\.(xlsx|xls)$/i.test(file.name)) {
     const workbook = XLSX.read(buffer, { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+    if (tipoImportacao === "base_ponta") {
+      const comercial = buildBasePontaRowsFromMatrix(matrix);
+      if (comercial.length) return comercial;
+    }
     return buildRowsFromMatrix(matrix);
   }
 
   const text = new TextDecoder("windows-1252").decode(buffer);
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   const sep = lines[0]?.includes(";") ? ";" : "\t";
-  return buildRowsFromMatrix(lines.map((line) => line.split(sep)));
+  const matrix = lines.map((line) => line.split(sep));
+  if (tipoImportacao === "base_ponta") {
+    const comercial = buildBasePontaRowsFromMatrix(matrix);
+    if (comercial.length) return comercial;
+  }
+  return buildRowsFromMatrix(matrix);
 }
 
 function MetricCard({ label, value }: { label: string; value: string | number }) {
@@ -767,6 +782,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [basePontaParse, setBasePontaParse] = useState<BasePontaParseResult | null>(null);
 
   function atualizarMes(value: string) {
     const mes = value || currentMonthKey();
@@ -824,9 +840,18 @@ export function PontoExtraImportacao({ perfil }: Props) {
     setMensagem(null);
     setErro(null);
     setRows([]);
+    setBasePontaParse(null);
     if (!file) return;
     try {
-      setRows(await readRows(file));
+      const parsedRows = await readRows(file, tipo);
+      setRows(parsedRows);
+      if (tipo === "base_ponta") {
+        const analise = parseBasePontaComercial(parsedRows);
+        setBasePontaParse(analise);
+        if (!analise.podeGravar) {
+          setErro("Nenhuma linha valida para importar. Revise o resumo e os erros por linha.");
+        }
+      }
     } catch (err) {
       console.error(err);
       setErro("Nao foi possivel ler o arquivo.");
@@ -846,6 +871,17 @@ export function PontoExtraImportacao({ perfil }: Props) {
       setErro("Cubagem deve ser importada em LOJA > 01 Ponto Extra > Cubagem, pois precisa selecionar a regional.");
       return;
     }
+
+    let analiseBasePonta: BasePontaParseResult | null = null;
+    if (effectiveTipo === "base_ponta") {
+      analiseBasePonta = basePontaParse ?? parseBasePontaComercial(rows);
+      setBasePontaParse(analiseBasePonta);
+      if (!analiseBasePonta.podeGravar) {
+        setErro("Importacao bloqueada: nenhuma linha valida. Corrija o arquivo e tente novamente.");
+        return;
+      }
+    }
+
     setLoading(true);
     setErro(null);
     setMensagem(null);
@@ -857,7 +893,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
         .insert({
           tipo: effectiveTipo,
           nome_arquivo: arquivo.name,
-          total_linhas: rows.length,
+          total_linhas: analiseBasePonta?.resumo.linhasValidas ?? rows.length,
           usuario_id: perfil.id,
         })
         .select("id")
@@ -866,50 +902,52 @@ export function PontoExtraImportacao({ perfil }: Props) {
       if (importError) throw importError;
 
       if (effectiveTipo === "base_ponta") {
-        const lojaCounters = new Map<string, number>();
-        const baseRows = rows.map((row) => {
-          const loja = normalizeLojaKey(getRowValue(row, "LOJA", "MAPEAMENTO", "LOJA_FISCAL", "CODIGO_LOJA"));
-          const sequenciaLoja = (lojaCounters.get(loja) ?? 0) + 1;
-          lojaCounters.set(loja, sequenciaLoja);
-          const qtdeArquivo = toNumber(getRowValue(row, "QUANTIDADE", "QTDE", "QUANTIDADE_DE_PONTA_NA_LOJA"));
-          const secao = String(getRowValue(row, "SECAO", "SEÇÃO", "SETOR", "DEPARTAMENTO")).trim().toUpperCase();
-          const tipoInformado = String(getRowValue(row, "TIPO_DE_PONTA", "TIPO_PONTA", "TIPO")).trim().toUpperCase();
-          const tipoPonta = normalizeTipoPonta(
-            tipoInformado || (["ILHA", "MINI PONTA", "PONTA NORMAL"].includes(secao) ? secao : ""),
-          );
-          return {
-            importacao_id: importacao.id,
-            loja,
-            quantidade: qtdeArquivo > 0 ? qtdeArquivo : sequenciaLoja,
-            tipo_ponta: tipoPonta,
-            secao,
-            categoria: String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR")),
-            codigos_raw: String(getRowValue(row, "CODIGOS_PRODUTOS", "CODIGO", "CÓDIGO", "CODIGOS", "COD")),
-          };
-        });
+        const analise = analiseBasePonta!;
+        const basePayload = analise.baseRows.map((base) => ({
+          importacao_id: importacao.id,
+          loja: base.loja,
+          quantidade: base.quantidade,
+          tipo_ponta: base.tipo_ponta,
+          secao: base.secao,
+          categoria: base.categoria,
+          codigos_raw: base.codigos_raw,
+        }));
+
         const { data: inserted, error } = await lojaDb
           .from("ponta_base")
-          .insert(baseRows)
+          .insert(basePayload)
           .select("id, loja, quantidade, tipo_ponta, secao, categoria, codigos_raw");
         if (error) throw error;
 
-        const produtoRows = (inserted ?? []).flatMap((base: any) =>
-          splitCodes(base.codigos_raw).map((codigo) => ({
-            ponta_base_id: base.id,
-            loja: normalizeLojaKey(base.loja),
-            quantidade: base.quantidade,
-            tipo_ponta: normalizeTipoPonta(base.tipo_ponta),
-            secao: base.secao,
-            categoria: base.categoria,
-            codigo_produto: normalizeCodigoProduto(codigo),
-          })),
-        );
+        const baseIdPorPonta = new Map<string, string>();
+        for (const base of inserted ?? []) {
+          baseIdPorPonta.set(`${normalizeLojaKey(base.loja)}|${String(base.quantidade ?? "").trim()}`, base.id);
+        }
+
+        const produtoRows = analise.produtoRows.map((produto) => ({
+          ponta_base_id: baseIdPorPonta.get(`${produto.loja}|${produto.numero_ponta}`),
+          loja: produto.loja,
+          numero_ponta: produto.numero_ponta,
+          quantidade: produto.quantidade,
+          tipo_ponta: produto.tipo_ponta,
+          secao: produto.secao,
+          categoria: produto.categoria,
+          codigo_produto: produto.codigo_produto,
+        }));
 
         if (produtoRows.length) {
           const { error: prodError } = await lojaDb.from("ponta_produtos").insert(produtoRows);
           if (prodError) throw prodError;
         }
-        setMensagem(`Base de ponta importada: ${baseRows.length} linhas e ${produtoRows.length} codigos.`);
+
+        await lojaDb
+          .from("ponta_importacoes")
+          .update({ total_linhas: analise.resumo.linhasValidas })
+          .eq("id", importacao.id);
+
+        setMensagem(
+          `Base comercial importada.\n${formatResumoBasePonta(analise.resumo)}\nGravados: ${basePayload.length} pontas e ${produtoRows.length} codigos unicos.`,
+        );
       } else if (effectiveTipo === "estoque_cd") {
         const payload = rows
           .map((row) => {
@@ -1108,7 +1146,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
   }
 
   const arquivosCiclo = [
-    { key: "base_ponta", label: "Base Ponta (comercial)", hint: "QTDE + MAPEAMENTO + CODIGO", count: importStatus.basePonta },
+    { key: "base_ponta", label: "Base Ponta (comercial)", hint: "LOJA + Nº PONTA EQF + COD", count: importStatus.basePonta },
     { key: "media_venda", label: "Media de venda", hint: "media vd.txt", count: importStatus.mediaVenda },
     { key: "estoque_cd", label: "Estoque CDs", hint: "ESTOQUE CDS.txt", count: importStatus.estoqueCd },
   ] as const;
@@ -1119,7 +1157,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
       mesVigencia={mesVigencia}
       onMesVigenciaChange={atualizarMes}
       title="Importar Mês"
-      subtitle="Importe os 3 arquivos do ciclo. A base do comercial precisa apenas de QTDE, LOJA (MAPEAMENTO) e CODIGO dos produtos."
+      subtitle="Importe os 3 arquivos do ciclo. A base comercial exige LOJA, Nº PONTA EQF e COD (multiplos codigos por celula). SEÇÃO, DESCRIÇÃO e TIPO são ignorados na regra."
     >
       <div style={cardStyle}>
         <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Checklist do passo 1</h2>
@@ -1154,7 +1192,18 @@ export function PontoExtraImportacao({ perfil }: Props) {
         <div style={{ ...gridStyle, alignItems: "end" }}>
           <label>
             <span style={descStyle}>Tipo da base</span>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={inputStyle}>
+            <select
+              value={tipo}
+              onChange={(e) => {
+                setTipo(e.target.value);
+                setBasePontaParse(null);
+                setRows([]);
+                setArquivo(null);
+                setErro(null);
+                setMensagem(null);
+              }}
+              style={inputStyle}
+            >
               <option value="base_ponta">Base Ponta</option>
               <option value="estoque_cd">Estoque CDs</option>
               <option value="media_venda">Media de venda</option>
@@ -1164,10 +1213,26 @@ export function PontoExtraImportacao({ perfil }: Props) {
             <span style={descStyle}>Arquivo</span>
             <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => void selecionar(e.target.files?.[0] ?? null)} style={inputStyle} />
           </label>
-          <button type="button" onClick={() => void importar()} disabled={loading} style={buttonStyle}>
+          <button type="button" onClick={() => void importar()} disabled={loading || (tipo === "base_ponta" && basePontaParse !== null && !basePontaParse.podeGravar)} style={buttonStyle}>
             {loading ? "Importando..." : "Importar base"}
           </button>
         </div>
+        {tipo === "base_ponta" && basePontaParse && (
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, border: `1px solid ${theme.colors.borderSoft}`, background: "rgba(2,6,23,0.45)" }}>
+            <h3 style={{ margin: "0 0 8px", color: theme.colors.neonGreen, fontSize: 14 }}>Resumo da validacao (base comercial)</h3>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12, color: theme.colors.text }}>{formatResumoBasePonta(basePontaParse.resumo)}</pre>
+            {basePontaParse.resumo.errosPorLinha.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700 }}>Erros por linha</div>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12 }}>
+                  {basePontaParse.resumo.errosPorLinha.map((item) => (
+                    <li key={`${item.linha}-${item.mensagem}`}>Linha {item.linha}: {item.mensagem}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
         {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
       </div>
@@ -2613,7 +2678,7 @@ export function PontoExtraProcessamento() {
       const candidatos = produtos.map((produto) => {
         const codigo = normalizeCodigoProduto(produto.codigo_produto);
         const loja = normalizeLojaKey(produto.loja);
-        const numeroPonta = String(produto.quantidade ?? "").trim();
+        const numeroPonta = String(produto.numero_ponta ?? produto.quantidade ?? "").trim();
         const tipoPonta = normalizeTipoPonta(produto.tipo_ponta);
         const media = lookupMedia(mediaPorLojaCodigo, loja, codigo);
         const setorParsed = media?.categoria ? parseSetorInfoMedia(media.categoria) : parseSetorInfoMedia("");
