@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { theme } from "../../../styles";
-import { buttonStyle, cardStyle, descStyle, tableStyle, tdStyle, thStyle } from "./pontoExtraSharedStyles";
+import { buttonStyle, cardStyle, descStyle, gridStyle, tableStyle, tdStyle, thStyle } from "./pontoExtraSharedStyles";
 import { alertasPontoExtra, formatNumber, formatPercent } from "./pontoExtraSharedUtils";
 import { coberturaProduto, produtoElegivel, situacaoProduto } from "./pontoExtraSimuladorUtils";
 

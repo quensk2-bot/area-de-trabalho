@@ -1,63 +1,46 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import type { Usuario } from "../../../types";
-import { PontoExtraOcupacaoVisual } from "./PontoExtraOcupacaoVisual";
+import { PontoExtraSimuladorPlanilha } from "./PontoExtraSimuladorPlanilha";
 import { PontoExtraSimuladorProdutos } from "./PontoExtraSimuladorProdutos";
-import { PontoExtraSimuladorResumo } from "./PontoExtraSimuladorResumo";
 import {
   buttonStyle,
   cardStyle,
   descStyle,
-  gridStyle,
-  inputStyle,
-  pageStyle,
-  titleStyle,
   warningBoxStyle,
 } from "./pontoExtraSharedStyles";
-import { alertasPontoExtra, currentMonthKey, isMesVigenciaValido, monthLabel } from "./pontoExtraSharedUtils";
-import { agruparPontasSimulacao, filtrarGruposSimulacao } from "./pontoExtraSimuladorUtils";
+import { theme } from "../../../styles";
+import { alertasPontoExtra, isMesVigenciaValido } from "./pontoExtraSharedUtils";
+import { PontoExtraPageShell } from "./PontoExtraPageShell";
+import { getMesVigenciaPersistido, setMesVigenciaPersistido } from "./pontoExtraWorkflow";
+import { produtoElegivel } from "./pontoExtraSimuladorUtils";
 
 type Props = { perfil: Usuario };
 
 const lojaDb = supabase.schema("loja");
 
+function ordenarItensCapa(itens: Record<string, unknown>[]) {
+  return [...itens].sort((a, b) => {
+    const setor = String(a.setor_codigo ?? "").localeCompare(String(b.setor_codigo ?? ""), "pt-BR", { numeric: true });
+    if (setor !== 0) return setor;
+    const loja = String(a.loja ?? "").localeCompare(String(b.loja ?? ""), "pt-BR", { numeric: true });
+    if (loja !== 0) return loja;
+    const ordem = Number(a.ordem_reparticao ?? 0) - Number(b.ordem_reparticao ?? 0);
+    if (ordem !== 0) return ordem;
+    return String(a.codigo_produto ?? "").localeCompare(String(b.codigo_produto ?? ""), "pt-BR", { numeric: true });
+  });
+}
+
 export function PontoExtraSimulador({ perfil }: Props) {
-  const [mesVigencia, setMesVigencia] = useState(currentMonthKey());
+  const [mesVigencia, setMesVigencia] = useState(getMesVigenciaPersistido);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [regionais, setRegionais] = useState<Array<{ id: string; nome: string }>>([]);
-  const [lojasRegional, setLojasRegional] = useState<Set<string>>(new Set());
-  const [regionalId, setRegionalId] = useState("");
-  const [grupoKey, setGrupoKey] = useState("");
-  const [filtrosAbertos, setFiltrosAbertos] = useState(true);
-  const [filtros, setFiltros] = useState({ loja: "", codPonta: "", quantPonta: "", setor: "", tipoPonta: "" });
+  const [visaoProdutos, setVisaoProdutos] = useState<"planilha" | "detalhe">("planilha");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
 
   const vigenciaValida = isMesVigenciaValido(mesVigencia);
-
-  async function carregarRegionais() {
-    const { data, error } = await lojaDb.from("ponta_regionais").select("id, nome").order("nome");
-    if (error) throw error;
-    setRegionais((data ?? []) as Array<{ id: string; nome: string }>);
-  }
-
-  async function carregarLojasRegional(id: string) {
-    if (!id) {
-      setLojasRegional(new Set());
-      return;
-    }
-    const { data, error } = await lojaDb.from("ponta_lojas").select("codigo_loja, nome").eq("regional_id", id);
-    if (error) throw error;
-    const codigos = new Set<string>();
-    for (const loja of data ?? []) {
-      const codigo = String(loja.codigo_loja ?? "").trim();
-      const nome = String(loja.nome ?? "").trim();
-      if (codigo) codigos.add(codigo);
-      if (nome) codigos.add(nome);
-    }
-    setLojasRegional(codigos);
-  }
+  const itensVisao = useMemo(() => ordenarItensCapa(rows), [rows]);
 
   async function carregarDados() {
     if (!vigenciaValida) {
@@ -75,6 +58,7 @@ export function PontoExtraSimulador({ perfil }: Props) {
           .from("ponta_processada")
           .select("*")
           .eq("mes_vigencia", mesVigencia)
+          .order("setor_codigo", { ascending: true })
           .order("loja", { ascending: true })
           .order("cod_ponta", { ascending: true })
           .range(from, from + pageSize - 1);
@@ -93,38 +77,8 @@ export function PontoExtraSimulador({ perfil }: Props) {
   }
 
   useEffect(() => {
-    void carregarRegionais().catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    void carregarLojasRegional(regionalId).catch(console.error);
-  }, [regionalId]);
-
-  useEffect(() => {
     void carregarDados();
   }, [mesVigencia]);
-
-  const grupos = useMemo(() => agruparPontasSimulacao(rows), [rows]);
-  const gruposFiltrados = useMemo(
-    () =>
-      filtrarGruposSimulacao(grupos, {
-        regionalLojas: lojasRegional,
-        loja: filtros.loja,
-        codPonta: filtros.codPonta,
-        quantPonta: filtros.quantPonta,
-        setor: filtros.setor,
-        tipoPonta: filtros.tipoPonta,
-      }),
-    [grupos, filtros, lojasRegional],
-  );
-
-  useEffect(() => {
-    if (!gruposFiltrados.some((grupo) => grupo.key === grupoKey)) {
-      setGrupoKey(gruposFiltrados[0]?.key ?? "");
-    }
-  }, [gruposFiltrados, grupoKey]);
-
-  const grupoSelecionado = gruposFiltrados.find((grupo) => grupo.key === grupoKey) ?? null;
 
   async function atualizarAprovacao(ids: string[], aprovado: boolean) {
     if (!vigenciaValida) {
@@ -161,125 +115,99 @@ export function PontoExtraSimulador({ perfil }: Props) {
   }
 
   async function aprovarElegiveis() {
-    if (!grupoSelecionado) return;
-    const ids = grupoSelecionado.itens.filter((item) => !item.fora_reparticao && String(item.status_reparticao ?? "").toUpperCase() === "ELEGIVEL").map((item) => String(item.id));
+    const ids = itensVisao.filter(produtoElegivel).map((item) => String(item.id));
     await atualizarAprovacao(ids, true);
   }
 
   async function reprovarAlertas() {
-    if (!grupoSelecionado) return;
-    const ids = grupoSelecionado.itens
+    const ids = itensVisao
       .filter((item) => alertasPontoExtra(item).length > 0)
       .map((item) => String(item.id));
     await atualizarAprovacao(ids, false);
   }
 
   return (
-    <section style={pageStyle}>
-      <div>
-        <h1 style={titleStyle}>Simulador de Ponta</h1>
-        <p style={descStyle}>
-          Simule a ocupacao fisica da ponta de gondola, compare cenarios e aprove produtos antes da exportacao.
-        </p>
-      </div>
-
+    <PontoExtraPageShell
+      stepId="validar"
+      mesVigencia={mesVigencia}
+      onMesVigenciaChange={(mes) => {
+        setMesVigencia(mes);
+        setMesVigenciaPersistido(mes);
+      }}
+      title="Validar Ponta"
+      subtitle="Revise todas as capas e lojas em uma unica planilha. Aprove os produtos antes de exportar para o COM5."
+    >
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <h2 style={{ margin: 0, color: "#22c55e", fontSize: 15 }}>Vigencia e filtros</h2>
-          <button
-            type="button"
-            onClick={() => setFiltrosAbertos((prev) => !prev)}
-            style={{ ...buttonStyle, padding: "6px 12px", background: "transparent", color: "#f9fafb", border: "1px solid #334155" }}
-          >
-            {filtrosAbertos ? "Recolher filtros" : "Expandir filtros"}
+          <div>
+            <h2 style={{ margin: 0, color: "#22c55e", fontSize: 15 }}>Capa completa — todas as lojas</h2>
+            <p style={{ ...descStyle, margin: "6px 0 0" }}>
+              Visao unica por setor/capa, com todas as lojas na mesma tela. Sem filtros.
+            </p>
+          </div>
+          <button type="button" onClick={() => void carregarDados()} disabled={loading || !vigenciaValida} style={buttonStyle}>
+            {loading ? "Carregando..." : "Atualizar"}
           </button>
         </div>
-        {filtrosAbertos && (
-          <div style={{ ...gridStyle, alignItems: "end", marginTop: 12 }}>
-            <label>
-              <span style={descStyle}>Mes vigencia *</span>
-              <input type="month" value={mesVigencia} onChange={(e) => setMesVigencia(e.target.value)} style={inputStyle} />
-            </label>
-            <label>
-              <span style={descStyle}>Regional</span>
-              <select value={regionalId} onChange={(e) => setRegionalId(e.target.value)} style={inputStyle}>
-                <option value="">Todas</option>
-                {regionais.map((regional) => (
-                  <option key={regional.id} value={regional.id}>{regional.nome}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span style={descStyle}>Loja</span>
-              <input value={filtros.loja} onChange={(e) => setFiltros((prev) => ({ ...prev, loja: e.target.value }))} style={inputStyle} placeholder="Ex.: 73" />
-            </label>
-            <label>
-              <span style={descStyle}>Cod. ponta</span>
-              <input value={filtros.codPonta} onChange={(e) => setFiltros((prev) => ({ ...prev, codPonta: e.target.value }))} style={inputStyle} />
-            </label>
-            <label>
-              <span style={descStyle}>Numero / descricao ponta</span>
-              <input value={filtros.quantPonta} onChange={(e) => setFiltros((prev) => ({ ...prev, quantPonta: e.target.value }))} style={inputStyle} />
-            </label>
-            <label>
-              <span style={descStyle}>Setor</span>
-              <input value={filtros.setor} onChange={(e) => setFiltros((prev) => ({ ...prev, setor: e.target.value }))} style={inputStyle} />
-            </label>
-            <label>
-              <span style={descStyle}>Tipo de ponta</span>
-              <input value={filtros.tipoPonta} onChange={(e) => setFiltros((prev) => ({ ...prev, tipoPonta: e.target.value }))} style={inputStyle} />
-            </label>
-            <button type="button" onClick={() => void carregarDados()} disabled={loading || !vigenciaValida} style={buttonStyle}>
-              {loading ? "Carregando..." : "Atualizar"}
-            </button>
-          </div>
-        )}
         {!vigenciaValida && <div style={warningBoxStyle}>Selecione o mes de vigencia para simular, aprovar ou exportar.</div>}
         {mensagem && <div style={{ marginTop: 12, color: "#22c55e" }}>{mensagem}</div>}
         {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
       </div>
 
-      {vigenciaValida && (
+      {vigenciaValida && itensVisao.length > 0 && (
         <div style={cardStyle}>
-          <label>
-            <span style={descStyle}>Selecione a ponta ({monthLabel(mesVigencia)})</span>
-            <select value={grupoKey} onChange={(e) => setGrupoKey(e.target.value)} style={inputStyle}>
-              <option value="">Selecione...</option>
-              {gruposFiltrados.map((grupo) => (
-                <option key={grupo.key} value={grupo.key}>
-                  Loja {grupo.loja} | {grupo.codPonta || "sem cod"} | {grupo.tipoPonta} {grupo.quantPonta} | {grupo.resumo.statusSimulacao}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
-      {grupoSelecionado && (
-        <>
-          <PontoExtraSimuladorResumo grupo={grupoSelecionado} />
-          <div style={cardStyle}>
-            <PontoExtraOcupacaoVisual
-              m3Alvo={grupoSelecionado.resumo.m3Alvo}
-              m3Utilizado={grupoSelecionado.resumo.m3Utilizado}
-              percentualOcupacao={grupoSelecionado.resumo.percentualOcupacao}
-              statusSimulacao={grupoSelecionado.resumo.statusSimulacao}
-              itens={grupoSelecionado.itens}
-            />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ margin: 0, color: "#22c55e" }}>Aprovacao — visao planilha</h2>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setVisaoProdutos("planilha")}
+                style={{
+                  ...buttonStyle,
+                  padding: "6px 12px",
+                  background: visaoProdutos === "planilha" ? theme.colors.neonGreen : "transparent",
+                  color: visaoProdutos === "planilha" ? "#022c22" : theme.colors.text,
+                  border: `1px solid ${theme.colors.borderSoft}`,
+                }}
+              >
+                Planilha
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisaoProdutos("detalhe")}
+                style={{
+                  ...buttonStyle,
+                  padding: "6px 12px",
+                  background: visaoProdutos === "detalhe" ? theme.colors.neonGreen : "transparent",
+                  color: visaoProdutos === "detalhe" ? "#022c22" : theme.colors.text,
+                  border: `1px solid ${theme.colors.borderSoft}`,
+                }}
+              >
+                Detalhe tecnico
+              </button>
+            </div>
           </div>
-          <div style={cardStyle}>
-            <h2 style={{ marginTop: 0, color: "#22c55e" }}>Produtos simulados</h2>
+          {visaoProdutos === "planilha" ? (
+            <PontoExtraSimuladorPlanilha
+              itens={itensVisao}
+              loading={loading}
+              onAprovar={(id, aprovado) => void aprovarProduto(id, aprovado)}
+              onAprovarPonta={(ids, aprovado) => void atualizarAprovacao(ids, aprovado)}
+              onAprovarElegiveis={() => void aprovarElegiveis()}
+              onReprovarAlertas={() => void reprovarAlertas()}
+            />
+          ) : (
             <PontoExtraSimuladorProdutos
-              itens={grupoSelecionado.itens}
-              limiteSku={grupoSelecionado.limiteSku}
+              itens={itensVisao}
+              limiteSku={7}
               loading={loading}
               onAprovar={(id, aprovado) => void aprovarProduto(id, aprovado)}
               onAprovarElegiveis={() => void aprovarElegiveis()}
               onReprovarAlertas={() => void reprovarAlertas()}
             />
-          </div>
-        </>
+          )}
+        </div>
       )}
-    </section>
+    </PontoExtraPageShell>
   );
 }

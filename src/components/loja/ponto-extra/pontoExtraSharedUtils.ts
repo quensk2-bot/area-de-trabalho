@@ -70,6 +70,71 @@ export function chaveTexto(...partes: unknown[]) {
   return partes.map((parte) => String(parte ?? "").trim()).join("|");
 }
 
+export const TIPO_PONTA_PADRAO = "PONTA NORMAL";
+
+export function normalizeLojaKey(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const num = Number(text.replace(",", "."));
+  if (Number.isFinite(num)) return String(Math.trunc(num));
+  return text;
+}
+
+export function normalizeCodigoProduto(value: unknown) {
+  let text = String(value ?? "").trim();
+  if (!text) return "";
+  if (/^\d+,\d+$/.test(text)) text = text.replace(",", ".");
+  const num = Number(text);
+  if (Number.isFinite(num)) return String(Math.trunc(num));
+  return text.replace(/\s/g, "");
+}
+
+export function normalizeTipoPonta(value: unknown) {
+  const tipo = String(value ?? "").trim().toUpperCase();
+  return tipo || TIPO_PONTA_PADRAO;
+}
+
+export function buildMediaLookup(medias: Array<Record<string, unknown>>) {
+  const sorted = [...medias].sort((a, b) => {
+    const ta = new Date(String(a.created_at ?? 0)).getTime();
+    const tb = new Date(String(b.created_at ?? 0)).getTime();
+    return tb - ta;
+  });
+  const map = new Map<string, Record<string, unknown>>();
+  for (const media of sorted) {
+    const loja = normalizeLojaKey(media.loja);
+    if (!loja) continue;
+    const codigos = [
+      normalizeCodigoProduto(media.codigo_produto),
+      normalizeCodigoProduto(media.seqproduto),
+    ].filter(Boolean);
+    for (const codigo of [...new Set(codigos)]) {
+      const key = chaveTexto(loja, codigo);
+      if (!map.has(key)) map.set(key, media);
+    }
+  }
+  return map;
+}
+
+export function mediaTemVenda(media: Record<string, unknown> | null | undefined) {
+  if (!media) return false;
+  const raw = media.media_venda_un_dia;
+  if (raw === null || raw === undefined || String(raw).trim() === "") return false;
+  return true;
+}
+
+export function lookupMedia(
+  map: Map<string, Record<string, unknown>>,
+  loja: unknown,
+  codigo: unknown,
+) {
+  return map.get(chaveTexto(normalizeLojaKey(loja), normalizeCodigoProduto(codigo)));
+}
+
+export function chaveReparticaoPonta(loja: unknown, numeroPonta: unknown, tipoPonta: unknown) {
+  return chaveTexto(normalizeLojaKey(loja), numeroPonta, normalizeTipoPonta(tipoPonta));
+}
+
 export function alertasPontoExtra(item: Record<string, unknown>) {
   const alertas = Array.isArray(item.alertas) ? [...(item.alertas as string[])] : [];
   const add = (alerta: string, condition: boolean) => {
@@ -98,4 +163,22 @@ export function chavePontaOperacional(item: Record<string, unknown>) {
     item.setor_codigo,
     item.tipo_ponta,
   );
+}
+
+export function chaveCapaOperacional(item: Record<string, unknown>) {
+  return chaveTexto(
+    item.setor_codigo,
+    item.cod_ponta || "SEM_CODIGO_PONTA",
+    item.quant_ponta,
+    item.tipo_ponta,
+    item.mes_vigencia,
+  );
+}
+
+export function chaveSetorCapaOperacional(item: Record<string, unknown>) {
+  return chaveTexto(item.setor_codigo, item.mes_vigencia);
+}
+
+export function chavePontaLojaOperacional(item: Record<string, unknown>) {
+  return chaveTexto(item.quant_ponta, item.tipo_ponta, item.cod_ponta || "SEM_CODIGO_PONTA");
 }

@@ -79,6 +79,7 @@ type MenuKey =
   | "loja-ponto-cubagem"
   | "loja-ponto-capas"
   | "loja-ponto-processamento"
+  | "loja-ponto-validar"
   | "loja-ponto-simulador"
   | "loja-ponto-analise"
   | "loja-ponto-exportacao"
@@ -340,6 +341,7 @@ const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
   "loja-ponto-cubagem": "/loja/ponto-extra/cubagem",
   "loja-ponto-capas": "/loja/ponto-extra/capas",
   "loja-ponto-processamento": "/loja/ponto-extra/processamento",
+  "loja-ponto-validar": "/loja/ponto-extra/validar",
   "loja-ponto-simulador": "/loja/ponto-extra/simulador",
   "loja-ponto-analise": "/loja/ponto-extra/analise",
   "loja-ponto-exportacao": "/loja/ponto-extra/exportacao",
@@ -608,16 +610,14 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
   const lojaPontoExtraItems = useMemo(
     () =>
       [
-        ["loja-ponto-dashboard", "Dashboard Ponto Extra"],
-        ["loja-ponto-importacao", "Importar Bases"],
-        ["loja-ponto-cubagem", "Cubagem"],
-        ["loja-ponto-capas", "Capas de Ponta"],
-        ["loja-ponto-processamento", "Processar Ponto Extra"],
-        ["loja-ponto-simulador", "Simulador de Ponta"],
-        ["loja-ponto-analise", "Analise da Sugestao"],
-        ["loja-ponto-exportacao", "Exportacao"],
-        ["loja-ponto-acompanhamento", "Acompanhamento"],
-        ["loja-ponto-relatorio", "Relatorio Comercial"],
+        ["loja-ponto-dashboard", "Ciclo Mensal"],
+        ["loja-ponto-importacao", "1. Importar Mes"],
+        ["loja-ponto-capas", "2. Capas COM5"],
+        ["loja-ponto-processamento", "3. Processar"],
+        ["loja-ponto-validar", "4. Validar Ponta"],
+        ["loja-ponto-exportacao", "5. Exportar COM5"],
+        ["loja-ponto-acompanhamento", "6. Acompanhar Mes"],
+        ["loja-ponto-cubagem", "Cubagem (cadastro)"],
       ] as [MenuKey, string][],
     []
   );
@@ -831,7 +831,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       content = <PontoExtraCapas />;
     } else if (menu === "loja-ponto-processamento") {
       content = <PontoExtraProcessamento />;
-    } else if (menu === "loja-ponto-simulador") {
+    } else if (menu === "loja-ponto-validar" || menu === "loja-ponto-simulador") {
       content = <PontoExtraSimulador perfil={perfil} />;
     } else if (menu === "loja-ponto-analise") {
       content = <PontoExtraAnalise perfil={perfil} />;
