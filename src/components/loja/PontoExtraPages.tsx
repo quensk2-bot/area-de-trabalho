@@ -436,6 +436,26 @@ function parseSetorInput(value: unknown) {
   };
 }
 
+function mesclarSetores(...listas: Array<Array<{ codigo: string; nome: string }>>) {
+  const mapa = new Map<string, { codigo: string; nome: string }>();
+  for (const lista of listas) {
+    for (const setor of lista) {
+      const codigo = normalizeSetorCodigo(setor.codigo);
+      const nome = String(setor.nome ?? "").trim().toUpperCase();
+      if (!codigo || codigo === "SEM_SETOR") continue;
+      const atual = mapa.get(codigo);
+      if (!atual || (!atual.nome && nome)) {
+        mapa.set(codigo, { codigo, nome: nome || atual?.nome || "" });
+      }
+    }
+  }
+  return Array.from(mapa.values()).sort((a, b) => a.codigo.localeCompare(b.codigo, "pt-BR", { numeric: true }));
+}
+
+function setorParaRotulo(setor: { codigo: string; nome: string }) {
+  return setor.nome ? `${setor.codigo} - ${setor.nome}` : setor.codigo;
+}
+
 function normalizarBuscaCapa(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -559,6 +579,29 @@ async function carregarProdutosDaBase(importacaoId: string | null) {
   return produtos;
 }
 
+async function buscarMediasPorLojaCodigos(
+  loja: string,
+  codigos: string[],
+  importacaoId: string | null,
+) {
+  const chunkSize = 120;
+  const rows: Record<string, any>[] = [];
+  for (let index = 0; index < codigos.length; index += chunkSize) {
+    const chunk = codigos.slice(index, index + chunkSize);
+    const lista = chunk.join(",");
+    let query = lojaDb
+      .from("ponta_media_venda")
+      .select("*")
+      .eq("loja", loja)
+      .or(`codigo_produto.in.(${lista}),seqproduto.in.(${lista})`);
+    if (importacaoId) query = query.eq("importacao_id", importacaoId);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...((data ?? []) as Record<string, any>[]));
+  }
+  return rows;
+}
+
 async function carregarMediaPorProdutos(
   importacaoId: string | null,
   produtos: Array<{ loja: unknown; codigo_produto: unknown }>,
@@ -571,23 +614,20 @@ async function carregarMediaPorProdutos(
     if (!porLoja.has(loja)) porLoja.set(loja, new Set());
     porLoja.get(loja)!.add(codigo);
   }
+  if (!porLoja.size) return [];
 
-  const chunkSize = 150;
-  const rows: Record<string, any>[] = [];
-  for (const [loja, codigos] of porLoja.entries()) {
-    const lista = [...codigos];
-    for (let index = 0; index < lista.length; index += chunkSize) {
-      const chunk = lista.slice(index, index + chunkSize);
-      let query = lojaDb
-        .from("ponta_media_venda")
-        .select("*")
-        .eq("loja", loja)
-        .in("codigo_produto", chunk);
-      if (importacaoId) query = query.eq("importacao_id", importacaoId);
-      const { data, error } = await query;
-      if (error) throw error;
-      rows.push(...((data ?? []) as Record<string, any>[]));
+  const buscar = async (filtroImportacao: string | null) => {
+    const rows: Record<string, any>[] = [];
+    for (const [loja, codigos] of porLoja.entries()) {
+      const parte = await buscarMediasPorLojaCodigos(loja, [...codigos], filtroImportacao);
+      rows.push(...parte);
     }
+    return rows;
+  };
+
+  let rows = await buscar(importacaoId);
+  if (!rows.length && importacaoId) {
+    rows = await buscar(null);
   }
   return rows;
 }
@@ -679,23 +719,81 @@ async function carregarSetoresDaMedia(importacaoId: string | null) {
   return [];
 }
 
+function extrairSetorLinhaMedia(row: Record<string, unknown>, categoriaParsed: ReturnType<typeof parseCategoriaMedia>) {
+  let setorCodigoNumero = categoriaParsed.setor_codigo_numero;
+  let setorNome = categoriaParsed.setor_nome;
+
+  const setorCol = String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2", "CATEGORIA_2", "CATEGORIA2")).trim();
+  const codigoCol = getRowValue(row, "SETOR_CODIGO", "COD_SETOR", "CODIGO_SETOR");
+  const nomeCol = String(getRowValue(row, "SETOR_NOME", "NOME_SETOR", "DESCRICAO_SETOR")).trim();
+
+  if (setorCodigoNumero == null && setorCol) {
+    const parsed = parseSetorInfoOperacional(setorCol, categoriaParsed.setor_n2);
+    setorCodigoNumero = parseSetorCodigoNumerico(parsed.codigo, setorCol, categoriaParsed.setor_n2);
+    setorNome = parsed.nome || setorNome;
+  }
+
+  if (setorCodigoNumero == null && codigoCol != null && String(codigoCol).trim() !== "") {
+    setorCodigoNumero = parseSetorCodigoNumerico(codigoCol);
+  }
+
+  if ((!setorNome || setorNome === "SEM SETOR") && nomeCol) {
+    setorNome = nomeCol.toUpperCase();
+  }
+
+  if (setorCodigoNumero != null && (!setorNome || setorNome === "SEM SETOR") && setorCol) {
+    const parsed = parseSetorInfoOperacional(setorCol, categoriaParsed.setor_n2);
+    setorNome = parsed.nome || setorNome;
+  }
+
+  return {
+    setor_codigo: setorCodigoNumero,
+    setor_nome: String(setorNome ?? "").trim().toUpperCase(),
+  };
+}
+
 async function gravarSetoresDaMedia(importacaoId: string, payload: Array<Record<string, unknown>>) {
   const setores = new Map<number, { importacao_id: string; setor_codigo: number; setor_nome: string }>();
   for (const row of payload) {
     const setorCodigo = Number(row.setor_codigo);
     const setorNome = String(row.setor_nome ?? "").trim().toUpperCase();
-    if (!Number.isFinite(setorCodigo) || !setorNome) continue;
+    if (!Number.isFinite(setorCodigo) || setorCodigo <= 0 || !setorNome || setorNome === "SEM SETOR") continue;
     setores.set(setorCodigo, {
       importacao_id: importacaoId,
       setor_codigo: Math.trunc(setorCodigo),
       setor_nome: setorNome,
     });
   }
-  if (!setores.size) return;
+  if (!setores.size) return 0;
   const { error } = await lojaDb.from("ponta_setores_media").upsert(Array.from(setores.values()), {
     onConflict: "importacao_id,setor_codigo",
   });
   if (error) throw error;
+  return setores.size;
+}
+
+async function reconstruirCacheSetoresDaMedia(importacaoId: string) {
+  const { data, error } = await lojaDb.rpc("ponto_extra_rebuild_setores_cache", {
+    p_importacao_id: importacaoId,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+async function sincronizarSetoresDaMedia(importacaoId: string, payload: Array<Record<string, unknown>>) {
+  try {
+    const gravados = await gravarSetoresDaMedia(importacaoId, payload);
+    if (gravados > 0) return gravados;
+  } catch (err) {
+    console.warn("Cache local de setores falhou, tentando rebuild no banco:", err);
+  }
+
+  try {
+    return await reconstruirCacheSetoresDaMedia(importacaoId);
+  } catch (err) {
+    console.warn("Rebuild de setores no banco falhou:", err);
+    return 0;
+  }
 }
 
 function splitCodes(raw: unknown) {
@@ -975,6 +1073,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
           .map((row) => {
             const categoriaRaw = String(getRowValue(row, "CATEGORIA", "CATEGORIAS", "CATEGORIA_SETOR"));
             const categoriaParsed = parseCategoriaMedia(categoriaRaw);
+            const setorInfo = extrairSetorLinhaMedia(row, categoriaParsed);
             const codigoProduto = normalizeCodigoProduto(getRowValue(row, "CODIGO_PRODUTO", "SEQPRODUTO", "CODPRODUTO", "CODIGO", "COD"));
             return {
               importacao_id: importacao.id,
@@ -994,7 +1093,7 @@ export function PontoExtraImportacao({ perfil }: Props) {
               qtde_emb_compra: toNumber(getRowValue(row, "QTDE_EMBCPA", "QTDE_EMB_COMPRA", "QTD_EMB_COMPRA", "EMBCPA", "EMBALAGEM_COMPRA")),
               embalagem_compra: String(getRowValue(row, "EMBALAGEM_COMPRA", "EMBCPA")),
               categoria: categoriaRaw,
-              setor: String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2")),
+              setor: String(getRowValue(row, "SETOR", "SECAO", "SETOR_N2")) || categoriaParsed.setor_n2,
               grupo: String(getRowValue(row, "GRUPO", "GRUPO_N3")),
               custo_liquido: toNumber(getRowValue(row, "CUSTO_LIQUIDO")),
               peso_unid: toNumber(getRowValue(row, "PESO_UNID", "PESOUNID")),
@@ -1006,8 +1105,8 @@ export function PontoExtraImportacao({ perfil }: Props) {
               grupo_n3: categoriaParsed.grupo_n3,
               subgrupo_n4: categoriaParsed.subgrupo_n4,
               tipo_n5: categoriaParsed.tipo_n5,
-              setor_codigo: categoriaParsed.setor_codigo_numero,
-              setor_nome: categoriaParsed.setor_nome,
+              setor_codigo: setorInfo.setor_codigo,
+              setor_nome: setorInfo.setor_nome,
               payload: row,
             };
           })
@@ -1019,16 +1118,14 @@ export function PontoExtraImportacao({ perfil }: Props) {
         }
 
         await insertInChunks("ponta_media_venda", payload);
-        try {
-          await gravarSetoresDaMedia(importacao.id, payload);
-        } catch (setorErr: any) {
-          console.warn("Setores da media nao gravados no cache:", setorErr);
+        const totalSetores = await sincronizarSetoresDaMedia(importacao.id, payload);
+        if (totalSetores <= 0) {
           setMensagem(
-            `Media de venda importada: ${payload.length} produtos gravados. Aviso: cache de setores pendente (permissao no banco).`,
+            `Media de venda importada: ${payload.length} produtos gravados. Aviso: nenhum setor identificado — confira a coluna CATEGORIA do arquivo.`,
           );
           return;
         }
-        setMensagem(`Media de venda importada: ${payload.length} produtos gravados.`);
+        setMensagem(`Media de venda importada: ${payload.length} produtos e ${totalSetores} setores disponiveis para Capas COM5.`);
       } else if (effectiveTipo === "codigo_pontas") {
         const payload = rows
           .map((row) => {
@@ -2061,13 +2158,27 @@ export function PontoExtraCapas() {
   async function carregarCapas() {
     setErro(null);
     const mediaImportId = await obterUltimaImportacaoId("media_venda");
-    const [{ data: capas, error: capaError }, setores] = await Promise.all([
-      lojaDb.from("ponta_codigo_pontas").select("*").eq("mes_vigencia", mesVigencia).order("setor_codigo", { ascending: true }),
-      carregarSetoresDaMedia(mediaImportId),
-    ]);
+    const { data: capas, error: capaError } = await lojaDb
+      .from("ponta_codigo_pontas")
+      .select("*")
+      .eq("mes_vigencia", mesVigencia)
+      .order("setor_codigo", { ascending: true });
     if (capaError) throw capaError;
 
-    setSetorOpcoes(setores);
+    let setoresMedia: Array<{ codigo: string; nome: string }> = [];
+    try {
+      setoresMedia = await carregarSetoresDaMedia(mediaImportId);
+      if (!setoresMedia.length && mediaImportId) {
+        const rebuild = await reconstruirCacheSetoresDaMedia(mediaImportId);
+        if (rebuild > 0) {
+          setoresMedia = await carregarSetoresDaMedia(mediaImportId);
+          setMensagem(`${rebuild} setores recarregados da media de venda.`);
+        }
+      }
+    } catch (err: any) {
+      console.warn("Setores da media indisponiveis:", err);
+      setErro(err?.message ?? "Nao foi possivel carregar setores da media. Capas e filtros usam dados ja cadastrados.");
+    }
 
     const vigenciaPadrao = vigenciaPadraoCapa(mesVigencia);
     const lista = ((capas ?? []) as PontaCodigoPonta[])
@@ -2089,6 +2200,11 @@ export function PontoExtraCapas() {
       .filter((capa) => capa.setor_codigo !== "SEM_SETOR")
       .sort((a, b) => `${a.setor_codigo}`.localeCompare(`${b.setor_codigo}`, "pt-BR", { numeric: true }));
 
+    const setoresCapas = lista.map((capa) => ({
+      codigo: String(capa.setor_codigo ?? ""),
+      nome: String(capa.setor_nome ?? "").trim().toUpperCase(),
+    }));
+    setSetorOpcoes(mesclarSetores(setoresMedia, setoresCapas));
     setLinhas(lista);
   }
 
@@ -2166,11 +2282,21 @@ export function PontoExtraCapas() {
       let setores = setorOpcoes;
       if (!setores.length) {
         const mediaImportId = await obterUltimaImportacaoId("media_venda");
+        if (!mediaImportId) {
+          setErro("Importe a media de venda antes de gerar os setores.");
+          return;
+        }
         setores = await carregarSetoresDaMedia(mediaImportId);
+        if (!setores.length) {
+          const rebuild = await reconstruirCacheSetoresDaMedia(mediaImportId);
+          if (rebuild > 0) {
+            setores = await carregarSetoresDaMedia(mediaImportId);
+          }
+        }
         setSetorOpcoes(setores);
       }
       if (!setores.length) {
-        setErro("Importe a media de venda antes de gerar os setores.");
+        setErro("Nenhum setor encontrado na media importada. Reimporte o arquivo media vd.txt ou rode a migration de setores no Supabase.");
         return;
       }
 
@@ -2242,7 +2368,14 @@ export function PontoExtraCapas() {
   async function adicionarDescricaoManual() {
     const setorDigitado = parseSetorInput(novaCapa.setor_codigo);
     const setorCodigo = setorDigitado.codigo || "SEM_SETOR";
-    const setorNome = (novaCapa.setor_nome.trim() || setorDigitado.nome || "SEM SETOR").toUpperCase();
+    const setorEncontrado = mesclarSetores(
+      setorOpcoes,
+      linhas.map((linha) => ({
+        codigo: String(linha.setor_codigo ?? ""),
+        nome: String(linha.setor_nome ?? "").trim().toUpperCase(),
+      })),
+    ).find((setor) => setor.codigo === normalizeSetorCodigo(setorCodigo));
+    const setorNome = (novaCapa.setor_nome.trim() || setorEncontrado?.nome || setorDigitado.nome || "SEM SETOR").toUpperCase();
     const descricao = novaCapa.descricao_ponta.trim().toUpperCase() || descricaoCapaPonta(mesVigencia, setorCodigo, setorNome);
     if (setorCodigo === "SEM_SETOR") {
       setErro("Informe o setor para criar a capa.");
@@ -2324,10 +2457,29 @@ export function PontoExtraCapas() {
     [filtroCodigoPonta, filtroSetor, linhas],
   );
 
+  const todosSetores = useMemo(
+    () =>
+      mesclarSetores(
+        setorOpcoes,
+        linhas.map((linha) => ({
+          codigo: String(linha.setor_codigo ?? ""),
+          nome: String(linha.setor_nome ?? "").trim().toUpperCase(),
+        })),
+      ),
+    [linhas, setorOpcoes],
+  );
+
+  const setoresFiltro = useMemo(
+    () => todosSetores.map(setorParaRotulo),
+    [todosSetores],
+  );
+
+  const capasPendentes = linhas.filter((linha) => !String(linha.cod_ponta ?? "").trim()).length;
+
   function aplicarSetorNovaCapa(value: string) {
     const setor = parseSetorInput(value);
-    const encontrado = setorOpcoes.find((item) => item.codigo === normalizeSetorCodigo(setor.codigo))
-      || setorOpcoes.find((item) => `${item.codigo} - ${item.nome}` === value);
+    const encontrado = todosSetores.find((item) => item.codigo === normalizeSetorCodigo(setor.codigo))
+      || todosSetores.find((item) => setorParaRotulo(item) === value);
     const setorCodigo = normalizeSetorCodigo(encontrado?.codigo || setor.codigo || value);
     const setorNome = encontrado?.nome ?? setor.nome ?? "";
     const descricaoAtual = novaCapa.descricao_ponta.trim().toUpperCase();
@@ -2343,16 +2495,9 @@ export function PontoExtraCapas() {
     }));
   }
 
-  const setoresFiltro = useMemo(
-    () =>
-      Array.from(new Set([
-        ...setorOpcoes.map((setor) => `${setor.codigo} - ${setor.nome}`),
-        ...linhas.map((linha) => `${linha.setor_codigo} - ${linha.setor_nome}`).filter(Boolean),
-      ])).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true })),
-    [linhas, setorOpcoes],
-  );
-
-  const capasPendentes = linhas.filter((linha) => !String(linha.cod_ponta ?? "").trim()).length;
+  function aplicarFiltroSetor(value: string) {
+    setFiltroSetor(value);
+  }
 
   return (
     <PontoExtraPageShell
@@ -2362,6 +2507,53 @@ export function PontoExtraCapas() {
       title="Capas COM5"
       subtitle="Cadastre uma capa por setor (como na planilha COD DAS PONTA). Copie as descricoes para o COM5 e cole os codigos oficiais de volta."
     >
+      <datalist id="ponto-extra-capas-setores">
+        {setoresFiltro.map((setor) => <option key={setor} value={setor} />)}
+      </datalist>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Capas do mes ({linhas.length})</h2>
+        <div style={{ ...gridStyle, alignItems: "end" }}>
+          <label>
+            <span style={descStyle}>Filtrar setor</span>
+            {todosSetores.length > 0 ? (
+              <select
+                value={filtroSetor}
+                onChange={(e) => aplicarFiltroSetor(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Todos os setores</option>
+                {setoresFiltro.map((setor) => (
+                  <option key={setor} value={setor}>{setor}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={filtroSetor}
+                onChange={(e) => aplicarFiltroSetor(e.target.value)}
+                placeholder="Codigo ou nome"
+                list="ponto-extra-capas-setores"
+                style={inputStyle}
+              />
+            )}
+          </label>
+          <label>
+            <span style={descStyle}>Filtrar descricao/codigo</span>
+            <input value={filtroCodigoPonta} onChange={(e) => setFiltroCodigoPonta(e.target.value)} placeholder="Descricao ou cod. ponta" style={inputStyle} />
+          </label>
+          <button type="button" disabled={loading || linhas.length === 0} onClick={() => void salvarTodas()} style={buttonStyle}>
+            {loading ? "Salvando..." : "Salvar capas"}
+          </button>
+        </div>
+        {todosSetores.length === 0 && (
+          <p style={{ ...descStyle, marginTop: 10, color: "#fbbf24" }}>
+            Nenhum setor carregado. Importe a media de venda ou adicione setores manualmente no passo 2B.
+          </p>
+        )}
+        {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
+        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
+      </div>
+
       <div style={cardStyle}>
         <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Passo 2A — Gerar capas por setor</h2>
         <p style={descStyle}>
@@ -2371,12 +2563,20 @@ export function PontoExtraCapas() {
           <button type="button" onClick={() => void gerarSetoresDaMedia()} disabled={loading} style={buttonStyle}>
             Gerar setores da media
           </button>
+          <button
+            type="button"
+            onClick={() => void carregarCapas()}
+            disabled={loading}
+            style={{ ...buttonStyle, background: "transparent", color: theme.colors.text, border: `1px solid ${theme.colors.borderSoft}` }}
+          >
+            Recarregar setores
+          </button>
           <button type="button" onClick={() => void copiarTodasDescricoes()} disabled={linhas.length === 0} style={buttonStyle}>
             Copiar todas descricoes
           </button>
-          {setorOpcoes.length > 0 && (
+          {todosSetores.length > 0 && (
             <span style={{ ...descStyle, alignSelf: "center", color: theme.colors.neonGreen }}>
-              {setorOpcoes.length} setores disponiveis da media
+              {todosSetores.length} setores disponiveis
             </span>
           )}
         </div>
@@ -2384,6 +2584,21 @@ export function PontoExtraCapas() {
 
       <div style={cardStyle}>
         <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Passo 2B — Adicionar setor manualmente</h2>
+        {todosSetores.length > 0 && (
+          <label style={{ display: "block", marginBottom: 12 }}>
+            <span style={descStyle}>Selecionar setor</span>
+            <select
+              value={novaCapa.setor_codigo ? setorParaRotulo({ codigo: novaCapa.setor_codigo, nome: novaCapa.setor_nome }) : ""}
+              onChange={(e) => aplicarSetorNovaCapa(e.target.value)}
+              style={{ ...inputStyle, width: "100%", maxWidth: 420 }}
+            >
+              <option value="">Escolha o setor...</option>
+              {todosSetores.map((setor) => (
+                <option key={setor.codigo} value={setorParaRotulo(setor)}>{setorParaRotulo(setor)}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div style={{ ...gridStyle, alignItems: "end" }}>
           <label>
             <span style={descStyle}>Cod. setor</span>
@@ -2444,25 +2659,7 @@ export function PontoExtraCapas() {
       </div>
 
       <div style={cardStyle}>
-        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Capas do mes</h2>
-        <div style={{ ...gridStyle, alignItems: "end", marginBottom: 12 }}>
-          <label>
-            <span style={descStyle}>Filtrar setor</span>
-            <input value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} placeholder="Codigo ou nome" list="ponto-extra-capas-setores" style={inputStyle} />
-          </label>
-          <label>
-            <span style={descStyle}>Filtrar descricao/codigo</span>
-            <input value={filtroCodigoPonta} onChange={(e) => setFiltroCodigoPonta(e.target.value)} placeholder="Descricao ou cod. ponta" style={inputStyle} />
-          </label>
-          <button type="button" disabled={loading || linhas.length === 0} onClick={() => void salvarTodas()} style={buttonStyle}>
-            {loading ? "Salvando..." : "Salvar capas"}
-          </button>
-        </div>
-        {mensagem && <div style={{ marginTop: 12, color: theme.colors.neonGreen }}>{mensagem}</div>}
-        {erro && <div style={{ marginTop: 12, color: "#f87171" }}>{erro}</div>}
-        <datalist id="ponto-extra-capas-setores">
-          {setoresFiltro.map((setor) => <option key={setor} value={setor} />)}
-        </datalist>
+        <h2 style={{ marginTop: 0, color: theme.colors.neonGreen }}>Tabela de capas</h2>
         <div style={{ overflowX: "auto", marginTop: 12 }}>
           <table style={tableStyle}>
             <thead>
@@ -2640,13 +2837,41 @@ export function PontoExtraProcessamento() {
         return;
       }
 
+      if (!mediaImportId) {
+        setErro("Importe a media de venda (media vd.txt) antes de processar.");
+        return;
+      }
+
+      const mediaNaImportacao = await lojaDb
+        .from("ponta_media_venda")
+        .select("id", { count: "exact", head: true })
+        .eq("importacao_id", mediaImportId);
+      if (mediaNaImportacao.error) throw mediaNaImportacao.error;
+      if (!mediaNaImportacao.count) {
+        setErro("A ultima importacao de media nao gravou linhas no banco. Reimporte o arquivo media vd.txt e aguarde a mensagem de conclusao.");
+        return;
+      }
+
       const [medias, estoques] = await Promise.all([
         carregarMediaPorProdutos(mediaImportId, produtos),
         carregarEstoquePorCodigos(estoqueImportId, produtos),
       ]);
 
       if (!medias.length) {
-        setErro("Nenhuma media encontrada para os produtos da base. Confira se a media foi importada e se os codigos da base batem com SEQPRODUTO da media.");
+        const exemplos = produtos
+          .slice(0, 6)
+          .map((produto) => `Loja ${normalizeLojaKey(produto.loja)} / Cod ${normalizeCodigoProduto(produto.codigo_produto)}`)
+          .join(" | ");
+        setDiagnosticoJoin({
+          produtosBase: produtos.length,
+          linhasMedia: 0,
+          comMedia: 0,
+          semMedia: produtos.length,
+          exemplosSemMedia: produtos.slice(0, 8).map((produto) => `Loja ${normalizeLojaKey(produto.loja)} | Cod. ${normalizeCodigoProduto(produto.codigo_produto)}`),
+        });
+        setErro(
+          `Nenhuma media encontrada para os produtos da base. Media gravada: ${mediaNaImportacao.count} linhas. Exemplos buscados: ${exemplos}. O join e LOJA + COD (base) com LOJA + SEQPRODUTO (media).`,
+        );
         return;
       }
 
@@ -2909,7 +3134,11 @@ export function PontoExtraProcessamento() {
       setResumo(novoResumo);
       setResultado(payload.slice(0, 200));
       setMensagem(
-        `Processamento concluido: ${payload.length} produtos gravados para ${monthLabel(mesVigencia)}. Join media: ${comMediaJoin.length}/${produtos.length} | Media carregada: ${medias.length} linhas.`,
+        `Processamento concluido: ${payload.length} produtos gravados para ${monthLabel(mesVigencia)}. Join media: ${comMediaJoin.length}/${produtos.length} | Media carregada: ${medias.length} linhas.${
+          novoResumo.semCubagem > 0
+            ? ` Aviso: ${novoResumo.semCubagem} itens sem cubagem cadastrada (limite padrao 7). Cadastre em LOJA > Cubagem.`
+            : ""
+        }`,
       );
     } catch (err: any) {
       console.error(err);
