@@ -27,6 +27,11 @@ function produtoBase(overrides: Partial<MotorProdutoLojaNormalizado> = {}): Moto
     parMin: 1,
     parMax: 10,
     pendenciaLoja: 0,
+    diasCompraLj: null,
+    diasCompraCd1: null,
+    diasCompraCd2: null,
+    diasCompraCd3: null,
+    diasCompraCd4: null,
     embalagemCompra: "UN",
     hierarquia: {
       categoriaOriginal: "MERCEARIA|BEBIDAS|REFRIGERANTES|COLA|LATA",

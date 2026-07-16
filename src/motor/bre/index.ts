@@ -5,6 +5,7 @@ import { consolidarMetricasBre, criarBreResultadoVazio, mergeRegraResults } from
 import { aplicarRuleAtivacaoRecente } from "./rules/ruleAtivacaoRecente.ts";
 import { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
 import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
+import { aplicarRuleDiasPedido } from "./rules/calcularDiasPedido.ts";
 import { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 import { aplicarRuleRuptura104c } from "./rules/ruleRuptura104c.ts";
 import { aplicarRuleSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
@@ -54,6 +55,8 @@ export function processarItemBre(
     modCurtoPrazo,
   );
 
+  const diasPedido = aplicarRuleDiasPedido(input);
+
   const regras = mergeRegraResults(
     [baseLimpa, ativacao, ruptura104c],
     inventarioRegras,
@@ -88,8 +91,16 @@ export function processarItemBre(
     curtoPrazo: classificacao.curtoPrazo,
     medioPrazo: classificacao.medioPrazo,
     longoPrazo: classificacao.longoPrazo,
+    mediaDiasPedidoLoja: diasPedido.mediaDiasPedidoLoja,
+    mediaDiasPedidoCd1: diasPedido.mediaDiasPedidoCd1,
+    mediaDiasPedidoCd2: diasPedido.mediaDiasPedidoCd2,
+    mediaDiasPedidoCd3: diasPedido.mediaDiasPedidoCd3,
+    mediaDiasPedidoCd4: diasPedido.mediaDiasPedidoCd4,
+    mediaDiasPedidoCd5: diasPedido.mediaDiasPedidoCd5,
+    diasPedido: diasPedido.diasPedidoFinal,
+    origemDiasPedido: diasPedido.origemResultado,
     regras,
-    alertas: [...regras.flatMap((r) => r.alertas), ...classificacao.alertas],
+    alertas: [...regras.flatMap((r) => r.alertas), ...classificacao.alertas, ...diasPedido.alertas],
   };
 }
 
@@ -134,3 +145,8 @@ export { aplicarRuleCurtoPrazo } from "./rules/ruleCurtoPrazo.ts";
 export { aplicarRuleMedioPrazo } from "./rules/ruleMedioPrazo.ts";
 export { aplicarRuleLongoPrazo } from "./rules/ruleLongoPrazo.ts";
 export { classificarPrazo } from "./classificarPrazo.ts";
+export {
+  aplicarRuleDiasPedido,
+  calcularDiasPedido,
+  montarDiasPedidoEntrada,
+} from "./rules/calcularDiasPedido.ts";

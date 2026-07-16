@@ -86,6 +86,17 @@ export function transformGrupoRuptura1(
     const pendCd4 = parseDecimalBr(linha.pendenciaCd4, "PENDCD_CD4", linha.numeroLinha);
     if (pendCd4.erro) erros.push(pendCd4.erro);
 
+    const diasCompraLj = parseDecimalBr(linha.diasCompraLj, "DIAS_DA_COMPRALJ", linha.numeroLinha);
+    if (diasCompraLj.erro) erros.push(diasCompraLj.erro);
+    const diasCompraCd1 = parseDecimalBr(linha.diasCompraCd1, "DIAS_DA_COMPRACD1", linha.numeroLinha);
+    if (diasCompraCd1.erro) erros.push(diasCompraCd1.erro);
+    const diasCompraCd2 = parseDecimalBr(linha.diasCompraCd2, "DIAS_DA_COMPRACD2", linha.numeroLinha);
+    if (diasCompraCd2.erro) erros.push(diasCompraCd2.erro);
+    const diasCompraCd3 = parseDecimalBr(linha.diasCompraCd3, "DIAS_DA_COMPRACD3", linha.numeroLinha);
+    if (diasCompraCd3.erro) erros.push(diasCompraCd3.erro);
+    const diasCompraCd4 = parseDecimalBr(linha.diasCompraCd4, "DIAS_DA_COMPRACD4", linha.numeroLinha);
+    if (diasCompraCd4.erro) erros.push(diasCompraCd4.erro);
+
     const ultEntrada = parseDataFlex(linha.ultimaEntradaLoja, "ULTIMA_ENTRADALOJA", linha.numeroLinha);
     if (ultEntrada.erro) erros.push(ultEntrada.erro);
     const ultSaida = parseDataFlex(linha.ultimaSaidaLoja, "ULTIMA_SAIDALOJA", linha.numeroLinha);
@@ -115,6 +126,11 @@ export function transformGrupoRuptura1(
       parMin: parMin.valor,
       parMax: parMax.valor,
       pendenciaLoja: pendencia.valor,
+      diasCompraLj: diasCompraLj.valor,
+      diasCompraCd1: diasCompraCd1.valor,
+      diasCompraCd2: diasCompraCd2.valor,
+      diasCompraCd3: diasCompraCd3.valor,
+      diasCompraCd4: diasCompraCd4.valor,
       embalagemCompra: emptyToNull(linha.embalagemCompra),
       hierarquia,
       estoqueCd1: estCd1.valor,

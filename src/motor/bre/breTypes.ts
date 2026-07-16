@@ -12,6 +12,36 @@ export type MotorRegraStatus =
 
 export type MotorClassificacaoPrazo = "CP" | "MP" | "LP" | null;
 
+export type MotorDiasPedidoOrigem = "loja" | "cd1" | "cd2" | "cd3" | "cd4" | "cd5" | "nenhum";
+
+export type MotorDiasPedidoEntrada = {
+  pendenciaLoja: number | null;
+  diasCompraLoja: number | null;
+  pendenciaCd1: number | null;
+  diasCompraCd1: number | string | null;
+  pendenciaCd2: number | null;
+  diasCompraCd2: number | string | null;
+  pendenciaCd3: number | null;
+  diasCompraCd3: number | string | null;
+  pendenciaCd4: number | null;
+  diasCompraCd4: number | string | null;
+  pendenciaCd5: number | null;
+  diasCompraCd5: number | string | null;
+};
+
+export type MotorDiasPedidoResultado = {
+  mediaDiasPedidoLoja: number | null;
+  mediaDiasPedidoCd1: number | null;
+  mediaDiasPedidoCd2: number | null;
+  mediaDiasPedidoCd3: number | null;
+  mediaDiasPedidoCd4: number | null;
+  mediaDiasPedidoCd5: number | null;
+  diasPedidoFinal: number;
+  origemResultado: MotorDiasPedidoOrigem;
+  alertas: MotorAlerta[];
+  statusRegra: MotorRegraStatus;
+};
+
 export type MotorAlerta = {
   codigo: string;
   mensagem: string;
@@ -109,6 +139,14 @@ export type MotorBreItemResultado = {
   curtoPrazo: 0 | 1;
   medioPrazo: 0 | 1;
   longoPrazo: 0 | 1;
+  mediaDiasPedidoLoja: number | null;
+  mediaDiasPedidoCd1: number | null;
+  mediaDiasPedidoCd2: number | null;
+  mediaDiasPedidoCd3: number | null;
+  mediaDiasPedidoCd4: number | null;
+  mediaDiasPedidoCd5: number | null;
+  diasPedido: number;
+  origemDiasPedido: MotorDiasPedidoOrigem;
   regras: MotorRegraResultado[];
   alertas: MotorAlerta[];
 };

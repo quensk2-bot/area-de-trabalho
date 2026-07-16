@@ -4,6 +4,7 @@ import { compararCampo, compararExcelV7 } from "../compare/compareExcelV7.ts";
 import { formatarRelatorioDivergencias } from "../compare/divergenceReport.ts";
 import { CAMPOS_PRIORITARIOS_COMPARE } from "../compare/compareTypes.ts";
 import { EXCEL_PRAZO_FIXTURE } from "./fixtures/excelPrazoExpected.ts";
+import { EXCEL_DIAS_PEDIDO_DIVERGENTE, EXCEL_DIAS_PEDIDO_FIXTURE } from "./fixtures/excelDiasPedidoExpected.ts";
 
 describe("compare Excel × V7", () => {
   it("21. comparação igual", () => {
@@ -65,5 +66,25 @@ describe("compare Excel × V7", () => {
     const divergente = compararExcelV7(EXCEL_PRAZO_FIXTURE.slice(5), campos);
     assert.ok(divergente.resumo.divergentes >= 1);
     assert.ok(formatarRelatorioDivergencias(divergente).includes("Longo Prazo"));
+  });
+
+  it("comparação Dias Pedido com fixture Excel", () => {
+    const campos = CAMPOS_PRIORITARIOS_COMPARE.filter((c) =>
+      [
+        "Média dias Pedido Lj",
+        "Média dias Pedido cd1",
+        "Média dias Pedido cd2",
+        "Média dias Pedido cd3",
+        "Média dias Pedido cd4",
+        "Média dias Pedido cd5",
+        "Dias Pedido",
+      ].includes(c.campo),
+    );
+    const iguais = compararExcelV7(EXCEL_DIAS_PEDIDO_FIXTURE, campos);
+    assert.equal(iguais.resumo.divergentes, 0);
+
+    const divergente = compararExcelV7(EXCEL_DIAS_PEDIDO_DIVERGENTE, campos);
+    assert.ok(divergente.resumo.divergentes >= 1);
+    assert.ok(formatarRelatorioDivergencias(divergente).includes("Dias Pedido"));
   });
 });

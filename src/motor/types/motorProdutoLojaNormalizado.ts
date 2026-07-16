@@ -25,6 +25,11 @@ export type MotorProdutoLojaNormalizado = {
   parMin: number | null;
   parMax: number | null;
   pendenciaLoja: number | null;
+  diasCompraLj: number | null;
+  diasCompraCd1: number | null;
+  diasCompraCd2: number | null;
+  diasCompraCd3: number | null;
+  diasCompraCd4: number | null;
   embalagemCompra: string | null;
   hierarquia: MotorHierarquiaMercadologica;
   estoqueCd1: number | null;
