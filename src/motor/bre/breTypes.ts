@@ -53,6 +53,40 @@ export type MotorBreEntrada = {
   inventario: Map<string, MotorInventarioAgrupado>;
 };
 
+export type MotorPendenciaAgregadaResultado = MotorRegraResultado & {
+  soma: number | null;
+};
+
+export type MotorCurtoPrazoResultado = MotorRegraResultado & {
+  curtoPrazo: 0 | 1;
+};
+
+export type MotorMedioPrazoResultado = MotorRegraResultado & {
+  medioPrazo: 0 | 1;
+  somaPendencia: number | null;
+};
+
+export type MotorLongoPrazoResultado = MotorRegraResultado & {
+  longoPrazo: 0 | 1;
+};
+
+export type MotorClassificacaoFinalResultado = {
+  classificacaoPrazo: MotorClassificacaoPrazo;
+  curtoPrazo: 0 | 1;
+  medioPrazo: 0 | 1;
+  longoPrazo: 0 | 1;
+  pendenciaCpaCd: number | null;
+  crossSum: number;
+  crossDocking: 0 | 1;
+  pendencia: MotorPendenciaAgregadaResultado;
+  curtoPrazoRegra: MotorCurtoPrazoResultado;
+  medioPrazoRegra: MotorMedioPrazoResultado;
+  longoPrazoRegra: MotorLongoPrazoResultado;
+  exclusividadeGarantida: boolean;
+  alertas: MotorAlerta[];
+  regras: MotorRegraResultado[];
+};
+
 export type MotorBreItemResultado = {
   loja: number;
   seqproduto: number;
@@ -66,14 +100,15 @@ export type MotorBreItemResultado = {
   rupturaInventario: 0 | 1;
   rupturaSemInventario: 0 | 1;
   somaEstoqueCd: number | null;
+  pendenciaCpaCd: number | null;
   crossSum: number | null;
-  crossDocking: boolean | null;
+  crossDocking: 0 | 1 | null;
   modCurtoPrazo: "LJ_Exclusiva" | null;
   ncurtoPrazo: "G" | "NG" | null;
   classificacaoPrazo: MotorClassificacaoPrazo;
-  curtoPrazo: null;
-  medioPrazo: null;
-  longoPrazo: null;
+  curtoPrazo: 0 | 1;
+  medioPrazo: 0 | 1;
+  longoPrazo: 0 | 1;
   regras: MotorRegraResultado[];
   alertas: MotorAlerta[];
 };

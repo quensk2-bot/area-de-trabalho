@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { compararCampo, compararExcelV7 } from "../compare/compareExcelV7.ts";
 import { formatarRelatorioDivergencias } from "../compare/divergenceReport.ts";
 import { CAMPOS_PRIORITARIOS_COMPARE } from "../compare/compareTypes.ts";
+import { EXCEL_PRAZO_FIXTURE } from "./fixtures/excelPrazoExpected.ts";
 
 describe("compare Excel × V7", () => {
   it("21. comparação igual", () => {
@@ -51,7 +52,18 @@ describe("compare Excel × V7", () => {
 
     assert.equal(resultado.resumo.totalLinhas, 1);
     assert.ok(resultado.resumo.divergentes >= 1);
-    assert.ok(resultado.resumo.naoComparaveis >= 1);
     assert.ok(formatarRelatorioDivergencias(resultado).includes("Menor que três"));
+  });
+
+  it("comparação CP/MP/LP com fixture Excel", () => {
+    const campos = CAMPOS_PRIORITARIOS_COMPARE.filter((c) =>
+      ["Curto Prazo", "Médio Prazo", "Longo Prazo", "Pendência Cpa CD"].includes(c.campo),
+    );
+    const iguais = compararExcelV7(EXCEL_PRAZO_FIXTURE.slice(0, 5), campos);
+    assert.equal(iguais.resumo.divergentes, 0);
+
+    const divergente = compararExcelV7(EXCEL_PRAZO_FIXTURE.slice(5), campos);
+    assert.ok(divergente.resumo.divergentes >= 1);
+    assert.ok(formatarRelatorioDivergencias(divergente).includes("Longo Prazo"));
   });
 });

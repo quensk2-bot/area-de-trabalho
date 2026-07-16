@@ -1,9 +1,10 @@
 import type { MotorBreEntrada, MotorBreItemInput, MotorBreItemResultado, MotorBreResultado } from "./breTypes.ts";
+import { classificarPrazo } from "./classificarPrazo.ts";
 import { chaveLojaProduto } from "./breContext.ts";
 import { consolidarMetricasBre, criarBreResultadoVazio, mergeRegraResults } from "./breResult.ts";
 import { aplicarRuleAtivacaoRecente } from "./rules/ruleAtivacaoRecente.ts";
 import { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
-import { aplicarRuleCrossDocking, calcularCrossSum } from "./rules/ruleCrossDocking.ts";
+import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
 import { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 import { aplicarRuleRuptura104c } from "./rules/ruleRuptura104c.ts";
 import { aplicarRuleSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
@@ -20,7 +21,7 @@ function montarItemInput(entrada: MotorBreEntrada, produto: MotorBreEntrada["pro
   };
 }
 
-export function processarItemBreFundacao(
+export function processarItemBre(
   input: MotorBreItemInput,
   dataReferencia: string,
   catalogos: MotorBreEntrada["contexto"]["catalogos"],
@@ -32,14 +33,33 @@ export function processarItemBreFundacao(
   const somaCd = aplicarRuleSomaEstoqueCd(input);
   const modCurtoPrazo = getModCurtoPrazo(catalogos.produtosExclusivos, input.produto.seqproduto);
   const ncurtoPrazo = getNCurtoPrazo(catalogos.excecoesProdutoLoja, input.produto.seqproduto, input.produto.loja);
-  const crossSum = calcularCrossSum(input);
-  const crossRegras = aplicarRuleCrossDocking(crossSum, (somaCd.resultado as number) ?? 0, modCurtoPrazo);
+
+  const statusBaseLimpa = baseLimpa.resultado as MotorBreItemResultado["statusBaseLimpa"];
+  const menorQueTres = ruptura104c.resultado as 0 | 1;
+  const somaEstoqueCd = somaCd.resultado as number;
+
+  const classificacao = classificarPrazo({
+    item: input,
+    statusBaseLimpa,
+    menorQueTres,
+    somaEstoqueCd,
+    modCurtoPrazo,
+    ncurtoPrazo,
+  });
+
+  const crossDockingRegra = aplicarRuleCrossDocking(
+    classificacao.crossSum,
+    somaEstoqueCd,
+    classificacao.curtoPrazo,
+    modCurtoPrazo,
+  );
 
   const regras = mergeRegraResults(
     [baseLimpa, ativacao, ruptura104c],
     inventarioRegras,
     [somaCd],
-    crossRegras,
+    classificacao.regras,
+    [crossDockingRegra],
   );
 
   const inventarioUnid = inventarioRegras.find((r) => r.regra === "inventario_unid")?.resultado as number ?? 0;
@@ -49,39 +69,44 @@ export function processarItemBreFundacao(
   return {
     loja: input.produto.loja,
     seqproduto: input.produto.seqproduto,
-    statusBaseLimpa: baseLimpa.resultado as MotorBreItemResultado["statusBaseLimpa"],
+    statusBaseLimpa,
     diasAtivacaoRevisado: ativacao.entradasUtilizadas.diasAtivacaoRevisado as number,
     statusAtivo60Dias: ativacao.resultado as boolean,
-    menorQueTresUnidades: ruptura104c.resultado as 0 | 1,
+    menorQueTresUnidades: menorQueTres,
     flagRuptura: input.validacao?.geraRuptura === true ? "Gera Ruptura" : input.validacao ? "Não Gera Ruptura" : null,
     ruptura104c: input.validacao?.ruptura104c === true,
     inventarioUnid,
     rupturaInventario,
     rupturaSemInventario,
-    somaEstoqueCd: somaCd.resultado as number,
-    crossSum,
-    crossDocking: null,
+    somaEstoqueCd,
+    pendenciaCpaCd: classificacao.pendenciaCpaCd,
+    crossSum: classificacao.crossSum,
+    crossDocking: crossDockingRegra.resultado as 0 | 1,
     modCurtoPrazo,
     ncurtoPrazo,
-    classificacaoPrazo: null,
-    curtoPrazo: null,
-    medioPrazo: null,
-    longoPrazo: null,
+    classificacaoPrazo: classificacao.classificacaoPrazo,
+    curtoPrazo: classificacao.curtoPrazo,
+    medioPrazo: classificacao.medioPrazo,
+    longoPrazo: classificacao.longoPrazo,
     regras,
-    alertas: regras.flatMap((r) => r.alertas),
+    alertas: [...regras.flatMap((r) => r.alertas), ...classificacao.alertas],
   };
 }
 
-export function processarBreFundacao(entrada: MotorBreEntrada): MotorBreResultado {
+export function processarItemBreFundacao(
+  input: MotorBreItemInput,
+  dataReferencia: string,
+  catalogos: MotorBreEntrada["contexto"]["catalogos"],
+): MotorBreItemResultado {
+  return processarItemBre(input, dataReferencia, catalogos);
+}
+
+export function processarBre(entrada: MotorBreEntrada): MotorBreResultado {
   const inicioMs = Date.now();
   const resultado = criarBreResultadoVazio(entrada.contexto.regional, entrada.contexto.dataReferencia);
 
   resultado.itens = entrada.produtosLoja.map((produto) =>
-    processarItemBreFundacao(
-      montarItemInput(entrada, produto),
-      entrada.contexto.dataReferencia,
-      entrada.contexto.catalogos,
-    ),
+    processarItemBre(montarItemInput(entrada, produto), entrada.contexto.dataReferencia, entrada.contexto.catalogos),
   );
 
   resultado.metricas = consolidarMetricasBre(resultado.itens, inicioMs);
@@ -94,9 +119,18 @@ export function processarBreFundacao(entrada: MotorBreEntrada): MotorBreResultad
   return resultado;
 }
 
+export function processarBreFundacao(entrada: MotorBreEntrada): MotorBreResultado {
+  return processarBre(entrada);
+}
+
 export { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
 export { aplicarRuleAtivacaoRecente, calcularDiasAtivacaoRevisado } from "./rules/ruleAtivacaoRecente.ts";
 export { aplicarRuleRuptura104c, aplicarRuleMenorQueTresCentralizados } from "./rules/ruleRuptura104c.ts";
 export { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 export { aplicarRuleSomaEstoqueCd, calcularSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
-export { aplicarRuleCrossDocking, calcularCrossSum, calcularCrossSumFromValues } from "./rules/ruleCrossDocking.ts";
+export { aplicarRuleCrossDocking, calcularCrossSumFromValues } from "./rules/ruleCrossDocking.ts";
+export { calcularPendenciaCpaCd } from "./rules/rulePendenciaCpaCd.ts";
+export { aplicarRuleCurtoPrazo } from "./rules/ruleCurtoPrazo.ts";
+export { aplicarRuleMedioPrazo } from "./rules/ruleMedioPrazo.ts";
+export { aplicarRuleLongoPrazo } from "./rules/ruleLongoPrazo.ts";
+export { classificarPrazo } from "./classificarPrazo.ts";

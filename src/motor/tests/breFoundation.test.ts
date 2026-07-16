@@ -143,13 +143,11 @@ describe("bre foundation", () => {
     assert.equal(r.resultado, 17);
   });
 
-  it("19. cross docking — cross sum aplicada, flag bloqueada", () => {
-    const crossSum = calcularCrossSumFromValues(1, 2, null, 4);
-    assert.equal(crossSum, 7);
-    const regras = aplicarRuleCrossDocking(crossSum, 0, null);
-    assert.equal(regras[0].status, "aplicada");
-    assert.equal(regras[1].status, "bloqueada_dependencia");
-    assert.equal(regras[1].resultado, null);
+  it("19. cross docking — flag aplicada quando CP e Cross", () => {
+    const crossSum = calcularCrossSumFromValues(2, 0, 0, 0);
+    const regra = aplicarRuleCrossDocking(crossSum, 0, 1, null);
+    assert.equal(regra.status, "aplicada");
+    assert.equal(regra.resultado, 1);
   });
 
   it("20. regra bloqueada por dependência ausente", () => {
