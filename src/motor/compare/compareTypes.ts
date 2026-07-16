@@ -68,8 +68,10 @@ export const CAMPOS_PRIORITARIOS_COMPARE: CompareFieldConfig[] = [
   { campo: "Média dias Pedido cd4", comparavelNestaEtapa: true },
   { campo: "Média dias Pedido cd5", comparavelNestaEtapa: true },
   { campo: "Dias Pedido", comparavelNestaEtapa: true },
+  { campo: "Avaliar Pedido", comparavelNestaEtapa: true },
+  { campo: "Pendência Indevida", comparavelNestaEtapa: true },
+  { campo: "Ação Curto Prazo", comparavelNestaEtapa: true },
+  { campo: "Ação Médio Prazo", comparavelNestaEtapa: true },
   { campo: "Centralizado", comparavelNestaEtapa: false },
   { campo: "Comprador", comparavelNestaEtapa: false },
-  { campo: "Ação Curto", comparavelNestaEtapa: false },
-  { campo: "Ação Médio", comparavelNestaEtapa: false },
 ];

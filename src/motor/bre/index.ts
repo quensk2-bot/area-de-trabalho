@@ -6,6 +6,7 @@ import { aplicarRuleAtivacaoRecente } from "./rules/ruleAtivacaoRecente.ts";
 import { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
 import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
 import { aplicarRuleDiasPedido } from "./rules/calcularDiasPedido.ts";
+import { aplicarAcoesOperacionais } from "./rules/calcularAcoesOperacionais.ts";
 import { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 import { aplicarRuleRuptura104c } from "./rules/ruleRuptura104c.ts";
 import { aplicarRuleSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
@@ -57,6 +58,15 @@ export function processarItemBre(
 
   const diasPedido = aplicarRuleDiasPedido(input);
 
+  const acoes = aplicarAcoesOperacionais(input, {
+    curtoPrazo: classificacao.curtoPrazo,
+    medioPrazo: classificacao.medioPrazo,
+    menorQueTres,
+    modCurtoPrazo,
+    diasPedido: diasPedido.diasPedidoFinal,
+    pendenciaCpaCd: classificacao.pendenciaCpaCd,
+  });
+
   const regras = mergeRegraResults(
     [baseLimpa, ativacao, ruptura104c],
     inventarioRegras,
@@ -99,8 +109,24 @@ export function processarItemBre(
     mediaDiasPedidoCd5: diasPedido.mediaDiasPedidoCd5,
     diasPedido: diasPedido.diasPedidoFinal,
     origemDiasPedido: diasPedido.origemResultado,
+    avaliarPedido: acoes.auxiliares.avaliarPedido,
+    pendenciaIndevida: acoes.auxiliares.pendenciaIndevida,
+    pedidoSuperior30Dias: acoes.auxiliares.pedidoSuperior30Dias,
+    possuiPedidoCompra: acoes.auxiliares.possuiPedidoCompra,
+    semEntradaSemPedido: acoes.auxiliares.semEntradaSemPedido,
+    curtoPrazoRebtoProximo: acoes.auxiliares.curtoPrazoRebtoProximo,
+    curtoPrazoNaoRebtoProximo: acoes.auxiliares.curtoPrazoNaoRebtoProximo,
+    acaoCurtoPrazo: acoes.acaoCurtoPrazo,
+    acaoMedioPrazo: acoes.acaoMedioPrazo,
+    statusEstoqueCds: acoes.auxiliares.statusEstoqueCds,
+    statusSolicitacaoAtivacaoCd: acoes.auxiliares.statusSolicitacaoAtivacaoCd,
     regras,
-    alertas: [...regras.flatMap((r) => r.alertas), ...classificacao.alertas, ...diasPedido.alertas],
+    alertas: [
+      ...regras.flatMap((r) => r.alertas),
+      ...classificacao.alertas,
+      ...diasPedido.alertas,
+      ...acoes.alertas,
+    ],
   };
 }
 
@@ -150,3 +176,10 @@ export {
   calcularDiasPedido,
   montarDiasPedidoEntrada,
 } from "./rules/calcularDiasPedido.ts";
+export {
+  aplicarAcoesOperacionais,
+  calcularAcaoCurtoPrazo,
+  calcularAcaoMedioPrazo,
+  calcularAcoesOperacionais,
+} from "./rules/calcularAcoesOperacionais.ts";
+export { calcularAuxiliaresPedido } from "./rules/calcularAuxiliaresPedido.ts";

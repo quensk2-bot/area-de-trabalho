@@ -42,6 +42,69 @@ export type MotorDiasPedidoResultado = {
   statusRegra: MotorRegraStatus;
 };
 
+export type MotorAuxiliaresPedidoEntrada = {
+  parMin: number | null;
+  curtoPrazo: 0 | 1;
+  medioPrazo: 0 | 1;
+  menorQueTres: 0 | 1;
+  modCurtoPrazo: "LJ_Exclusiva" | null;
+  diasPedido: number | null;
+  pendenciaLoja: number | null;
+  pendenciaCpaCd: number | null;
+  pendenciaCd1: number | null;
+  pendenciaCd2: number | null;
+  pendenciaCd3: number | null;
+  pendenciaCd4: number | null;
+  pendenciaCd5: number | null;
+  estoqueLoja: number | null;
+  ultimaEntradaLoja: string | null;
+  estoqueCd1: number | null;
+  estoqueCd2: number | null;
+  estoqueCd3: number | null;
+  estoqueCd4: number | null;
+  estoqueCd5: number | null;
+  diasRecebtoCd1: number | string | null;
+  diasRecebtoCd2: number | string | null;
+  diasRecebtoCd3: number | string | null;
+  diasRecebtoCd4: number | string | null;
+  diasRecebtoCd5: number | string | null;
+  centralizacaoDisponivel?: boolean;
+};
+
+export type MotorAuxiliaresPedidoResultado = {
+  rupDiasRecebtoMaiorData: number;
+  curtoPrazoRebtoProximo: 0 | 1;
+  curtoPrazoNaoRebtoProximo: 0 | 1;
+  pedidoSuperior30Dias: 0 | 1;
+  avaliarPedido: 0 | 1;
+  pendenciaIndevida: 0 | 1;
+  possuiPedidoCompra: "Sim" | "Não";
+  cadastrosSemEntradas: 0 | 1;
+  semEntradaSemPedido: "Ruptura Cadastro Novo / Sem Entrada & Sem Pedido" | "Ok";
+  statusEstoqueCds: string | null;
+  statusSolicitacaoAtivacaoCd: string | null;
+  dependenciasBloqueadas: string[];
+  alertas: MotorAlerta[];
+  statusRegra: MotorRegraStatus;
+};
+
+export type MotorAcoesOperacionaisEntrada = {
+  parMin: number | null;
+  curtoPrazo: 0 | 1;
+  medioPrazo: 0 | 1;
+  diasCompraLj: number | null;
+  diasPedido: number | null;
+  auxiliares: MotorAuxiliaresPedidoResultado;
+};
+
+export type MotorAcoesOperacionaisResultado = {
+  auxiliares: MotorAuxiliaresPedidoResultado;
+  acaoCurtoPrazo: string;
+  acaoMedioPrazo: string;
+  alertas: MotorAlerta[];
+  statusRegra: MotorRegraStatus;
+};
+
 export type MotorAlerta = {
   codigo: string;
   mensagem: string;
@@ -147,6 +210,17 @@ export type MotorBreItemResultado = {
   mediaDiasPedidoCd5: number | null;
   diasPedido: number;
   origemDiasPedido: MotorDiasPedidoOrigem;
+  avaliarPedido: 0 | 1;
+  pendenciaIndevida: 0 | 1;
+  pedidoSuperior30Dias: 0 | 1;
+  possuiPedidoCompra: "Sim" | "Não";
+  semEntradaSemPedido: "Ruptura Cadastro Novo / Sem Entrada & Sem Pedido" | "Ok";
+  curtoPrazoRebtoProximo: 0 | 1;
+  curtoPrazoNaoRebtoProximo: 0 | 1;
+  acaoCurtoPrazo: string;
+  acaoMedioPrazo: string;
+  statusEstoqueCds: string | null;
+  statusSolicitacaoAtivacaoCd: string | null;
   regras: MotorRegraResultado[];
   alertas: MotorAlerta[];
 };

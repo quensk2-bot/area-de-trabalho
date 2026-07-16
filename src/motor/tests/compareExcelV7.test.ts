@@ -5,6 +5,7 @@ import { formatarRelatorioDivergencias } from "../compare/divergenceReport.ts";
 import { CAMPOS_PRIORITARIOS_COMPARE } from "../compare/compareTypes.ts";
 import { EXCEL_PRAZO_FIXTURE } from "./fixtures/excelPrazoExpected.ts";
 import { EXCEL_DIAS_PEDIDO_DIVERGENTE, EXCEL_DIAS_PEDIDO_FIXTURE } from "./fixtures/excelDiasPedidoExpected.ts";
+import { EXCEL_ACOES_DIVERGENTE, EXCEL_ACOES_FIXTURE } from "./fixtures/excelAcoesExpected.ts";
 
 describe("compare Excel × V7", () => {
   it("21. comparação igual", () => {
@@ -86,5 +87,17 @@ describe("compare Excel × V7", () => {
     const divergente = compararExcelV7(EXCEL_DIAS_PEDIDO_DIVERGENTE, campos);
     assert.ok(divergente.resumo.divergentes >= 1);
     assert.ok(formatarRelatorioDivergencias(divergente).includes("Dias Pedido"));
+  });
+
+  it("comparação Ações operacionais com fixture Excel", () => {
+    const campos = CAMPOS_PRIORITARIOS_COMPARE.filter((c) =>
+      ["Ação Curto Prazo", "Ação Médio Prazo", "Avaliar Pedido", "Pendência Indevida"].includes(c.campo),
+    );
+    const iguais = compararExcelV7(EXCEL_ACOES_FIXTURE, campos);
+    assert.equal(iguais.resumo.divergentes, 0);
+
+    const divergente = compararExcelV7(EXCEL_ACOES_DIVERGENTE, campos);
+    assert.ok(divergente.resumo.divergentes >= 1);
+    assert.ok(formatarRelatorioDivergencias(divergente).includes("Ação Curto Prazo"));
   });
 });

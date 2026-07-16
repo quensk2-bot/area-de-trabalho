@@ -30,6 +30,10 @@ export type MotorProdutoLojaNormalizado = {
   diasCompraCd2: number | null;
   diasCompraCd3: number | null;
   diasCompraCd4: number | null;
+  diasRecebtoCd1: number | null;
+  diasRecebtoCd2: number | null;
+  diasRecebtoCd3: number | null;
+  diasRecebtoCd4: number | null;
   embalagemCompra: string | null;
   hierarquia: MotorHierarquiaMercadologica;
   estoqueCd1: number | null;
