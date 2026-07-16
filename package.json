@@ -10,6 +10,7 @@
     "ruptura:import": "npx tsx src/ruptura/importRupturaCli.ts",
     "ruptura:drive-upload": "npx tsx src/ruptura/rupturaDriveUploadCli.ts",
     "motor:parse": "npx tsx src/motor/cli/motorParseCli.ts",
+    "motor:padronizar": "npx tsx src/motor/standardize/standardizeCli.ts",
     "motor:test": "node --import tsx --test src/motor/tests/**/*.test.ts"
   },
   "dependencies": {
