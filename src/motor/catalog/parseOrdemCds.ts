@@ -11,15 +11,17 @@ import { deduplicar, parseNumero, parseTxtSemicolon, readTxtWin1252 } from "./ca
 
 type SheetRow = Record<string, unknown>;
 
-function readSheet(filePath: string, sheetName: string): SheetRow[] {
+function readSheet(filePath: string, sheetNames: string[]): SheetRow[] {
   const workbook = XLSX.readFile(filePath);
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return [];
-  return XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: null });
+  for (const sheetName of sheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (sheet) return XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: null });
+  }
+  return [];
 }
 
 export function parseBandeiraFromXlsx(filePath: string): CatalogoLoadResult<CatalogoBandeiraLoja> {
-  const rows = readSheet(filePath, "Bandeira");
+  const rows = readSheet(filePath, ["Bandeira", "BANDEIRA_LOJA"]);
   const itens = rows
     .map((r) => ({
       loja: Number(r.LOJA),
@@ -66,7 +68,7 @@ export function parseBandeiraFromCsv(filePath: string): CatalogoLoadResult<Catal
 }
 
 export function parseOrdemCd(filePath: string): CatalogoLoadResult<CatalogoOrdemCd> {
-  const rows = readSheet(filePath, "Ordem");
+  const rows = readSheet(filePath, ["Ordem", "ORDEM_CDS"]);
   const itens = rows
     .map((r) => ({
       divisao: String(r.DIVISÃO ?? r.DIVISAO ?? "").trim(),
@@ -92,7 +94,7 @@ export function parseOrdemCd(filePath: string): CatalogoLoadResult<CatalogoOrdem
 }
 
 export function parseSequenciaCd(filePath: string): CatalogoLoadResult<CatalogoSequenciaCd> {
-  const rows = readSheet(filePath, "Sequência");
+  const rows = readSheet(filePath, ["Sequência", "Sequencia", "SEQUENCIA"]);
   const itens = rows
     .map((r) => ({
       divisao: String(r.DIVISÃO ?? r.DIVISAO ?? "").trim(),
@@ -115,7 +117,7 @@ export function parseSequenciaCd(filePath: string): CatalogoLoadResult<CatalogoS
 }
 
 export function parseModalidade(filePath: string): CatalogoLoadResult<CatalogoModalidadeLoja> {
-  const rows = readSheet(filePath, "Modalidade");
+  const rows = readSheet(filePath, ["Modalidade", "MODALIDADE"]);
   const itens = rows
     .map((r) => ({
       modalidade: String(r.Modalide ?? r.Modalidade ?? "").trim(),

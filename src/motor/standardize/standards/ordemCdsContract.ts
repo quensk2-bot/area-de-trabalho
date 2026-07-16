@@ -3,8 +3,9 @@ import type { MotorStandardizeContrato } from "../standardizeTypes.ts";
 export const ordemCdsContract: MotorStandardizeContrato = {
   tipo: "ordem_cds",
   nomeArquivoPadrao: "motor_ordem_cds_padrao.xlsx",
-  statusValidacao: "preliminar_aguardando_arquivo_real",
-  descricao: "Ordem dos CDs — quatro abas oficiais para centralização futura (Fase 2C.3 bloqueada).",
+  statusValidacao: "validado_producao",
+  descricao:
+    "Ordem dos CDs — ORDEM_CDS, BANDEIRA_LOJA, SEQUENCIA, MODALIDADE. Aba auxiliar Tipo Loja ignorada. Bandeira pode vir de bandeira.csv.",
   abas: [
     {
       nomeOficial: "ORDEM_CDS",

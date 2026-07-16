@@ -111,6 +111,14 @@ export function limparAba(
       continue;
     }
 
+    if (contratoAba.chaveDedup.some((campo) => String(obj[campo] ?? "").includes("FILTRAR"))) {
+      linhasRejeitadas.push({
+        numeroLinha: headerIdx + 2 + i,
+        motivo: "Linha placeholder (template Excel)",
+      });
+      continue;
+    }
+
     linhasLimpas.push(obj);
   }
 

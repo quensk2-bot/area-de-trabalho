@@ -6,7 +6,8 @@ type SheetRow = Record<string, unknown>;
 
 export function parseRegrasExclusao(filePath: string): CatalogoLoadResult<CatalogoRegraExclusao> {
   const workbook = XLSX.readFile(filePath);
-  const sheet = workbook.Sheets["Regras"];
+  const sheetName = ["Regras", "DADOS"].find((n) => workbook.Sheets[n]);
+  const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
   if (!sheet) {
     return {
       origem: filePath,
@@ -19,7 +20,7 @@ export function parseRegrasExclusao(filePath: string): CatalogoLoadResult<Catalo
           campo: "Regras",
           valorOriginal: null,
           codigoErro: "SHEET_AUSENTE",
-          mensagem: "Sheet Regras não encontrada",
+          mensagem: "Sheet Regras/DADOS não encontrada",
           severidade: "critico",
         },
       ],

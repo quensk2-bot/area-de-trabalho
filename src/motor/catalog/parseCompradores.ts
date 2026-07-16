@@ -79,11 +79,14 @@ export function parseCompradores(filePath: string): CatalogoLoadResult<CatalogoC
   conflitos: CatalogoCompradorConflito[];
 } {
   const workbook = XLSX.readFile(filePath);
-  const principalRows = workbook.SheetNames.includes("Compradores")
-    ? XLSX.utils.sheet_to_json<SheetRow>(workbook.Sheets["Compradores"], { defval: null })
+  const principalSheet = ["Compradores", "COMPRADORES"].find((n) => workbook.SheetNames.includes(n));
+  const correcaoSheet = ["Compradores Rede", "CORRECAO", "Correção"].find((n) => workbook.SheetNames.includes(n));
+
+  const principalRows = principalSheet
+    ? XLSX.utils.sheet_to_json<SheetRow>(workbook.Sheets[principalSheet], { defval: null })
     : [];
-  const correcaoRows = workbook.SheetNames.includes("Compradores Rede")
-    ? XLSX.utils.sheet_to_json<SheetRow>(workbook.Sheets["Compradores Rede"], { defval: null })
+  const correcaoRows = correcaoSheet
+    ? XLSX.utils.sheet_to_json<SheetRow>(workbook.Sheets[correcaoSheet], { defval: null })
     : [];
 
   const merged = mergeCompradores(parseCompradoresPrincipal(principalRows), parseCompradoresCorrecao(correcaoRows));

@@ -43,9 +43,20 @@ function sheetMetaOculta(workbook: XLSX.WorkBook, sheetName: string): boolean {
   return meta?.Hidden === 1 || meta?.Hidden === 2;
 }
 
-function contarFormulas(sheet: XLSX.WorkSheet): number {
-  if (!sheet["!ref"]) return 0;
+const MAX_COLUNAS_EXTRACAO = 128;
+
+function limitarRange(sheet: XLSX.WorkSheet): XLSX.Range | null {
+  if (!sheet["!ref"]) return null;
   const range = XLSX.utils.decode_range(sheet["!ref"]);
+  if (range.e.c - range.s.c > MAX_COLUNAS_EXTRACAO) {
+    return { s: range.s, e: { r: range.e.r, c: range.s.c + MAX_COLUNAS_EXTRACAO } };
+  }
+  return range;
+}
+
+function contarFormulas(sheet: XLSX.WorkSheet): number {
+  const range = limitarRange(sheet);
+  if (!range) return 0;
   let count = 0;
   for (let r = range.s.r; r <= range.e.r; r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
@@ -83,18 +94,15 @@ export function detectarLinhaCabecalho(
 }
 
 export function extrairLinhasComoValores(sheet: XLSX.WorkSheet): unknown[][] {
-  if (!sheet["!ref"]) return [];
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
-  const rows: unknown[][] = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    const row: unknown[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-      row.push(cell?.v ?? null);
-    }
-    rows.push(row);
-  }
-  return rows;
+  const range = limitarRange(sheet);
+  if (!range) return [];
+  const limitedRef = XLSX.utils.encode_range(range);
+  return XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: null,
+    blankrows: true,
+    range: limitedRef,
+  }) as unknown[][];
 }
 
 export function inspecionarWorkbook(aberto: WorkbookAberto): MotorStandardizeInspecao {

@@ -153,9 +153,9 @@ describe("standardizeService", () => {
     assert.ok(range);
   });
 
-  it("25. status aguardando arquivo real", () => {
+  it("25. contratos validados com arquivo real (Fase 2C.2.3)", () => {
     const contrato = obterContratoPorTipo("ordem_cds");
-    assert.equal(contrato.statusValidacao, "preliminar_aguardando_arquivo_real");
+    assert.equal(contrato.statusValidacao, "validado_producao");
   });
 
   it("ordem_cds multi-aba padronizada", () => {

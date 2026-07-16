@@ -3,8 +3,9 @@ import type { MotorStandardizeContrato } from "../standardizeTypes.ts";
 export const validacaoRupturaContract: MotorStandardizeContrato = {
   tipo: "validacao_ruptura",
   nomeArquivoPadrao: "motor_validacao_ruptura_padrao.xlsx",
-  statusValidacao: "preliminar_aguardando_arquivo_real",
-  descricao: "Validação Ruptura — aba DADOS com colunas de mix e ruptura por loja/produto.",
+  statusValidacao: "validado_producao",
+  descricao:
+    "Validação Ruptura — aba DADOS; origem com título na linha 1 e cabeçalho real via scan (dupla promoção M). Aba Mozart Reports ignorada.",
   abas: [
     {
       nomeOficial: "DADOS",

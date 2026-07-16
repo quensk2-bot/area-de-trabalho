@@ -3,19 +3,21 @@ import type { MotorStandardizeContrato } from "../standardizeTypes.ts";
 export const compradoresContract: MotorStandardizeContrato = {
   tipo: "compradores",
   nomeArquivoPadrao: "motor_compradores_padrao.xlsx",
-  statusValidacao: "preliminar_aguardando_arquivo_real",
-  descricao: "Compradores — abas COMPRADORES e CORRECAO com hierarquia REDE/SEÇÃO/NIVEL.",
+  statusValidacao: "validado_producao",
+  descricao:
+    "Compradores — COMPRADORES (fornecedor + hierarquia; REDE derivada via join Rede.txt no parser) e CORRECAO (Compradores Rede).",
   abas: [
     {
       nomeOficial: "COMPRADORES",
       nomesOrigem: ["Compradores", "COMPRADORES"],
       cabecalhoEstrategia: "scan",
-      chaveDedup: ["REDE", "SEÇÃO", "NIVEL 2", "NIVEL 3"],
+      chaveDedup: ["CODFORNEC", "SEÇÃO", "NIVEL 2", "NIVEL 3"],
       colunas: [
-        { nome: "REDE", tipo: "text", obrigatoria: true, aliases: ["Rede"] },
-        { nome: "SEÇÃO", tipo: "text", obrigatoria: true, aliases: ["SECAO", "SETOR"] },
-        { nome: "NIVEL 2", tipo: "text", obrigatoria: true, aliases: ["SETOR2"] },
-        { nome: "NIVEL 3", tipo: "text", obrigatoria: true, aliases: ["CATEGORIA"] },
+        { nome: "CODFORNEC", tipo: "int", obrigatoria: true },
+        { nome: "RAZÃO", tipo: "text", obrigatoria: false },
+        { nome: "SEÇÃO", tipo: "text", obrigatoria: true, aliases: ["SECAO"] },
+        { nome: "NIVEL 2", tipo: "text", obrigatoria: true },
+        { nome: "NIVEL 3", tipo: "text", obrigatoria: true },
         { nome: "COMPRADOR", tipo: "text", obrigatoria: true },
       ],
     },

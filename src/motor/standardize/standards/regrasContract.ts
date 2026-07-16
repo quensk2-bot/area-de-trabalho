@@ -3,7 +3,7 @@ import type { MotorStandardizeContrato } from "../standardizeTypes.ts";
 export const regrasContract: MotorStandardizeContrato = {
   tipo: "regras",
   nomeArquivoPadrao: "motor_regras_padrao.xlsx",
-  statusValidacao: "preliminar_aguardando_arquivo_real",
+  statusValidacao: "validado_producao",
   descricao: "Regras de exclusão — aba DADOS com fornecedor, seção, loja e bandeira.",
   abas: [
     {
