@@ -1,3 +1,5 @@
+import type { MotorProdutoCdNormalizado } from "../cds/cdTypes.ts";
+
 export type MotorHierarquiaMercadologica = {
   categoriaOriginal: string | null;
   divisao: string | null;
@@ -52,6 +54,8 @@ export type MotorProdutoLojaNormalizado = {
   ultimaEntradaLoja: string | null;
   ultimaSaidaLoja: string | null;
   custoLiquido: number | null;
+  /** Coleção dinâmica de CDs — fonte de verdade (Etapa A). Campos CD1..5 são compatibilidade. */
+  cds: MotorProdutoCdNormalizado[];
   alertas: string[];
 };
 
@@ -63,4 +67,6 @@ export type MotorCd5Normalizado = {
   diasCompraCd5: number | null;
   diasRecebtoCd5: number | null;
   ultimaCpaCd5: string | null;
+  /** Posição lógica 5 (e futuras do bloco 2) na coleção dinâmica. */
+  cds: MotorProdutoCdNormalizado[];
 };

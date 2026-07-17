@@ -1,5 +1,6 @@
 import type { MotorErroValidacao } from "../types/motorTypes.ts";
 import type { MotorLinhaGrupoRuptura } from "../types/motorLinhaTypes.ts";
+import { construirCdsDaLinhaRuptura, criarBlocoRuptura } from "../cds/index.ts";
 import type { MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
 import { parseCategoriaHierarquia } from "./parseCategoria.ts";
 import { parseDataBrasileira, parseTimestampErp, isDataBrasileira, isTimestampErp } from "./parseDates.ts";
@@ -119,6 +120,26 @@ export function transformGrupoRuptura1(
       alertas.push(`Linha ${linha.numeroLinha}: ${hierarquia.ambiguidade}`);
     }
 
+    const bloco = criarBlocoRuptura(regional, dataReferencia, 1, 1, "1º Grupo de Ruptura.txt");
+    const cds = construirCdsDaLinhaRuptura(linha, bloco, {
+      estCd1: estCd1.valor,
+      estCd2: estCd2.valor,
+      estCd3: estCd3.valor,
+      estCd4: estCd4.valor,
+      pendCd1: pendCd1.valor,
+      pendCd2: pendCd2.valor,
+      pendCd3: pendCd3.valor,
+      pendCd4: pendCd4.valor,
+      diasCompraCd1: diasCompraCd1.valor,
+      diasCompraCd2: diasCompraCd2.valor,
+      diasCompraCd3: diasCompraCd3.valor,
+      diasCompraCd4: diasCompraCd4.valor,
+      diasRecebtoCd1: diasRecebtoCd1.valor,
+      diasRecebtoCd2: diasRecebtoCd2.valor,
+      diasRecebtoCd3: diasRecebtoCd3.valor,
+      diasRecebtoCd4: diasRecebtoCd4.valor,
+    });
+
     itens.push({
       regional,
       dataReferencia,
@@ -162,6 +183,7 @@ export function transformGrupoRuptura1(
       ultimaEntradaLoja: ultEntrada.valor,
       ultimaSaidaLoja: ultSaida.valor,
       custoLiquido: custo.valor,
+      cds,
       alertas: itemAlertas,
     });
   }

@@ -59,6 +59,7 @@ export function produtoConsolidadorBase(
     ultimaEntradaLoja: "2026-01-01",
     ultimaSaidaLoja: "2026-01-02",
     custoLiquido: 3.5,
+    cds: [],
     alertas: [],
     ...overrides,
   };
@@ -73,6 +74,7 @@ export function cd5Base(overrides: Partial<MotorCd5Normalizado> = {}): MotorCd5N
     diasCompraCd5: 1,
     diasRecebtoCd5: 2,
     ultimaCpaCd5: null,
+    cds: [],
     ...overrides,
   };
 }

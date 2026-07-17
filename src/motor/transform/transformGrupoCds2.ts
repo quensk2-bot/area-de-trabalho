@@ -1,5 +1,6 @@
 import type { MotorErroValidacao } from "../types/motorTypes.ts";
 import type { MotorLinhaGrupoCds } from "../types/motorLinhaTypes.ts";
+import { construirCdsDaLinhaGrupo2Completo, criarBlocoGrupo2 } from "../cds/index.ts";
 import type { MotorCd5Normalizado } from "../types/motorProdutoLojaNormalizado.ts";
 import { parseDataBrasileira, parseTimestampErp, isDataBrasileira, isTimestampErp } from "./parseDates.ts";
 import { parseDecimalBr } from "./parseNumbers.ts";
@@ -31,6 +32,8 @@ export function mapearCd1ParaCd5(linha: MotorLinhaGrupoCds): MotorLinhaGrupoCds 
 
 export function transformGrupoCds2(
   linhas: MotorLinhaGrupoCds[],
+  regional = "MT",
+  dataReferencia = "",
 ): { itens: MotorCd5Normalizado[]; erros: MotorErroValidacao[]; alertas: string[] } {
   const erros: MotorErroValidacao[] = [];
   const alertas: string[] = [];
@@ -58,6 +61,20 @@ export function transformGrupoCds2(
     const ultimaCpa = parseDataFlex(linha.ultimaCpaCd5, "ULTIMACPACD5", linha.numeroLinha);
     if (ultimaCpa.erro) erros.push(ultimaCpa.erro);
 
+    const bloco = criarBlocoGrupo2(regional, dataReferencia, 5);
+    const cds = construirCdsDaLinhaGrupo2Completo(
+      linha,
+      bloco,
+      {
+        estoque: estoque.valor,
+        pendencia: pendencia.valor,
+        diasCompra: diasCompra.valor,
+        diasRecebimento: diasRecebto.valor,
+        ultimaCompra: ultimaCpa.valor,
+      },
+      { mtPilotoSomentePosicao5: true },
+    );
+
     itens.push({
       seqproduto,
       statusCompraCd5: emptyToNull(linha.statusCompraCd5),
@@ -66,6 +83,7 @@ export function transformGrupoCds2(
       diasCompraCd5: diasCompra.valor,
       diasRecebtoCd5: diasRecebto.valor,
       ultimaCpaCd5: ultimaCpa.valor,
+      cds,
     });
   }
 
