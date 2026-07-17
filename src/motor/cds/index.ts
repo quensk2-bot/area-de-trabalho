@@ -40,3 +40,6 @@ export {
 } from "./mtCincoCdsAdapter.ts";
 
 export { construirCdsDaLinhaRuptura, construirCdsDaLinhaGrupo2, construirCdsDaLinhaGrupo2Completo } from "./construirCdsTransform.ts";
+export { unificarCdsBre, construirCdsDeCamposFlat, cdsFromCentralizacaoEntrada } from "./unificarCdsBre.ts";
+export * from "./rules/index.ts";
+export { assertEquivalenciaBre, equivalenciaBreOk } from "./rules/equivalenciaBreGate.ts";

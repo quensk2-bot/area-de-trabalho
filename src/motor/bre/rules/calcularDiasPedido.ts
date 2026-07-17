@@ -6,6 +6,8 @@ import type {
   MotorRegraStatus,
 } from "../breTypes.ts";
 import type { MotorBreItemInput } from "../breTypes.ts";
+import { calcularDiasPedidoCds } from "../../cds/rules/calcularDiasPedidoCds.ts";
+import { unificarCdsBre } from "../../cds/unificarCdsBre.ts";
 
 export type { MotorDiasPedidoEntrada, MotorDiasPedidoResultado, MotorDiasPedidoOrigem };
 
@@ -129,7 +131,7 @@ function alertasPendencia(input: MotorDiasPedidoEntrada): MotorAlerta[] {
   return alertas;
 }
 
-export function calcularDiasPedido(input: MotorDiasPedidoEntrada): MotorDiasPedidoResultado {
+export function calcularDiasPedidoLegado(input: MotorDiasPedidoEntrada): MotorDiasPedidoResultado {
   const alertas: MotorAlerta[] = [...alertasPendencia(input)];
   const statusRegra: MotorRegraStatus = "aplicada";
 
@@ -199,6 +201,48 @@ export function calcularDiasPedido(input: MotorDiasPedidoEntrada): MotorDiasPedi
   };
 }
 
+export function calcularDiasPedido(input: MotorDiasPedidoEntrada): MotorDiasPedidoResultado {
+  const cds = [
+    { pos: 1, pendencia: input.pendenciaCd1, diasCompra: input.diasCompraCd1 },
+    { pos: 2, pendencia: input.pendenciaCd2, diasCompra: input.diasCompraCd2 },
+    { pos: 3, pendencia: input.pendenciaCd3, diasCompra: input.diasCompraCd3 },
+    { pos: 4, pendencia: input.pendenciaCd4, diasCompra: input.diasCompraCd4 },
+    { pos: 5, pendencia: input.pendenciaCd5, diasCompra: input.diasCompraCd5 },
+  ].map(({ pos, pendencia, diasCompra }) => ({
+    posicaoLogica: pos,
+    codigoFisico: null,
+    estoque: null,
+    pendencia,
+    statusCompra: null,
+    diasCompra: normalizarDiasCompra(diasCompra),
+    diasRecebimento: null,
+    ultimaCompra: null,
+    ultimaEntrada: null,
+    estoqueSelecionadoInventario: null,
+    origemArquivo: "dias-pedido-entrada",
+    numeroBloco: pos <= 4 ? 1 : 2,
+    posicaoNoArquivo: pos <= 4 ? pos : 1,
+    alertas: [] as string[],
+  }));
+
+  const { diasPedidoPorCd: _omit, ...resultado } = calcularDiasPedidoCds(
+    input.pendenciaLoja,
+    input.diasCompraLoja,
+    cds,
+  );
+  return resultado;
+}
+
+export function calcularDiasPedidoFromBre(input: MotorBreItemInput): MotorDiasPedidoResultado {
+  const cds = unificarCdsBre(input);
+  const { diasPedidoPorCd: _omit, ...resultado } = calcularDiasPedidoCds(
+    input.produto.pendenciaLoja,
+    input.produto.diasCompraLj,
+    cds,
+  );
+  return resultado;
+}
+
 export function montarDiasPedidoEntrada(input: MotorBreItemInput): MotorDiasPedidoEntrada {
   const produto = input.produto;
   const cd5 = input.cd5;
@@ -220,5 +264,5 @@ export function montarDiasPedidoEntrada(input: MotorBreItemInput): MotorDiasPedi
 }
 
 export function aplicarRuleDiasPedido(input: MotorBreItemInput): MotorDiasPedidoResultado {
-  return calcularDiasPedido(montarDiasPedidoEntrada(input));
+  return calcularDiasPedidoFromBre(input);
 }

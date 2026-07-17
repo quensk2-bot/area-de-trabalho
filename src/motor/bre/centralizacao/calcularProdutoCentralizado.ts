@@ -12,12 +12,15 @@ import {
   obterCodigoFisicoPorPosicao,
   obterDiasRecebtoPorPosicao,
 } from "./centralizacaoUtils.ts";
+import { calcularMenorRecebimentoCds } from "../../cds/rules/calcularMenorRecebimentoCds.ts";
+import { selecionarCdCentralizado } from "../../cds/rules/selecionarCdCentralizado.ts";
+import { cdsFromCentralizacaoEntrada } from "../../cds/unificarCdsBre.ts";
 
 function alerta(codigo: string, mensagem: string): MotorAlerta {
   return { codigo, mensagem, severidade: "aviso" };
 }
 
-export function calcularProdutoCentralizado(
+export function calcularProdutoCentralizadoLegado(
   entrada: MotorCentralizacaoEntrada,
   ordem: MotorOrdemCdsResolvida,
   menor: MotorMenorRecebimentoResultado,
@@ -76,5 +79,26 @@ export function calcularProdutoCentralizado(
     motivo: "Nenhuma posição lógica coincide com o menor recebimento",
     alertas,
     statusRegra: "aplicada",
+  };
+}
+
+export function calcularProdutoCentralizado(
+  entrada: MotorCentralizacaoEntrada,
+  ordem: MotorOrdemCdsResolvida,
+  menor: MotorMenorRecebimentoResultado,
+): MotorProdutoCentralizadoResultado {
+  const cds = cdsFromCentralizacaoEntrada(entrada);
+  const menorDin = calcularMenorRecebimentoCds(cds);
+  const din = selecionarCdCentralizado(cds, ordem, menorDin);
+
+  return {
+    produtoCentralizado: din.produtoCentralizado,
+    textoProdutoCentralizado: din.textoProdutoCentralizado,
+    posicaoCdSelecionada: (din.posicaoCdSelecionada ?? null) as PosicaoLogicaCd | null,
+    codigoCdSelecionado: din.codigoCdSelecionado,
+    menorDiasRecebimento: din.menorDiasRecebimento,
+    motivo: din.motivo,
+    alertas: din.alertas,
+    statusRegra: din.statusRegra,
   };
 }

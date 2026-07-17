@@ -6,25 +6,15 @@ import type {
   MotorStatusEstoqueCdsResultado,
 } from "./centralizacaoTypes.ts";
 import { POSICOES_LOGICAS, obterCodigoFisicoPorPosicao, obterEstoquePorPosicao } from "./centralizacaoUtils.ts";
+import { calcularStatusEstoqueCdsDinamico } from "../../cds/rules/calcularStatusEstoqueCdsDinamico.ts";
+import { obterFlagPorPosicao } from "../../cds/rules/flagsCentralizacaoDinamico.ts";
+import { cdsFromCentralizacaoEntrada } from "../../cds/unificarCdsBre.ts";
 
-function obterFlagPorPosicao(flags: MotorFlagsOrdemCdResultado, posicao: number): number {
-  switch (posicao) {
-    case 1:
-      return flags.flagPrimeiroCd;
-    case 2:
-      return flags.flagSegundoCd;
-    case 3:
-      return flags.flagTerceiroCd;
-    case 4:
-      return flags.flagQuartoCd;
-    case 5:
-      return flags.flagQuintoCd;
-    default:
-      return 0;
-  }
+function obterFlagPorPosicaoLegado(flags: MotorFlagsOrdemCdResultado, posicao: number): number {
+  return obterFlagPorPosicao(flags, posicao);
 }
 
-export function calcularStatusEstoqueCds(
+export function calcularStatusEstoqueCdsLegado(
   entrada: MotorCentralizacaoEntrada,
   ordem: MotorOrdemCdsResolvida,
   flags: MotorFlagsOrdemCdResultado,
@@ -57,7 +47,7 @@ export function calcularStatusEstoqueCds(
 
   const trechos: string[] = [];
   for (const pos of POSICOES_LOGICAS) {
-    const flag = obterFlagPorPosicao(flags, pos);
+    const flag = obterFlagPorPosicaoLegado(flags, pos);
     const estoque = obterEstoquePorPosicao(entrada, pos);
     const codigo = obterCodigoFisicoPorPosicao(ordem, pos);
     if (flag > 0 && estoque === 1 && codigo != null) {
@@ -70,4 +60,13 @@ export function calcularStatusEstoqueCds(
     statusRegra: "aplicada",
     alertas,
   };
+}
+
+export function calcularStatusEstoqueCds(
+  entrada: MotorCentralizacaoEntrada,
+  ordem: MotorOrdemCdsResolvida,
+  flags: MotorFlagsOrdemCdResultado,
+): MotorStatusEstoqueCdsResultado {
+  const cds = cdsFromCentralizacaoEntrada(entrada);
+  return calcularStatusEstoqueCdsDinamico(cds, ordem, flags);
 }

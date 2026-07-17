@@ -5,32 +5,27 @@ import type {
   MotorOrdemCdsResolvida,
   MotorStatusAtivacaoCdResultado,
 } from "./centralizacaoTypes.ts";
-import { TEXTO_NAO_CENTRALIZADO, obterCodigoFisicoPorPosicao, obterStatusCompraPorPosicao, statusCompraEhInativo } from "./centralizacaoUtils.ts";
+import {
+  TEXTO_NAO_CENTRALIZADO,
+  obterCodigoFisicoPorPosicao,
+  obterStatusCompraPorPosicao,
+  statusCompraEhInativo,
+} from "./centralizacaoUtils.ts";
 import { POSICOES_LOGICAS } from "./centralizacaoUtils.ts";
-
-function obterFlagPorPosicao(flags: MotorFlagsOrdemCdResultado, posicao: number): number {
-  switch (posicao) {
-    case 1:
-      return flags.flagPrimeiroCd;
-    case 2:
-      return flags.flagSegundoCd;
-    case 3:
-      return flags.flagTerceiroCd;
-    case 4:
-      return flags.flagQuartoCd;
-    case 5:
-      return flags.flagQuintoCd;
-    default:
-      return 0;
-  }
-}
+import { calcularStatusAtivacaoCdsDinamico } from "../../cds/rules/calcularStatusAtivacaoCdsDinamico.ts";
+import { obterFlagPorPosicao } from "../../cds/rules/flagsCentralizacaoDinamico.ts";
+import { cdsFromCentralizacaoEntrada } from "../../cds/unificarCdsBre.ts";
 
 function trechoInativo(codigo: number, statusRaw: string | null): string {
   const sufixo = statusRaw === "" || statusRaw == null ? " D)" : ") ";
   return `(${codigo}${sufixo}`;
 }
 
-export function calcularStatusAtivacaoCd(
+function obterFlagPorPosicaoLegado(flags: MotorFlagsOrdemCdResultado, posicao: number): number {
+  return obterFlagPorPosicao(flags, posicao);
+}
+
+export function calcularStatusAtivacaoCdLegado(
   entrada: MotorCentralizacaoEntrada,
   ordem: MotorOrdemCdsResolvida,
   flags: MotorFlagsOrdemCdResultado,
@@ -67,7 +62,7 @@ export function calcularStatusAtivacaoCd(
   const trechos: string[] = [];
 
   for (const pos of POSICOES_LOGICAS) {
-    const flag = obterFlagPorPosicao(flags, pos);
+    const flag = obterFlagPorPosicaoLegado(flags, pos);
     const statusRaw = obterStatusCompraPorPosicao(entrada, pos);
     const codigo = obterCodigoFisicoPorPosicao(ordem, pos);
     if (flag > 0 && statusCompraEhInativo(statusRaw) && codigo != null) {
@@ -91,4 +86,13 @@ export function calcularStatusAtivacaoCd(
     alertas,
     dependenciasBloqueadas,
   };
+}
+
+export function calcularStatusAtivacaoCd(
+  entrada: MotorCentralizacaoEntrada,
+  ordem: MotorOrdemCdsResolvida,
+  flags: MotorFlagsOrdemCdResultado,
+): MotorStatusAtivacaoCdResultado {
+  const cds = cdsFromCentralizacaoEntrada(entrada);
+  return calcularStatusAtivacaoCdsDinamico(cds, ordem, flags);
 }

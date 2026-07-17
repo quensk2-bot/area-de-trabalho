@@ -1,5 +1,7 @@
 import type { MotorAlerta, MotorPendenciaAgregadaResultado } from "../breTypes.ts";
 import { listSumNullable } from "../utils/listSum.ts";
+import { somarPendenciaCds } from "../../cds/rules/somarPendenciaCds.ts";
+import type { MotorProdutoCdNormalizado } from "../../cds/cdTypes.ts";
 
 export type PendenciaCpaCdInput = {
   pendenciaLoja: number | null;
@@ -41,7 +43,7 @@ function alertasPendencia(input: PendenciaCpaCdInput): MotorAlerta[] {
   return alertas;
 }
 
-export function calcularPendenciaCpaCd(input: PendenciaCpaCdInput): MotorPendenciaAgregadaResultado {
+export function calcularPendenciaCpaCdLegado(input: PendenciaCpaCdInput): MotorPendenciaAgregadaResultado {
   const valores = [
     input.pendenciaLoja,
     input.pendenciaCd1,
@@ -75,4 +77,39 @@ export function calcularPendenciaCpaCd(input: PendenciaCpaCdInput): MotorPendenc
     alertas,
     dependenciasAusentes: [],
   };
+}
+
+export function calcularPendenciaCpaCdFromCds(
+  pendenciaLoja: number | null,
+  cds: readonly MotorProdutoCdNormalizado[],
+): MotorPendenciaAgregadaResultado {
+  const dinamico = somarPendenciaCds(pendenciaLoja, cds);
+  const flat = {
+    pendenciaLoja,
+    pendenciaCd1: cds.find((c) => c.posicaoLogica === 1)?.pendencia ?? null,
+    pendenciaCd2: cds.find((c) => c.posicaoLogica === 2)?.pendencia ?? null,
+    pendenciaCd3: cds.find((c) => c.posicaoLogica === 3)?.pendencia ?? null,
+    pendenciaCd4: cds.find((c) => c.posicaoLogica === 4)?.pendencia ?? null,
+    pendenciaCd5: cds.find((c) => c.posicaoLogica === 5)?.pendencia ?? null,
+  };
+
+  return {
+    regra: "pendencia_cpa_cd",
+    status: "aplicada",
+    resultado: dinamico.soma,
+    soma: dinamico.soma,
+    entradasUtilizadas: flat,
+    motivo:
+      dinamico.soma == null
+        ? "Todos os campos de pendência são null — soma null, MP=0"
+        : dinamico.soma > 0
+          ? "Pendência agregada > 0"
+          : "Pendência agregada = 0",
+    alertas: dinamico.alertas,
+    dependenciasAusentes: [],
+  };
+}
+
+export function calcularPendenciaCpaCd(input: PendenciaCpaCdInput): MotorPendenciaAgregadaResultado {
+  return calcularPendenciaCpaCdLegado(input);
 }

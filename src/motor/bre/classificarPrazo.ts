@@ -4,10 +4,13 @@ import type {
   MotorClassificacaoPrazo,
 } from "./breTypes.ts";
 import { calcularCrossSumFromValues } from "./rules/ruleCrossDocking.ts";
+import { somarEstoqueSelecionado } from "../cds/rules/somarEstoqueSelecionado.ts";
+import { unificarCdsBre } from "../cds/unificarCdsBre.ts";
 import { aplicarRuleCurtoPrazo } from "./rules/ruleCurtoPrazo.ts";
 import { aplicarRuleLongoPrazo } from "./rules/ruleLongoPrazo.ts";
 import { aplicarRuleMedioPrazo } from "./rules/ruleMedioPrazo.ts";
-import { calcularPendenciaCpaCd } from "./rules/rulePendenciaCpaCd.ts";
+import { calcularPendenciaCpaCdFromCds } from "./rules/rulePendenciaCpaCd.ts";
+import { unificarCdsBre } from "../cds/unificarCdsBre.ts";
 import { listSumIgnoreNull } from "./utils/listSum.ts";
 
 export type ClassificarPrazoInput = {
@@ -21,6 +24,11 @@ export type ClassificarPrazoInput = {
 
 function resolverCrossSum(item: MotorBreItemInput): number {
   const inv = item.estSelecInv;
+  const cds = unificarCdsBre(item);
+  const crossDin = somarEstoqueSelecionado(cds);
+  if (crossDin > 0 || cds.some((c) => c.estoqueSelecionadoInventario != null)) {
+    return crossDin;
+  }
   return calcularCrossSumFromValues(
     inv?.estSelecInvCd1 ?? null,
     inv?.estSelecInvCd2 ?? null,
@@ -38,14 +46,10 @@ export function classificarPrazo(input: ClassificarPrazoInput): MotorClassificac
     input.item.estSelecInv?.estSelecInvCd4,
   ]);
 
-  const pendencia = calcularPendenciaCpaCd({
-    pendenciaLoja: input.item.produto.pendenciaLoja,
-    pendenciaCd1: input.item.produto.pendenciaCd1,
-    pendenciaCd2: input.item.produto.pendenciaCd2,
-    pendenciaCd3: input.item.produto.pendenciaCd3,
-    pendenciaCd4: input.item.produto.pendenciaCd4,
-    pendenciaCd5: input.item.cd5?.pendenciaCd5 ?? null,
-  });
+  const pendencia = calcularPendenciaCpaCdFromCds(
+    input.item.produto.pendenciaLoja,
+    unificarCdsBre(input.item),
+  );
 
   const curtoPrazo = aplicarRuleCurtoPrazo({
     statusBaseLimpa: input.statusBaseLimpa,
