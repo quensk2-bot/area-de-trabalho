@@ -21,6 +21,7 @@ export type MotorWorkflowFaseId =
   | "executar_transformacoes"
   | "executar_bre"
   | "validar_excel_v7"
+  | "executar_consolidacao"
   | "publicar_data_mart"
   | "gerar_indicadores"
   | "liberar_views"

@@ -232,6 +232,13 @@ export type MotorBreItemResultado = {
   flagTerceiroCd: number;
   flagQuartoCd: number;
   flagQuintoCd: number;
+  posicaoCdSelecionada: 1 | 2 | 3 | 4 | 5 | null;
+  codigoCdSelecionado: number | null;
+  primeiroCd: number | null;
+  segundoCd: number | null;
+  terceiroCd: number | null;
+  quartoCd: number | null;
+  quintoCd: number | null;
   regras: MotorRegraResultado[];
   alertas: MotorAlerta[];
 };

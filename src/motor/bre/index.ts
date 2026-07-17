@@ -143,6 +143,13 @@ export function processarItemBre(
     flagTerceiroCd: centralizacao.flags.flagTerceiroCd,
     flagQuartoCd: centralizacao.flags.flagQuartoCd,
     flagQuintoCd: centralizacao.flags.flagQuintoCd,
+    posicaoCdSelecionada: centralizacao.produtoCentralizado.posicaoCdSelecionada,
+    codigoCdSelecionado: centralizacao.produtoCentralizado.codigoCdSelecionado,
+    primeiroCd: centralizacao.ordem.primeiroCd,
+    segundoCd: centralizacao.ordem.segundoCd,
+    terceiroCd: centralizacao.ordem.terceiroCd,
+    quartoCd: centralizacao.ordem.quartoCd,
+    quintoCd: centralizacao.ordem.quintoCd,
     regras,
     alertas: [
       ...regras.flatMap((r) => r.alertas),

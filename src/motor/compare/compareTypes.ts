@@ -83,5 +83,8 @@ export const CAMPOS_PRIORITARIOS_COMPARE: CompareFieldConfig[] = [
   { campo: "Status Recebto", comparavelNestaEtapa: true },
   { campo: "Status Estoque CDs", comparavelNestaEtapa: true },
   { campo: "Status Solicitação Ativação CD", comparavelNestaEtapa: true },
-  { campo: "Comprador", comparavelNestaEtapa: false },
+  { campo: "Rede", comparavelNestaEtapa: true },
+  { campo: "Comprador", comparavelNestaEtapa: true },
+  { campo: "statusOperacional", comparavelNestaEtapa: true },
+  { campo: "qualidadeDados", comparavelNestaEtapa: true },
 ];
