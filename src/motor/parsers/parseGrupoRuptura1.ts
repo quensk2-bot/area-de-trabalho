@@ -89,6 +89,7 @@ export async function parseGrupoRuptura1(
     colunasEsperadas: COLS,
     onLinha: (cabecalhos, numeroLinha, colunas) => {
       const payload = mapRowToObject(cabecalhos, colunas);
+      if (streamOptions?.filtroLinha && !streamOptions.filtroLinha(payload)) return;
       const mapped = mapGrupoRuptura(numeroLinha, payload);
       if (!streamOptions?.semRetencao) {
         linhas.push(mapped);

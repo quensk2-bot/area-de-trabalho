@@ -36,6 +36,7 @@ export async function parseGrupoCds2(
     colunasEsperadas: COLS,
     onLinha: (cabecalhos, numeroLinha, colunas) => {
       const payload = mapRowToObject(cabecalhos, colunas);
+      if (streamOptions?.filtroLinha && !streamOptions.filtroLinha(payload)) return;
       const mapped = mapGrupoCds(numeroLinha, payload);
       if (!streamOptions?.semRetencao) {
         linhas.push(mapped);

@@ -12,6 +12,7 @@
     "motor:parse": "npx tsx src/motor/cli/motorParseCli.ts",
     "motor:padronizar": "npx tsx src/motor/standardize/standardizeCli.ts",
     "motor:benchmark-streaming": "npx tsx src/motor/scripts/benchmarkStreaming.ts",
+    "motor:piloto": "npx tsx src/motor/cli/motorPilotCli.ts",
     "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts"
   },
   "dependencies": {

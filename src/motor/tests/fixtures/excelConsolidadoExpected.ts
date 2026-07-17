@@ -1,4 +1,7 @@
 import type { CompareRowInput } from "../../compare/compareTypes.ts";
+import { mapConsolidadoParaCompare } from "../../compare/mapConsolidadoParaCompare.ts";
+
+export { mapConsolidadoParaCompare };
 
 export const EXCEL_CONSOLIDADO_FIXTURE: CompareRowInput[] = [
   {
@@ -33,27 +36,3 @@ export const EXCEL_CONSOLIDADO_DIVERGENTE: CompareRowInput[] = [
     v7: { Comprador: "MARIA" },
   },
 ];
-
-export function mapConsolidadoParaCompare(item: {
-  rede: string | null;
-  comprador: string | null;
-  textoProdutoCentralizado: string | null;
-  flagPrimeiroCd: number | null;
-  curtoPrazo: number | null;
-  diasPedido: number | null;
-  acaoCurtoPrazo: string | null;
-  statusOperacional: string;
-  qualidadeDados: string;
-}): Record<string, string | number | boolean | null> {
-  return {
-    Rede: item.rede,
-    Comprador: item.comprador,
-    "Produto Centralizado": item.textoProdutoCentralizado,
-    "1ºCD": item.flagPrimeiroCd,
-    "Curto Prazo": item.curtoPrazo,
-    "Dias Pedido": item.diasPedido,
-    "Ação Curto Prazo": item.acaoCurtoPrazo,
-    statusOperacional: item.statusOperacional,
-    qualidadeDados: item.qualidadeDados,
-  };
-}

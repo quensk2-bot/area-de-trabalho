@@ -5,6 +5,8 @@ export type ParserStreamOptions = Pick<
   "highWaterMark" | "maxErrosEmMemoria" | "signal"
 > & {
   semRetencao?: boolean;
+  /** Filtro precoce por linha mapeada (antes de reter/transformar). */
+  filtroLinha?: (payload: Record<string, string>) => boolean;
 };
 
 export function streamOptionsToTxt(opts?: ParserStreamOptions): TxtStreamOptions {

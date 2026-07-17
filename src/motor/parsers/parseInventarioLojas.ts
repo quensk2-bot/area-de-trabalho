@@ -39,6 +39,7 @@ export async function parseInventarioLojas(
     limiteLinhas,
     onLinha: (cabecalhos, numeroLinha, colunas) => {
       const payload = mapRowToObject(cabecalhos, colunas);
+      if (streamOptions?.filtroLinha && !streamOptions.filtroLinha(payload)) return;
       const mapped = mapInventario(numeroLinha, payload);
       if (!streamOptions?.semRetencao) {
         linhas.push(mapped);
