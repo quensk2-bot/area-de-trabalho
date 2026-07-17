@@ -10,6 +10,10 @@ export type MotorArquivoEntrada = {
   limiteLinhas?: number;
   dryRun: boolean;
   outputPath?: string;
+  highWaterMark?: number;
+  maxErrosEmMemoria?: number;
+  semRetencao?: boolean;
+  signal?: AbortSignal;
 };
 
 export type MotorErroValidacao = {
@@ -21,12 +25,35 @@ export type MotorErroValidacao = {
   severidade: MotorSeveridadeErro;
 };
 
+export type MotorMetricasMemoriaAproximada = {
+  heapUsedMbInicial: number;
+  heapUsedMbFinal: number;
+  heapUsedMbPicoAprox: number;
+  rssMbInicial: number;
+  rssMbFinal: number;
+  rssMbPicoAprox: number;
+  externalMbInicial: number;
+  externalMbFinal: number;
+  externalMbPicoAprox: number;
+  nota: string;
+};
+
+export type MotivoEncerramentoMetricas = "eof" | "limite" | "cancelado" | "erro";
+
 export type MotorMetricasProcessamento = {
   linhasLidas: number;
   linhasValidas: number;
   linhasInvalidas: number;
   duracaoMs: number;
   linhasPorSegundo: number;
+  bytesLidos?: number;
+  totalErros?: number;
+  errosArmazenados?: number;
+  errosTruncados?: boolean;
+  motivoEncerramento?: MotivoEncerramentoMetricas;
+  cancelado?: boolean;
+  concluido?: boolean;
+  memoria?: MotorMetricasMemoriaAproximada;
 };
 
 export type MotorResultadoParser<TLinha> = {

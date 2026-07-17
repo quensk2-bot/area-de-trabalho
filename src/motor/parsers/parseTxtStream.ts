@@ -1,14 +1,21 @@
-import fs from "fs";
+import fs from "node:fs";
 import iconv from "iconv-lite";
 import type { MotorErroValidacao, MotorMetricasProcessamento } from "../types/motorTypes.ts";
-import { splitTxtLine } from "../utils/chunkIterator.ts";
 import { criarMetricas } from "../utils/progress.ts";
-import { validateRowColumnCount } from "../validators/validateRow.ts";
+import {
+  runTxtStreamPipeline,
+  type MotivoEncerramentoStreaming,
+  type TxtStreamPipelineOptions,
+} from "./streaming/index.ts";
 
 export type TxtStreamOptions = {
   limiteLinhas?: number;
   colunasEsperadas?: number;
-  onLinha?: (cabecalhos: string[], numeroLinha: number, colunas: string[]) => void;
+  highWaterMark?: number;
+  maxErrosEmMemoria?: number;
+  signal?: AbortSignal;
+  onLinha?: (cabecalhos: string[], numeroLinha: number, colunas: string[]) => void | Promise<void>;
+  onProgress?: TxtStreamPipelineOptions["onProgress"];
 };
 
 export type TxtStreamResult = {
@@ -17,113 +24,52 @@ export type TxtStreamResult = {
   linhasValidas: number;
   linhasInvalidas: number;
   erros: MotorErroValidacao[];
+  totalErros: number;
+  errosTruncados: boolean;
+  motivoEncerramento: MotivoEncerramentoStreaming;
   metricas: MotorMetricasProcessamento;
 };
 
-const CHUNK_SIZE = 64 * 1024;
-
-function splitLinesPreserveLast(buffer: string): { lines: string[]; rest: string } {
-  const lines = buffer.split(/\r?\n/);
-  const rest = lines.pop() ?? "";
-  return { lines, rest };
+function metricasFromPipeline(
+  inicio: number,
+  pipeline: Awaited<ReturnType<typeof runTxtStreamPipeline>>,
+): MotorMetricasProcessamento {
+  const base = criarMetricas(inicio, pipeline.linhasLidas, pipeline.linhasValidas, pipeline.linhasInvalidas);
+  return {
+    ...base,
+    bytesLidos: pipeline.bytesLidos,
+    totalErros: pipeline.totalErros,
+    errosArmazenados: pipeline.erros.length,
+    errosTruncados: pipeline.errosTruncados,
+    motivoEncerramento: pipeline.motivoEncerramento,
+    cancelado: pipeline.motivoEncerramento === "cancelado",
+    concluido: pipeline.motivoEncerramento === "eof" || pipeline.motivoEncerramento === "limite",
+    memoria: pipeline.memoria,
+  };
 }
 
-export async function parseTxtStream(
-  filePath: string,
-  options: TxtStreamOptions = {},
-): Promise<TxtStreamResult> {
+export async function parseTxtStream(filePath: string, options: TxtStreamOptions = {}): Promise<TxtStreamResult> {
   const inicio = Date.now();
-  const erros: MotorErroValidacao[] = [];
-  let cabecalhos: string[] = [];
-  let linhasLidas = 0;
-  let linhasValidas = 0;
-  let linhasInvalidas = 0;
-  let isHeader = true;
-  let buffer = "";
-  let numeroLinha = 0;
-
-  const limite = options.limiteLinhas;
-  const colunasEsperadas = options.colunasEsperadas;
-
-  const stream = fs.createReadStream(filePath);
-  const chunks: Buffer[] = [];
-
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  const content = iconv.decode(Buffer.concat(chunks), "win1252");
-  let rest = content;
-
-  while (rest.length > 0) {
-    const take = rest.length > CHUNK_SIZE ? rest.slice(0, CHUNK_SIZE) : rest;
-    rest = rest.length > CHUNK_SIZE ? rest.slice(CHUNK_SIZE) : "";
-    buffer += take;
-
-    const { lines, rest: lineRest } = splitLinesPreserveLast(buffer);
-    buffer = lineRest;
-
-    for (const line of lines) {
-      if (line.trim() === "") continue;
-
-      numeroLinha++;
-      if (isHeader) {
-        cabecalhos = splitTxtLine(line).map((h) => h.trim());
-        isHeader = false;
-        continue;
-      }
-
-      if (limite != null && linhasLidas >= limite) break;
-
-      linhasLidas++;
-      const colunas = splitTxtLine(line);
-
-      if (colunasEsperadas != null) {
-        const validacao = validateRowColumnCount(numeroLinha, colunas.length, colunasEsperadas);
-        if (!validacao.ok) {
-          linhasInvalidas++;
-          erros.push(...validacao.erros);
-          continue;
-        }
-      }
-
-      linhasValidas++;
-      options.onLinha?.(cabecalhos, numeroLinha, colunas);
-    }
-
-    if (limite != null && linhasLidas >= limite) break;
-  }
-
-  if (buffer.trim() !== "" && (limite == null || linhasLidas < limite)) {
-    numeroLinha++;
-    if (isHeader) {
-      cabecalhos = splitTxtLine(buffer).map((h) => h.trim());
-    } else {
-      linhasLidas++;
-      const colunas = splitTxtLine(buffer);
-      if (colunasEsperadas != null) {
-        const validacao = validateRowColumnCount(numeroLinha, colunas.length, colunasEsperadas);
-        if (!validacao.ok) {
-          linhasInvalidas++;
-          erros.push(...validacao.erros);
-        } else {
-          linhasValidas++;
-          options.onLinha?.(cabecalhos, numeroLinha, colunas);
-        }
-      } else {
-        linhasValidas++;
-        options.onLinha?.(cabecalhos, numeroLinha, colunas);
-      }
-    }
-  }
+  const pipeline = await runTxtStreamPipeline(filePath, {
+    limiteLinhas: options.limiteLinhas,
+    colunasEsperadas: options.colunasEsperadas,
+    highWaterMark: options.highWaterMark,
+    maxErrosEmMemoria: options.maxErrosEmMemoria,
+    signal: options.signal,
+    onLinha: options.onLinha,
+    onProgress: options.onProgress,
+  });
 
   return {
-    cabecalhos,
-    linhasLidas,
-    linhasValidas,
-    linhasInvalidas,
-    erros,
-    metricas: criarMetricas(inicio, linhasLidas, linhasValidas, linhasInvalidas),
+    cabecalhos: pipeline.cabecalhos,
+    linhasLidas: pipeline.linhasLidas,
+    linhasValidas: pipeline.linhasValidas,
+    linhasInvalidas: pipeline.linhasInvalidas,
+    erros: pipeline.erros,
+    totalErros: pipeline.totalErros,
+    errosTruncados: pipeline.errosTruncados,
+    motivoEncerramento: pipeline.motivoEncerramento,
+    metricas: metricasFromPipeline(inicio, pipeline),
   };
 }
 

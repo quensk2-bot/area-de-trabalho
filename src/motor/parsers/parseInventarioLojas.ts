@@ -9,6 +9,8 @@ import { emptyToNull } from "../transform/parseText.ts";
 import { validateHeaderDinamico } from "../validators/validateHeader.ts";
 import { mapRowToObject } from "../validators/validateRow.ts";
 import { parseTxtStream } from "./parseTxtStream.ts";
+import type { ParserStreamOptions } from "./parserStreamOptions.ts";
+import { streamOptionsToTxt } from "./parserStreamOptions.ts";
 
 const COLUNAS_OBRIGATORIAS = [
   INVENTARIO_COL_EMPRESA,
@@ -28,14 +30,19 @@ function mapInventario(numeroLinha: number, payload: Record<string, string>): Mo
 export async function parseInventarioLojas(
   filePath: string,
   limiteLinhas?: number,
+  streamOptions?: ParserStreamOptions,
 ): Promise<MotorResultadoParser<MotorLinhaInventario>> {
   const linhas: MotorLinhaInventario[] = [];
 
   const streamResult = await parseTxtStream(filePath, {
+    ...streamOptionsToTxt(streamOptions),
     limiteLinhas,
     onLinha: (cabecalhos, numeroLinha, colunas) => {
       const payload = mapRowToObject(cabecalhos, colunas);
-      linhas.push(mapInventario(numeroLinha, payload));
+      const mapped = mapInventario(numeroLinha, payload);
+      if (!streamOptions?.semRetencao) {
+        linhas.push(mapped);
+      }
     },
   });
 

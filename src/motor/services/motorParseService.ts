@@ -41,12 +41,29 @@ export async function executarMotorParse(
   }
 
   const limite = entrada.limiteLinhas;
+  const streamOpts = {
+    highWaterMark: entrada.highWaterMark,
+    maxErrosEmMemoria: entrada.maxErrosEmMemoria,
+    signal: entrada.signal,
+    semRetencao: entrada.semRetencao,
+  };
 
   switch (entrada.tipo) {
     case "grupo_ruptura_1": {
-      const parsed = await parseGrupoRuptura1(entrada.caminho, limite);
+      const parsed = await parseGrupoRuptura1(entrada.caminho, limite, streamOpts);
       if (!parsed.cabecalhoOk) {
         throw new MotorParseError("Cabeçalho inválido para 1º Grupo de Ruptura", "CABECALHO_INVALIDO");
+      }
+      if (entrada.semRetencao) {
+        return {
+          tipo: entrada.tipo,
+          regional: entrada.regional,
+          dataReferencia: entrada.dataReferencia,
+          itens: [],
+          erros: parsed.erros,
+          alertas: [],
+          metricas: parsed.metricas,
+        };
       }
       const transformed = transformGrupoRuptura1(parsed.linhas, entrada.regional, entrada.dataReferencia);
       const resultado: MotorResultadoTransformacao<MotorProdutoLojaNormalizado> = {
@@ -65,9 +82,20 @@ export async function executarMotorParse(
     }
 
     case "grupo_cds_2": {
-      const parsed = await parseGrupoCds2(entrada.caminho, limite);
+      const parsed = await parseGrupoCds2(entrada.caminho, limite, streamOpts);
       if (!parsed.cabecalhoOk) {
         throw new MotorParseError("Cabeçalho inválido para 2º Grupo de CDs", "CABECALHO_INVALIDO");
+      }
+      if (entrada.semRetencao) {
+        return {
+          tipo: entrada.tipo,
+          regional: entrada.regional,
+          dataReferencia: entrada.dataReferencia,
+          itens: [],
+          erros: parsed.erros,
+          alertas: [],
+          metricas: parsed.metricas,
+        };
       }
       const transformed = transformGrupoCds2(parsed.linhas);
       const resultado: MotorResultadoTransformacao<MotorCd5Normalizado> = {
@@ -86,9 +114,20 @@ export async function executarMotorParse(
     }
 
     case "inventario_lojas": {
-      const parsed = await parseInventarioLojas(entrada.caminho, limite);
+      const parsed = await parseInventarioLojas(entrada.caminho, limite, streamOpts);
       if (!parsed.cabecalhoOk) {
         throw new MotorParseError("Cabeçalho inválido para Inventário de Lojas", "CABECALHO_INVALIDO");
+      }
+      if (entrada.semRetencao) {
+        return {
+          tipo: entrada.tipo,
+          regional: entrada.regional,
+          dataReferencia: entrada.dataReferencia,
+          itens: [],
+          erros: parsed.erros,
+          alertas: [],
+          metricas: parsed.metricas,
+        };
       }
       const transformed = transformInventario(parsed.linhas);
       const resultado: MotorResultadoTransformacao<MotorInventarioAgrupado> = {

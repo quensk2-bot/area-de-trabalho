@@ -27,5 +27,6 @@ src/motor/.tmp/
 src/motor/tests/fixtures/samples/
 src/motor/scripts/tests/
 src/motor/tests/fixtures/_tmp_*
+src/motor/tests/fixtures/_streaming_tmp/
 src/motor/tests/fixtures/validacao_ruptura_sample.xlsx
 .env

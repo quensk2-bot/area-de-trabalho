@@ -6,6 +6,8 @@ import { emptyToNull } from "../transform/parseText.ts";
 import { validateHeaderSet } from "../validators/validateHeader.ts";
 import { mapRowToObject } from "../validators/validateRow.ts";
 import { parseTxtStream } from "./parseTxtStream.ts";
+import type { ParserStreamOptions } from "./parserStreamOptions.ts";
+import { streamOptionsToTxt } from "./parserStreamOptions.ts";
 
 const COLS = HEADER_GRUPO_RUPTURA_57.length;
 
@@ -77,15 +79,20 @@ function mapGrupoRuptura(numeroLinha: number, payload: Record<string, string>): 
 export async function parseGrupoRuptura1(
   filePath: string,
   limiteLinhas?: number,
+  streamOptions?: ParserStreamOptions,
 ): Promise<MotorResultadoParser<MotorLinhaGrupoRuptura>> {
   const linhas: MotorLinhaGrupoRuptura[] = [];
 
   const streamResult = await parseTxtStream(filePath, {
+    ...streamOptionsToTxt(streamOptions),
     limiteLinhas,
     colunasEsperadas: COLS,
     onLinha: (cabecalhos, numeroLinha, colunas) => {
       const payload = mapRowToObject(cabecalhos, colunas);
-      linhas.push(mapGrupoRuptura(numeroLinha, payload));
+      const mapped = mapGrupoRuptura(numeroLinha, payload);
+      if (!streamOptions?.semRetencao) {
+        linhas.push(mapped);
+      }
     },
   });
 
