@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import type { CatalogoCompradorConflito, MotorCatalogos } from "./catalogTypes.ts";
 import { parseBandeiraFromCsv, parseBandeiraFromXlsx, parseModalidade, parseOrdemCd, parseSequenciaCd, fileExists } from "./parseOrdemCds.ts";
 import { parseCompradores } from "./parseCompradores.ts";
@@ -11,11 +12,14 @@ import { parseRegrasExclusao } from "./parseRegrasExclusao.ts";
 export type CatalogPaths = {
   rede?: string;
   ordemCds?: string;
+  ordemCdsPadrao?: string;
   bandeiraCsv?: string;
   compradores?: string;
   plan6Cd?: string;
   regras?: string;
   estruturaFake?: string;
+  regional?: string;
+  dataReferencia?: string;
 };
 
 export type CatalogServiceResult = {
@@ -25,6 +29,28 @@ export type CatalogServiceResult = {
   erros: string[];
 };
 
+export function resolveOrdemCdsPadraoPath(regional: string, dataReferencia: string): string | null {
+  const ym = dataReferencia.slice(0, 7);
+  const candidatos = [
+    path.join(process.cwd(), "src", "motor", ".tmp", "padronizados", regional, ym, "motor_ordem_cds_padrao.xlsx"),
+    path.join(process.cwd(), "src", "motor", ".tmp", "padronizados", regional, dataReferencia.slice(0, 7), "motor_ordem_cds_padrao.xlsx"),
+  ];
+  for (const candidato of candidatos) {
+    if (fileExists(candidato)) return candidato;
+  }
+  return null;
+}
+
+export function resolveOrdemCdsCatalogPath(paths: CatalogPaths): string | null {
+  if (paths.ordemCdsPadrao && fileExists(paths.ordemCdsPadrao)) return paths.ordemCdsPadrao;
+  if (paths.regional && paths.dataReferencia) {
+    const padrao = resolveOrdemCdsPadraoPath(paths.regional, paths.dataReferencia);
+    if (padrao) return padrao;
+  }
+  if (paths.ordemCds && fileExists(paths.ordemCds)) return paths.ordemCds;
+  return null;
+}
+
 export function loadCatalogos(paths: CatalogPaths): CatalogServiceResult {
   const alertas: string[] = [];
   const erros: string[] = [];
@@ -33,18 +59,23 @@ export function loadCatalogos(paths: CatalogPaths): CatalogServiceResult {
   const rede = paths.rede && fileExists(paths.rede) ? parseRede(paths.rede) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
   if (!paths.rede || !fileExists(paths.rede)) erros.push("Rede.txt ausente");
 
+  const ordemCdsPath = resolveOrdemCdsCatalogPath(paths);
+  if (ordemCdsPath && ordemCdsPath.includes("motor_ordem_cds_padrao")) {
+    alertas.push(`Ordem CDs: usando catálogo padronizado ${ordemCdsPath}`);
+  }
+
   let bandeira = { itens: [] as MotorCatalogos["bandeira"], alertas: [] as string[], erros: [] as typeof rede.erros };
-  if (paths.ordemCds && fileExists(paths.ordemCds)) {
-    bandeira = parseBandeiraFromXlsx(paths.ordemCds);
+  if (ordemCdsPath) {
+    bandeira = parseBandeiraFromXlsx(ordemCdsPath);
   } else if (paths.bandeiraCsv && fileExists(paths.bandeiraCsv)) {
     bandeira = parseBandeiraFromCsv(paths.bandeiraCsv);
   } else {
-    erros.push("Bandeira ausente (Ordem CDs.xlsx ou bandeira.csv)");
+    erros.push("Bandeira ausente (motor_ordem_cds_padrao.xlsx, Ordem CDs.xlsx ou bandeira.csv)");
   }
 
-  const ordemCd = paths.ordemCds && fileExists(paths.ordemCds) ? parseOrdemCd(paths.ordemCds) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
-  const sequenciaCd = paths.ordemCds && fileExists(paths.ordemCds) ? parseSequenciaCd(paths.ordemCds) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
-  const modalidade = paths.ordemCds && fileExists(paths.ordemCds) ? parseModalidade(paths.ordemCds) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
+  const ordemCd = ordemCdsPath ? parseOrdemCd(ordemCdsPath) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
+  const sequenciaCd = ordemCdsPath ? parseSequenciaCd(ordemCdsPath) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
+  const modalidade = ordemCdsPath ? parseModalidade(ordemCdsPath) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
 
   let compradores: CatalogoServiceResult["catalogos"]["compradores"] = [];
   if (paths.compradores && fileExists(paths.compradores)) {

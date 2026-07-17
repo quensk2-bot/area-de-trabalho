@@ -7,6 +7,12 @@ import { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
 import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
 import { aplicarRuleDiasPedido } from "./rules/calcularDiasPedido.ts";
 import { aplicarAcoesOperacionais } from "./rules/calcularAcoesOperacionais.ts";
+import {
+  calcularCentralizacao,
+  catalogoOrdemDisponivel,
+  construirLookupCentralizadosBatch,
+  montarCentralizacaoEntrada,
+} from "./centralizacao/index.ts";
 import { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 import { aplicarRuleRuptura104c } from "./rules/ruleRuptura104c.ts";
 import { aplicarRuleSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
@@ -27,6 +33,7 @@ export function processarItemBre(
   input: MotorBreItemInput,
   dataReferencia: string,
   catalogos: MotorBreEntrada["contexto"]["catalogos"],
+  flagsLookup?: ReturnType<typeof construirLookupCentralizadosBatch>,
 ): MotorBreItemResultado {
   const baseLimpa = aplicarRuleBaseLimpa(input);
   const ativacao = aplicarRuleAtivacaoRecente(input.dtaUltAtivacao ?? null, dataReferencia);
@@ -58,6 +65,10 @@ export function processarItemBre(
 
   const diasPedido = aplicarRuleDiasPedido(input);
 
+  const centralizacaoEntrada = montarCentralizacaoEntrada(input, catalogos);
+  const lookup = flagsLookup ?? new Map();
+  const centralizacao = calcularCentralizacao(centralizacaoEntrada, catalogos, lookup);
+
   const acoes = aplicarAcoesOperacionais(input, {
     curtoPrazo: classificacao.curtoPrazo,
     medioPrazo: classificacao.medioPrazo,
@@ -65,6 +76,9 @@ export function processarItemBre(
     modCurtoPrazo,
     diasPedido: diasPedido.diasPedidoFinal,
     pendenciaCpaCd: classificacao.pendenciaCpaCd,
+    centralizacaoDisponivel: centralizacao.centralizacaoDisponivel && catalogoOrdemDisponivel(catalogos),
+    statusEstoqueCdsCentralizacao: centralizacao.statusEstoqueCds.texto,
+    statusSolicitacaoAtivacaoCentralizacao: centralizacao.statusAtivacaoCd.texto,
   });
 
   const regras = mergeRegraResults(
@@ -120,12 +134,22 @@ export function processarItemBre(
     acaoMedioPrazo: acoes.acaoMedioPrazo,
     statusEstoqueCds: acoes.auxiliares.statusEstoqueCds,
     statusSolicitacaoAtivacaoCd: acoes.auxiliares.statusSolicitacaoAtivacaoCd,
+    menorRecebimentoCd: centralizacao.menorRecebimento.menorDiasRecebimentoOriginal,
+    produtoCentralizado: centralizacao.produtoCentralizado.produtoCentralizado,
+    textoProdutoCentralizado: centralizacao.produtoCentralizado.textoProdutoCentralizado,
+    statusRecebtoCentralizacao: centralizacao.statusRecebto.texto,
+    flagPrimeiroCd: centralizacao.flags.flagPrimeiroCd,
+    flagSegundoCd: centralizacao.flags.flagSegundoCd,
+    flagTerceiroCd: centralizacao.flags.flagTerceiroCd,
+    flagQuartoCd: centralizacao.flags.flagQuartoCd,
+    flagQuintoCd: centralizacao.flags.flagQuintoCd,
     regras,
     alertas: [
       ...regras.flatMap((r) => r.alertas),
       ...classificacao.alertas,
       ...diasPedido.alertas,
       ...acoes.alertas,
+      ...centralizacao.alertas,
     ],
   };
 }
@@ -142,8 +166,18 @@ export function processarBre(entrada: MotorBreEntrada): MotorBreResultado {
   const inicioMs = Date.now();
   const resultado = criarBreResultadoVazio(entrada.contexto.regional, entrada.contexto.dataReferencia);
 
+  const centralizacaoEntradas = entrada.produtosLoja.map((produto) =>
+    montarCentralizacaoEntrada(montarItemInput(entrada, produto), entrada.contexto.catalogos),
+  );
+  const flagsLookup = construirLookupCentralizadosBatch(centralizacaoEntradas, entrada.contexto.catalogos);
+
   resultado.itens = entrada.produtosLoja.map((produto) =>
-    processarItemBre(montarItemInput(entrada, produto), entrada.contexto.dataReferencia, entrada.contexto.catalogos),
+    processarItemBre(
+      montarItemInput(entrada, produto),
+      entrada.contexto.dataReferencia,
+      entrada.contexto.catalogos,
+      flagsLookup,
+    ),
   );
 
   resultado.metricas = consolidarMetricasBre(resultado.itens, inicioMs);
@@ -183,3 +217,10 @@ export {
   calcularAcoesOperacionais,
 } from "./rules/calcularAcoesOperacionais.ts";
 export { calcularAuxiliaresPedido } from "./rules/calcularAuxiliaresPedido.ts";
+export {
+  calcularCentralizacao,
+  catalogoOrdemDisponivel,
+  construirLookupCentralizadosBatch,
+  montarCentralizacaoEntrada,
+  resolverOrdemCds,
+} from "./centralizacao/index.ts";

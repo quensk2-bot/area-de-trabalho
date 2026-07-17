@@ -69,6 +69,8 @@ export type MotorAuxiliaresPedidoEntrada = {
   diasRecebtoCd4: number | string | null;
   diasRecebtoCd5: number | string | null;
   centralizacaoDisponivel?: boolean;
+  statusEstoqueCdsCentralizacao?: string | null;
+  statusSolicitacaoAtivacaoCentralizacao?: string | null;
 };
 
 export type MotorAuxiliaresPedidoResultado = {
@@ -221,6 +223,15 @@ export type MotorBreItemResultado = {
   acaoMedioPrazo: string;
   statusEstoqueCds: string | null;
   statusSolicitacaoAtivacaoCd: string | null;
+  menorRecebimentoCd: number | null;
+  produtoCentralizado: number | null;
+  textoProdutoCentralizado: string | null;
+  statusRecebtoCentralizacao: string | null;
+  flagPrimeiroCd: number;
+  flagSegundoCd: number;
+  flagTerceiroCd: number;
+  flagQuartoCd: number;
+  flagQuintoCd: number;
   regras: MotorRegraResultado[];
   alertas: MotorAlerta[];
 };

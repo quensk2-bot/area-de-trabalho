@@ -122,6 +122,12 @@ export function calcularAuxiliaresPedido(entrada: MotorAuxiliaresPedidoEntrada):
       mensagem: "Status Estoque CDs e Status Solicitação Ativação CD aguardam Fase 2C.3",
       severidade: "info",
     });
+  } else {
+    statusEstoqueCds = entrada.statusEstoqueCdsCentralizacao ?? null;
+    statusSolicitacaoAtivacaoCd = entrada.statusSolicitacaoAtivacaoCentralizacao ?? null;
+    if (statusEstoqueCds == null) dependenciasBloqueadas.push("status_estoque_cds");
+    if (statusSolicitacaoAtivacaoCd == null) dependenciasBloqueadas.push("status_solicitacao_ativacao_cd");
+    if (dependenciasBloqueadas.length > 0) statusRegra = "bloqueada_dependencia";
   }
 
   return {

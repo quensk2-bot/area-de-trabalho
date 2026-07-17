@@ -90,6 +90,8 @@ export function montarAuxiliaresPedidoEntrada(
     diasPedido: number | null;
     pendenciaCpaCd: number | null;
     centralizacaoDisponivel?: boolean;
+    statusEstoqueCdsCentralizacao?: string | null;
+    statusSolicitacaoAtivacaoCentralizacao?: string | null;
   },
 ): MotorAuxiliaresPedidoEntrada {
   const p = input.produto;
@@ -122,6 +124,8 @@ export function montarAuxiliaresPedidoEntrada(
     diasRecebtoCd4: p.diasRecebtoCd4,
     diasRecebtoCd5: cd5?.diasRecebtoCd5 ?? null,
     centralizacaoDisponivel: params.centralizacaoDisponivel ?? false,
+    statusEstoqueCdsCentralizacao: params.statusEstoqueCdsCentralizacao,
+    statusSolicitacaoAtivacaoCentralizacao: params.statusSolicitacaoAtivacaoCentralizacao,
   };
 }
 
@@ -134,6 +138,9 @@ export function aplicarAcoesOperacionais(
     modCurtoPrazo: "LJ_Exclusiva" | null;
     diasPedido: number | null;
     pendenciaCpaCd: number | null;
+    centralizacaoDisponivel?: boolean;
+    statusEstoqueCdsCentralizacao?: string | null;
+    statusSolicitacaoAtivacaoCentralizacao?: string | null;
   },
 ): MotorAcoesOperacionaisResultado {
   const auxEntrada = montarAuxiliaresPedidoEntrada(input, params);

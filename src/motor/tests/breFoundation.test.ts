@@ -11,7 +11,10 @@ import {
   aplicarRuleRuptura104c,
   aplicarRuleSomaEstoqueCd,
   calcularCrossSumFromValues,
+  processarItemBre,
 } from "../bre/index.ts";
+import { loadCatalogos } from "../catalog/catalogService.ts";
+import { ensureCatalogFixtures } from "./fixtures/catalogFixtures.ts";
 
 function produtoBase(overrides: Partial<MotorProdutoLojaNormalizado> = {}): MotorProdutoLojaNormalizado {
   return {
@@ -188,5 +191,64 @@ describe("bre foundation", () => {
   it("ativação recente — dentro de 60 dias", () => {
     const r = aplicarRuleAtivacaoRecente("2026-06-01", "2026-07-13");
     assert.equal(r.resultado, true);
+  });
+
+  it("centralização integrada — CP/MP/LP inalterados", () => {
+    const fixtures = ensureCatalogFixtures();
+    const loaded = loadCatalogos({ ordemCds: fixtures.ordemCds, rede: fixtures.rede, plan6Cd: fixtures.plan6 });
+    const r = processarItemBre(
+      itemInput({
+        produto: produtoBase({ estoqueLoja: 0, diasRuptura: 5, pendenciaCd1: 1 }),
+        validacao: { numeroLinha: 1, loja: 103, produto: 2505088, qtdItemRupturaNoMix: 1, qtdItemRuptura: 1, geraRuptura: true, ruptura104c: true },
+        cd5: { seqproduto: 2505088, statusCompraCd5: "A", estoqueCd5: 0, pendenciaCd5: 0, diasCompraCd5: null, diasRecebtoCd5: null, ultimaCpaCd5: null },
+      }),
+      "2026-07-13",
+      loaded.catalogos,
+    );
+    assert.equal(r.curtoPrazo, 1);
+    assert.equal(r.medioPrazo, 0);
+    assert.equal(r.longoPrazo, 0);
+    assert.ok(r.menorRecebimentoCd == null || typeof r.menorRecebimentoCd === "number");
+  });
+
+  it("centralização integrada — Dias Pedido inalterado", () => {
+    const fixtures = ensureCatalogFixtures();
+    const loaded = loadCatalogos({ ordemCds: fixtures.ordemCds, rede: fixtures.rede });
+    const r = processarItemBre(
+      itemInput({
+        produto: produtoBase({ pendenciaLoja: 2, diasCompraLj: 10 }),
+        validacao: { numeroLinha: 1, loja: 103, produto: 2505088, qtdItemRupturaNoMix: 1, qtdItemRuptura: 1, geraRuptura: true, ruptura104c: true },
+      }),
+      "2026-07-13",
+      loaded.catalogos,
+    );
+    assert.equal(r.diasPedido, 10);
+    assert.equal(r.origemDiasPedido, "loja");
+  });
+
+  it("centralização integrada — status estoque via BRE", () => {
+    const fixtures = ensureCatalogFixtures();
+    const loaded = loadCatalogos({ ordemCds: fixtures.ordemCds, rede: fixtures.rede });
+    const r = processarItemBre(
+      itemInput({
+        produto: produtoBase({
+          parMin: 5,
+          estoqueLoja: 0,
+          diasRuptura: 5,
+          estoqueCd1: 0,
+          estoqueCd2: 0,
+          estoqueCd3: 0,
+          estoqueCd4: 0,
+          diasRecebtoCd1: 30,
+        }),
+        cd5: { seqproduto: 2505088, statusCompraCd5: "A", estoqueCd5: 0, pendenciaCd5: 0, diasCompraCd5: 1, diasRecebtoCd5: null, ultimaCpaCd5: null },
+        validacao: { numeroLinha: 1, loja: 103, produto: 2505088, qtdItemRupturaNoMix: 1, qtdItemRuptura: 1, geraRuptura: true, ruptura104c: true },
+      }),
+      "2026-07-13",
+      loaded.catalogos,
+    );
+    assert.ok(r.acaoCurtoPrazo.length > 0);
+    assert.equal(r.statusEstoqueCds, "Ruptura CD");
+    assert.equal(r.textoProdutoCentralizado, "CD 101");
   });
 });
