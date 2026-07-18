@@ -15,6 +15,7 @@
     "motor:piloto": "npx tsx src/motor/cli/motorPilotCli.ts",
     "motor:revalidacao": "npx tsx src/motor/cli/motorRevalidacaoCli.ts",
     "motor:piloto-revalidar": "npx tsx src/motor/cli/motorPilotoRevalidarCli.ts",
+    "motor:persistencia-teste": "npx tsx src/motor/scripts/persistenciaTesteControlado.ts",
     "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts"
   },
   "dependencies": {
