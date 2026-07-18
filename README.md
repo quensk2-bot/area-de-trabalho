@@ -1,4 +1,36 @@
-# React + TypeScript + Vite
+# ADM — Motor Operacional V7
+
+Repositório do Motor Operacional V7 (ruptura regional) e shell React/Vite.
+
+## Motor V7 — comandos
+
+```bash
+npm run motor:test              # 512 testes (468 + 44 Data Mart)
+npm run motor:piloto            # piloto MT loja 73
+npm run motor:revalidacao       # revalidação Excel × V7
+npm run motor:piloto-revalidar  # piloto + revalidação em uma execução
+npm run build
+```
+
+Documentação: `architecture/motor-operacional-v7/`
+
+### Fase 3A — Data Mart (publicação, sem banco)
+
+Módulo `src/motor/datamart/` — pipeline `executarPipelineDm()` mapeia `MotorProdutoLojaConsolidado` → `dm_produto_loja` + `dm_produto_loja_cd` (cds[] N posições). Ver `FASE-3A-DATAMART.md`.
+
+### Estado atual (main)
+
+| Commit | Descrição |
+|--------|-----------|
+| `4f0cb38` | Orquestrador piloto + revalidação |
+| `3d65b28` | Comparador e exportação CDs dinâmicos |
+| `c94a171` | Consolidador cds[] |
+
+Piloto MT loja 73: **APROVADO COM RESSALVAS** — paridade 8.274, 0 CD estrutural, baseline Comprador/BRE/Rede preservado.
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
