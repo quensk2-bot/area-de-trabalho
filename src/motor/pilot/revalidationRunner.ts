@@ -29,6 +29,8 @@ export type RevalidacaoOpcoes = {
   dataReferencia: string;
   consolidadoPath?: string;
   outputDir?: string;
+  excelPath?: string;
+  formatoSaida?: "padrao" | "etapa-d";
 };
 
 export type RevalidacaoResultado = {
@@ -38,6 +40,7 @@ export type RevalidacaoResultado = {
   divergenciasReais: MotorDivergenciaRealDetalhe[];
   resumoClassificacao: Record<string, number>;
   metricas: Record<string, unknown>;
+  decisao: "APROVADO" | "APROVADO COM RESSALVAS" | "BLOQUEADO";
 };
 
 const PERFIL_REVALIDACAO = PERFIL_EXCEL_MT_LEGADO_5CD;
@@ -69,6 +72,38 @@ function posicaoEstqToResultado(pos: MotorComparacaoCdPosicaoResultado, campo: s
   };
 }
 
+function classificarDecisaoPiloto(input: {
+  paridade: ReturnType<typeof calcularParidadeChaves>;
+  divergencias: MotorDivergenciaReclassificada[];
+  divergenciasCdEstruturais: number;
+}): RevalidacaoResultado["decisao"] {
+  const criticas = input.divergencias.filter((d) => d.severidade === "critica");
+  const criticasBre = criticas.filter((d) => d.classificacao === "bre").length;
+  const criticasComprador = criticas.filter((d) => d.classificacao === "comprador").length;
+  const criticasRede = criticas.filter((d) => d.classificacao === "join").length;
+  const criticasCd = criticas.filter((d) =>
+    ["centralizacao", "texto_fisico_vs_logico", "transformacao"].includes(d.classificacao) ||
+    /^ESTQ_CD/i.test(d.campo),
+  ).length;
+
+  if (input.divergenciasCdEstruturais > 0 || criticasCd > 0) return "BLOQUEADO";
+  if (input.paridade.intersecao !== 8274 || input.paridade.somenteExcel !== 0) return "BLOQUEADO";
+
+  const criticasNovas = criticas.filter(
+    (d) => !["comprador", "bre", "join"].includes(d.classificacao),
+  ).length;
+
+  if (criticasBre === 0 && criticasComprador === 0 && criticasRede === 0 && criticasNovas === 0) {
+    return "APROVADO";
+  }
+
+  if (criticasBre <= 136 && criticasComprador <= 483 && criticasRede <= 1 && criticasNovas === 0) {
+    return "APROVADO COM RESSALVAS";
+  }
+
+  return criticas.length <= 50 ? "APROVADO COM RESSALVAS" : "BLOQUEADO";
+}
+
 async function loadJsonl<T>(filePath: string): Promise<T[]> {
   const items: T[] = [];
   const rl = readline.createInterface({ input: fs.createReadStream(filePath, "utf8") });
@@ -89,15 +124,18 @@ function writeCsv(filePath: string, header: string[], rows: Record<string, unkno
 export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<RevalidacaoResultado> {
   const paths = resolvePilotFilePaths(opcoes.regional, opcoes.dataReferencia);
   const pilotoDir = defaultPilotOutputDir(opcoes.regional, opcoes.dataReferencia, opcoes.loja);
-  const consolidadoPath = opcoes.consolidadoPath ?? path.join(pilotoDir, "consolidado_loja_73.jsonl");
+  const consolidadoPath =
+    opcoes.consolidadoPath ?? path.join(pilotoDir, `consolidado_loja_${opcoes.loja}.jsonl`);
   const outputDir = opcoes.outputDir ?? path.join(pilotoDir, "revalidacao");
+  const formatoEtapaD = opcoes.formatoSaida === "etapa-d";
+  const excelPath = opcoes.excelPath ?? paths.excelRegional;
 
   if (!fs.existsSync(consolidadoPath)) {
     throw new Error(`Consolidado ausente: ${consolidadoPath}. Execute o piloto 2E.2 primeiro.`);
   }
 
   const consolidado = await loadJsonl<MotorProdutoLojaConsolidado>(consolidadoPath);
-  const excelData = lerExcelRegionalLoja(paths.excelRegional, opcoes.loja);
+  const excelData = lerExcelRegionalLoja(excelPath, opcoes.loja);
   const excelIndex = indexarExcelPorChave(excelData.linhas);
 
   const catalog = loadCatalogos({
@@ -132,7 +170,8 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
   const colunasExcel = new Set(excelData.fonte.camposPresentes);
   const consolidadoMap = new Map(consolidado.map((c) => [`${c.loja}|${c.seqproduto}`, c]));
   const divergencias: MotorDivergenciaReclassificada[] = [];
-  const divergenciasPorPosicao: Record<string, unknown>[] = [];
+  const cdsPorPosicao: Record<string, unknown>[] = [];
+  let divergenciasCdEstruturais = 0;
 
   let comparacoesCampo = 0;
   let iguaisExactSemantic = 0;
@@ -172,17 +211,45 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
         const posResult = cdsCompare.comparacaoPosicoes?.posicoes.find((p) => p.posicaoLogica === posNum);
         if (posResult) {
           resultadoCd = posicaoEstqToResultado(posResult, cfg.campo);
-          if (posResult.estado !== "igual_exato" && posResult.estado !== "igual_semantico") {
-            divergenciasPorPosicao.push({
-              loja: item.loja,
-              seqproduto: item.seqproduto,
-              posicaoLogica: posNum,
-              estado: posResult.estado,
-              codigoExcel: posResult.codigoExcel,
-              codigoV7: posResult.codigoV7,
-              valorExcel: posResult.detalhes.find((d) => d.campo === "estoque")?.valorExcel ?? null,
-              valorV7: posResult.detalhes.find((d) => d.campo === "estoque")?.valorV7 ?? null,
-            });
+          const detEstoque = posResult.detalhes.find((d) => d.campo === "estoque");
+          const severidadePos =
+            posResult.estado === "igual_exato" || posResult.estado === "igual_semantico"
+              ? "informativa"
+              : ["formato", "cadastro_cd_ausente", "texto_fisico_vs_logico"].includes(
+                    reclassificarComparacaoCampo({
+                      loja: item.loja,
+                      seqproduto: item.seqproduto,
+                      descricao: item.descricao,
+                      fornecedor: item.fornecedor,
+                      campo: cfg.campo,
+                      valorExcel: detEstoque?.valorExcel ?? null,
+                      valorV7: detEstoque?.valorV7 ?? null,
+                      resultadoCd,
+                    })?.classificacao ?? "",
+                  )
+                ? "informativa"
+                : "critica";
+
+          cdsPorPosicao.push({
+            loja: item.loja,
+            seqproduto: item.seqproduto,
+            posicaoLogica: posNum,
+            codigoFisicoExcel: posResult.codigoExcel,
+            codigoFisicoV7: posResult.codigoV7,
+            campo: cfg.campo,
+            valorExcel: detEstoque?.valorExcel ?? null,
+            valorV7: detEstoque?.valorV7 ?? null,
+            estadoComparacao: posResult.estado,
+            severidade: severidadePos,
+            observacao: posResult.alertas.join(",") || posResult.estado,
+          });
+
+          if (
+            posResult.estado !== "igual_exato" &&
+            posResult.estado !== "igual_semantico" &&
+            severidadePos === "critica"
+          ) {
+            divergenciasCdEstruturais++;
           }
         }
       }
@@ -227,9 +294,23 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     ),
   );
 
+  const divergenciasComprador = divergencias.filter((d) => d.classificacao === "comprador");
+  const divergenciasBre = divergencias.filter((d) => d.classificacao === "bre");
+  const divergenciasRede = divergencias.filter((d) => d.classificacao === "join");
+  const divergenciasNovas = divergencias.filter(
+    (d) =>
+      !["comprador", "bre", "join"].includes(d.classificacao) &&
+      !["igual_semantico", "formato", "dado_ausente_excel", "coluna_excel_intermediaria", "cadastro_cd_ausente"].includes(
+        d.classificacao,
+      ),
+  );
+
+  const decisao = classificarDecisaoPiloto({ paridade, divergencias, divergenciasCdEstruturais });
+
   const metricas = {
-    fase: "2E.3.3-EtapaD",
+    fase: formatoEtapaD ? "2E.3.7-revalidacao-etapa-d" : "2E.3.3-EtapaD",
     perfilComparacaoCd: PERFIL_REVALIDACAO.id,
+    excelPath,
     regional: opcoes.regional,
     loja: opcoes.loja,
     dataReferencia: opcoes.dataReferencia,
@@ -239,6 +320,16 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     totalDivergencias: divergencias.length,
     criticas: criticas.length,
     informativas: divergencias.length - criticas.length,
+    divergenciasComprador: divergenciasComprador.length,
+    divergenciasBre: divergenciasBre.length,
+    divergenciasRede: divergenciasRede.length,
+    divergenciasCdEstruturais,
+    divergenciasFormatoResolvidas: resolvidas.filter((d) => d.classificacao === "formato").length,
+    divergenciasCdResolvidas: resolvidas.filter((d) =>
+      ["formato", "cadastro_cd_ausente", "texto_fisico_vs_logico", "igual_semantico"].includes(d.classificacao),
+    ).length,
+    divergenciasNovas: divergenciasNovas.length,
+    decisao,
     resumoClassificacao,
     investigacaoReais: resumirInvestigacaoReais(divergenciasReais),
     paridade,
@@ -247,6 +338,7 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
       vigenciaStatus: cdConfig.vigenciaStatus,
       alertas: cdConfig.alertas,
       porPosicao: cdConfig.porPosicao,
+      posicoes: cdConfig.posicoes,
     },
     revalidacaoVsPiloto: {
       criticasOriginaisEstimadas: 674,
@@ -269,7 +361,11 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     ),
     "utf8",
   );
-  fs.writeFileSync(path.join(outputDir, "metricas_revalidacao.json"), JSON.stringify(metricas, null, 2), "utf8");
+  fs.writeFileSync(
+    path.join(outputDir, formatoEtapaD ? "metricas.json" : "metricas_revalidacao.json"),
+    JSON.stringify(metricas, null, 2),
+    "utf8",
+  );
 
   writeCsv(
     path.join(outputDir, "divergencias_reclassificadas.csv"),
@@ -277,50 +373,89 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     divergencias as unknown as Record<string, unknown>[],
   );
 
-  writeCsv(
-    path.join(outputDir, "divergencias_reais.csv"),
-    [
-      "loja",
-      "seqproduto",
-      "campo",
-      "valorExcel",
-      "valorV7",
-      "classificacao",
-      "categoriaInvestigacao",
-      "hipotese",
-      "conclusao",
-      "correcaoEm",
-      "statusInvestigacao",
-    ],
-    divergenciasReais as unknown as Record<string, unknown>[],
-  );
+  if (formatoEtapaD) {
+    writeCsv(
+      path.join(outputDir, "divergencias_comprador.csv"),
+      ["loja", "seqproduto", "campo", "valorExcel", "valorV7", "classificacao", "severidade", "observacao"],
+      divergenciasComprador as unknown as Record<string, unknown>[],
+    );
+    writeCsv(
+      path.join(outputDir, "divergencias_bre.csv"),
+      ["loja", "seqproduto", "campo", "valorExcel", "valorV7", "classificacao", "severidade", "observacao"],
+      divergenciasBre as unknown as Record<string, unknown>[],
+    );
+    writeCsv(
+      path.join(outputDir, "divergencias_rede.csv"),
+      ["loja", "seqproduto", "campo", "valorExcel", "valorV7", "classificacao", "severidade", "observacao"],
+      divergenciasRede as unknown as Record<string, unknown>[],
+    );
+    writeCsv(
+      path.join(outputDir, "cds_por_posicao.csv"),
+      [
+        "loja",
+        "seqproduto",
+        "posicaoLogica",
+        "codigoFisicoExcel",
+        "codigoFisicoV7",
+        "campo",
+        "valorExcel",
+        "valorV7",
+        "estadoComparacao",
+        "severidade",
+        "observacao",
+      ],
+      cdsPorPosicao,
+    );
+  } else {
+    writeCsv(
+      path.join(outputDir, "divergencias_reais.csv"),
+      [
+        "loja",
+        "seqproduto",
+        "campo",
+        "valorExcel",
+        "valorV7",
+        "classificacao",
+        "categoriaInvestigacao",
+        "hipotese",
+        "conclusao",
+        "correcaoEm",
+        "statusInvestigacao",
+      ],
+      divergenciasReais as unknown as Record<string, unknown>[],
+    );
 
-  const resolvidasRows = divergencias.filter((d) => d.severidade !== "critica");
-  writeCsv(
-    path.join(outputDir, "divergencias_resolvidas.csv"),
-    ["loja", "seqproduto", "campo", "classificacao", "severidade", "observacao"],
-    resolvidasRows as unknown as Record<string, unknown>[],
-  );
+    const resolvidasRows = divergencias.filter((d) => d.severidade !== "critica");
+    writeCsv(
+      path.join(outputDir, "divergencias_resolvidas.csv"),
+      ["loja", "seqproduto", "campo", "classificacao", "severidade", "observacao"],
+      resolvidasRows as unknown as Record<string, unknown>[],
+    );
 
-  writeCsv(
-    path.join(outputDir, "divergencias_por_posicao_cd.csv"),
-    ["loja", "seqproduto", "posicaoLogica", "estado", "codigoExcel", "codigoV7", "valorExcel", "valorV7"],
-    divergenciasPorPosicao,
-  );
+    writeCsv(
+      path.join(outputDir, "divergencias_por_posicao_cd.csv"),
+      ["loja", "seqproduto", "posicaoLogica", "estado", "codigoExcel", "codigoV7", "valorExcel", "valorV7"],
+      cdsPorPosicao.filter((r) => r.severidade === "critica"),
+    );
+  }
 
   const resumo = [
-    `Revalidação 2E.3 — MT Loja ${opcoes.loja}`,
+    `Revalidação Etapa D — ${opcoes.regional} Loja ${opcoes.loja}`,
     `Data referência: ${opcoes.dataReferencia}`,
+    `Perfil CD: ${PERFIL_REVALIDACAO.id}`,
+    `Excel: ${excelPath}`,
     `Bandeira: ${bandeira}`,
     `V7: ${paridade.v7Total} | Excel: ${paridade.excelTotal} | Interseção: ${paridade.intersecao}`,
     `Somente V7: ${paridade.somenteV7} | Somente Excel: ${paridade.somenteExcel}`,
-    `Mapeamento CD: ${JSON.stringify(cdConfig.porPosicao)}`,
+    `Mapeamento CD (catálogo): ${JSON.stringify(cdConfig.posicoes)}`,
     `Vigência: ${cdConfig.vigenciaStatus} (${cdConfig.alertas.join(", ")})`,
     `Comparações campo (interseção): ${comparacoesCampo}`,
     `Divergências totais: ${divergencias.length} | Críticas: ${criticas.length}`,
-    `Decisão: ${criticas.length === 0 && paridade.somenteV7 === 0 ? "APROVADO" : criticas.length <= 50 ? "APROVADO COM RESSALVAS" : "BLOQUEADO"}`,
+    `Comprador: ${divergenciasComprador.length} | BRE: ${divergenciasBre.length} | Rede: ${divergenciasRede.length}`,
+    `CD estruturais: ${divergenciasCdEstruturais} | Formato resolvidas: ${metricas.divergenciasFormatoResolvidas}`,
+    `Decisão: ${decisao}`,
   ].join("\n");
-  fs.writeFileSync(path.join(outputDir, "resumo_revalidacao.txt"), resumo, "utf8");
+  fs.writeFileSync(path.join(outputDir, formatoEtapaD ? "resumo.txt" : "resumo_revalidacao.txt"), resumo, "utf8");
 
-  return { paridade, cdConfig, divergencias, divergenciasReais, resumoClassificacao, metricas };
+  return { paridade, cdConfig, divergencias, divergenciasReais, resumoClassificacao, metricas, decisao };
 }
