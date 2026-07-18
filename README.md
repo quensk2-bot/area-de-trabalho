@@ -5,10 +5,12 @@ Repositório do Motor Operacional V7 (ruptura regional) e shell React/Vite.
 ## Motor V7 — comandos
 
 ```bash
-npm run motor:test              # 512 testes (468 + 44 Data Mart)
+npm run motor:test              # 544 testes
 npm run motor:piloto            # piloto MT loja 73
 npm run motor:revalidacao       # revalidação Excel × V7
 npm run motor:piloto-revalidar  # piloto + revalidação em uma execução
+npm run motor:persistencia-teste          # teste remoto TESTE (via RPC)
+npm run motor:persistencia-teste-atomico  # 20 cenários RPC atomica
 npm run build
 ```
 
@@ -17,6 +19,18 @@ Documentação: `architecture/motor-operacional-v7/`
 ### Fase 3A — Data Mart (publicação, sem banco)
 
 Módulo `src/motor/datamart/` — pipeline `executarPipelineDm()` mapeia `MotorProdutoLojaConsolidado` → `dm_produto_loja` + `dm_produto_loja_cd` (cds[] N posições). Ver `FASE-3A-DATAMART.md`.
+
+### Fase 3B.2 — Persistência atômica (RPC)
+
+`persistirLoteMotorAtomico()` → RPC PostgreSQL `persistir_lote_motor_v1`. Ver `FASE-3B2-PERSISTENCIA-ATOMICA.md`.
+
+### Fase 3B.1 — Persistência controlada
+
+Módulo `src/motor/persistencia/` — `persistirLoteMotor()` grava `motor_v7.*` via service_role. Ver `FASE-3B1-PERSISTENCIA-CONTROLADA.md`.
+
+### Fase 3B — Auditoria persistência
+
+Gap código × banco auditado e resolvido na 3B.1 — ver `FASE-3B-AUDITORIA-PERSISTENCIA.md`.
 
 ### Estado atual (main)
 

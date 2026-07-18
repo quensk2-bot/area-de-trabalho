@@ -248,3 +248,93 @@ describe("Fase 3B.1 — Persistencia", () => {
     assert.ok(v.erros.some((e) => e.codigo === "REGIONAL_AUSENTE"));
   });
 });
+
+describe("Fase 3B.2 — Persistencia atomica RPC", () => {
+  it("25. chave temporaria pai/filho deterministica", async () => {
+    const { chaveProdutoTemporaria } = await import("../persistencia/persistenciaRpcPayload.ts");
+    assert.equal(chaveProdutoTemporaria("TESTE", 9901, 9001), "TESTE|9901|9001");
+  });
+
+  it("26. payload RPC produto snake_case com chave", async () => {
+    const { mapearProdutoParaRpcJson } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const lote = loteProduto1Cd();
+    const json = mapearProdutoParaRpcJson(lote.produtos[0]);
+    assert.equal(json.chave_produto, "TESTE|9901|8001");
+    assert.equal(json.classificacao_prazo, "curto_prazo");
+    assert.equal(json.cross_docking, false);
+    assert.equal(json.quantidade_cds, 1);
+    assert.equal("execucao_motor_id" in json, false);
+  });
+
+  it("27. payload RPC CD com chave_produto", async () => {
+    const { mapearCdParaRpcJson } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const lote = loteProduto5Cds();
+    const cd = mapearCdParaRpcJson(lote.cds[2]);
+    assert.equal(cd.chave_produto, "TESTE|9901|8002");
+    assert.equal(cd.posicao_logica, 3);
+    assert.equal(cd.flag_centralizacao, false);
+  });
+
+  it("28. payload 8 CDs e posicao 12", async () => {
+    const { montarPayloadRpc } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const l8 = montarPayloadRpc({
+      regional: PERSISTENCIA_TESTE_REGIONAL,
+      dataReferencia: PERSISTENCIA_TESTE_DATA,
+      hashPacote: "h",
+      versao: 1,
+      lote: loteProduto8Cds(),
+    });
+    assert.equal(l8.cds.length, 8);
+
+    const l12 = montarPayloadRpc({
+      regional: PERSISTENCIA_TESTE_REGIONAL,
+      dataReferencia: PERSISTENCIA_TESTE_DATA,
+      hashPacote: "h",
+      versao: 1,
+      lote: loteCdPosicao12(),
+    });
+    assert.equal(l12.cds[0].posicao_logica, 12);
+  });
+
+  it("29. montarPayloadRpc preserva null", async () => {
+    const { montarPayloadRpc } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const lote = loteProduto1Cd();
+    lote.produtos[0].crossDocking = null;
+    const payload = montarPayloadRpc({
+      regional: PERSISTENCIA_TESTE_REGIONAL,
+      dataReferencia: PERSISTENCIA_TESTE_DATA,
+      hashPacote: "h",
+      versao: 1,
+      lote,
+    });
+    assert.equal(payload.produtos[0].cross_docking, null);
+  });
+
+  it("30. producao usa RPC — nao INSERT direto", async () => {
+    const mod = await import("../persistencia/index.ts");
+    assert.equal(mod.PERSISTENCIA_PRODUCAO_USA_RPC, true);
+    assert.equal(mod.PERSISTENCIA_DIRECT_INSERT_TEST_ONLY, true);
+  });
+
+  it("31. entrada nao mutada ao montar payload", async () => {
+    const { montarPayloadRpc } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const lote = cloneLote(lotePersistenciaTesteControlado());
+    const snap = JSON.stringify(lote);
+    montarPayloadRpc({
+      regional: PERSISTENCIA_TESTE_REGIONAL,
+      dataReferencia: PERSISTENCIA_TESTE_DATA,
+      hashPacote: "h",
+      versao: 1,
+      lote,
+    });
+    assert.equal(JSON.stringify(lote), snap);
+  });
+
+  it("32. bigint seqproduto no payload", async () => {
+    const { mapearProdutoParaRpcJson } = await import("../persistencia/persistenciaRpcPayload.ts");
+    const lote = loteProduto1Cd();
+    lote.produtos[0].seqproduto = 9999999999;
+    const json = mapearProdutoParaRpcJson(lote.produtos[0]);
+    assert.equal(json.seqproduto, 9999999999);
+  });
+});
