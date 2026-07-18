@@ -15,6 +15,15 @@ export type MotorStatusOperacional =
   | "sem_ruptura"
   | "dados_incompletos";
 
+/** Classificação consolidada para publicação (Data Mart / persistência). */
+export type MotorClassificacaoPrazoPublicacao =
+  | "curto_prazo"
+  | "medio_prazo"
+  | "longo_prazo"
+  | "sem_ruptura"
+  | "bloqueado"
+  | "dados_incompletos";
+
 export type MotorQualidadeDados = "completo" | "completo_com_alertas" | "incompleto" | "invalido";
 
 export type MotorConsolidacaoContexto = {
@@ -183,7 +192,7 @@ export type MotorProdutoLojaConsolidado = {
   curtoPrazo: number | null;
   medioPrazo: number | null;
   longoPrazo: number | null;
-  classificacaoPrazo: MotorClassificacaoPrazo;
+  classificacaoPrazo: MotorClassificacaoPrazoPublicacao;
   pendenciaCpaCd: number | null;
   diasPedido: number | null;
   acaoCurtoPrazo: string | null;

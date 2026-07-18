@@ -46,7 +46,7 @@ function produtoBase(overrides: Partial<DmProdutoLoja> & Pick<DmProdutoLoja, "se
     curtoPrazo: 1,
     medioPrazo: 0,
     longoPrazo: 0,
-    classificacaoPrazo: "CP",
+    classificacaoPrazo: "curto_prazo",
     pendenciaCpaCd: 0,
     diasPedido: 3,
     acaoCurtoPrazo: "ACAO CP",
@@ -99,12 +99,12 @@ function cdLinha(
 
 /** Lote ficticio: 3 produtos, 1+5+8 CDs = 14 filhas. */
 export function lotePersistenciaTesteControlado(): DmLote {
-  const produtoA = produtoBase({ seqproduto: 9001, quantidadeCds: 1, classificacaoPrazo: "CP" });
-  const produtoB = produtoBase({ seqproduto: 9002, quantidadeCds: 5, classificacaoPrazo: "MP", crossDocking: 1 });
+  const produtoA = produtoBase({ seqproduto: 9001, quantidadeCds: 1, classificacaoPrazo: "curto_prazo" });
+  const produtoB = produtoBase({ seqproduto: 9002, quantidadeCds: 5, classificacaoPrazo: "medio_prazo", crossDocking: 1 });
   const produtoC = produtoBase({
     seqproduto: 9003,
     quantidadeCds: 8,
-    classificacaoPrazo: "LP",
+    classificacaoPrazo: "longo_prazo",
     qualidadeDados: "completo_com_alertas",
     crossDocking: null,
   });

@@ -223,7 +223,7 @@ describe("consolidador BRE consumo", () => {
   it("19. consome classificação CP do BRE", () => {
     const catalogos = loadFixturesCatalogos();
     const r = consolidarLote(entradaConsolidadorBase(catalogos));
-    assert.equal(r.itens[0].classificacaoPrazo, "CP");
+    assert.equal(r.itens[0].classificacaoPrazo, "curto_prazo");
     assert.equal(r.itens[0].curtoPrazo, 1);
     assert.equal(r.itens[0].statusOperacional, "curto_prazo");
   });
@@ -357,6 +357,7 @@ describe("consolidador status e qualidade", () => {
     ]);
     const r = consolidarLote(entradaConsolidadorBase(catalogos, { bre }));
     assert.equal(r.itens[0].statusOperacional, "sem_ruptura");
+    assert.equal(r.itens[0].classificacaoPrazo, "sem_ruptura");
   });
 
   it("33. qualidade completo_com_alertas", () => {

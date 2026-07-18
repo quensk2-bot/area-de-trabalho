@@ -1,4 +1,5 @@
 import type { MotorClassificacaoPrazo } from "../bre/breTypes.ts";
+import type { MotorClassificacaoPrazoPublicacao } from "../consolidar/consolidacaoTypes.ts";
 import type { DmProdutoLoja, DmProdutoLojaCd } from "../datamart/dmTypes.ts";
 import type {
   ClassificacaoPrazoDb,
@@ -6,11 +7,25 @@ import type {
   DmProdutoLojaRowInsert,
 } from "./persistenciaTypes.ts";
 
-/** Converte CP|MP|LP do BRE para contrato persistido no banco. */
-export function mapearClassificacaoPrazoParaDb(valor: MotorClassificacaoPrazo): ClassificacaoPrazoDb {
+const PUBLICACAO_PARA_DB: Record<MotorClassificacaoPrazoPublicacao, ClassificacaoPrazoDb> = {
+  curto_prazo: "curto_prazo",
+  medio_prazo: "medio_prazo",
+  longo_prazo: "longo_prazo",
+  sem_ruptura: "sem_ruptura",
+  bloqueado: "bloqueado",
+  dados_incompletos: "dados_incompletos",
+};
+
+/** Converte classificação consolidada ou legado BRE (CP|MP|LP) para contrato persistido. */
+export function mapearClassificacaoPrazoParaDb(
+  valor: MotorClassificacaoPrazoPublicacao | MotorClassificacaoPrazo,
+): ClassificacaoPrazoDb {
   if (valor === "CP") return "curto_prazo";
   if (valor === "MP") return "medio_prazo";
   if (valor === "LP") return "longo_prazo";
+  if (valor && valor in PUBLICACAO_PARA_DB) {
+    return PUBLICACAO_PARA_DB[valor as MotorClassificacaoPrazoPublicacao];
+  }
   return null;
 }
 

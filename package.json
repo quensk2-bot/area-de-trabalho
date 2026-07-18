@@ -17,6 +17,9 @@
     "motor:piloto-revalidar": "npx tsx src/motor/cli/motorPilotoRevalidarCli.ts",
     "motor:persistencia-teste": "npx tsx src/motor/scripts/persistenciaTesteControlado.ts",
     "motor:persistencia-teste-atomico": "npx tsx src/motor/scripts/persistenciaTesteAtomico.ts",
+    "motor:persistencia-teste-chunks": "npx tsx src/motor/scripts/persistenciaTesteChunks.ts",
+    "motor:persistencia-carga-piloto-mt": "npx tsx src/motor/scripts/persistenciaCargaPilotoMt.ts",
+    "motor:diagnostico-classificacao-prazo": "npx tsx src/motor/scripts/diagnosticoClassificacaoPrazo.ts",
     "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts"
   },
   "dependencies": {

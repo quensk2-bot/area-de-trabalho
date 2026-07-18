@@ -1,5 +1,5 @@
-import type { MotorClassificacaoPrazo } from "../bre/breTypes.ts";
 import type {
+  MotorClassificacaoPrazoPublicacao,
   MotorProdutoLojaConsolidado,
   MotorQualidadeDados,
   MotorStatusOperacional,
@@ -52,7 +52,7 @@ export type DmProdutoLoja = DmChaveProdutoLoja & {
   curtoPrazo: number | null;
   medioPrazo: number | null;
   longoPrazo: number | null;
-  classificacaoPrazo: MotorClassificacaoPrazo;
+  classificacaoPrazo: MotorClassificacaoPrazoPublicacao;
   pendenciaCpaCd: number | null;
   diasPedido: number | null;
   acaoCurtoPrazo: string | null;

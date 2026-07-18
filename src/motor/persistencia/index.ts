@@ -69,6 +69,22 @@ export { rollbackExecucaoPorId, contarResiduosRegional } from "./persistenciaRol
 export { persistirLoteMotor, type PersistirLoteOptions } from "./persistenciaTransaction.ts";
 
 export {
+  persistirLoteMotorChunked,
+  planejarChunks,
+  totalizarChunks,
+  PERSISTENCIA_CHUNKED_USA_RPC,
+  rpcIniciarExecucaoChunk,
+  rpcPersistirChunk,
+  rpcFinalizarExecucaoChunk,
+  rpcCancelarExecucaoChunk,
+  listarChunksConcluidos,
+  type PersistirLoteChunkedEntrada,
+  type PersistirLoteChunkedResultado,
+  type ChunkPlanejado,
+  type ChunkProgressoCallback,
+} from "./chunks/index.ts";
+
+export {
   persistirLoteMotorDirectInsert_TEST_ONLY,
   PERSISTENCIA_DIRECT_INSERT_TEST_ONLY,
 } from "./persistenciaDirectInsert.testOnly.ts";

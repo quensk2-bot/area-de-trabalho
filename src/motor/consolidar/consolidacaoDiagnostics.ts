@@ -1,5 +1,6 @@
 import type { MotorAlerta } from "../bre/breTypes.ts";
 import type {
+  MotorClassificacaoPrazoPublicacao,
   MotorConsolidacaoErro,
   MotorDuplicidadeDiagnostico,
   MotorJoinDiagnostico,
@@ -121,6 +122,17 @@ export function calcularStatusOperacional(params: {
   if (params.medioPrazo === 1) return "medio_prazo";
   if (params.longoPrazo === 1) return "longo_prazo";
   return "sem_ruptura";
+}
+
+/**
+ * Deriva classificacaoPrazo publicável a partir do status operacional já calculado.
+ * Não recalcula CP/MP/LP — reutiliza o estado final do Consolidador.
+ */
+export function calcularClassificacaoPrazoPublicacao(
+  statusOperacional: MotorStatusOperacional,
+): MotorClassificacaoPrazoPublicacao {
+  if (statusOperacional === "erro_estrutural") return "bloqueado";
+  return statusOperacional;
 }
 
 export { ALERTAS_CRITICOS, ALERTAS_OPCIONAIS };

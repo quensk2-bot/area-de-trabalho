@@ -7,6 +7,7 @@ import {
   consolidarCdsProduto,
 } from "./cds/index.ts";
 import {
+  calcularClassificacaoPrazoPublicacao,
   calcularQualidadeDados,
   calcularStatusOperacional,
   criarDuplicidadeDiagnostico,
@@ -281,6 +282,8 @@ export function consolidarProdutoLoja(
     cdsPosicaoDuplicada: cdsMerge.posicaoDuplicada,
   });
 
+  const classificacaoPrazo = calcularClassificacaoPrazoPublicacao(statusOperacional);
+
   return {
     regional: produto.regional,
     dataReferencia: entrada.contexto.dataReferencia,
@@ -326,7 +329,7 @@ export function consolidarProdutoLoja(
     curtoPrazo: bre?.curtoPrazo ?? null,
     medioPrazo: bre?.medioPrazo ?? null,
     longoPrazo: bre?.longoPrazo ?? null,
-    classificacaoPrazo: bre?.classificacaoPrazo ?? null,
+    classificacaoPrazo,
     pendenciaCpaCd: bre?.pendenciaCpaCd ?? null,
     diasPedido: bre?.diasPedido ?? null,
     acaoCurtoPrazo: bre?.acaoCurtoPrazo ?? null,

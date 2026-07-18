@@ -307,7 +307,7 @@ describe("Etapa C — consolidador cds[]", () => {
   it("20. MT CP preservado", () => {
     const catalogos = loadFixturesCatalogos();
     const r = consolidarLote(entradaConsolidadorBase(catalogos));
-    assert.equal(r.itens[0].classificacaoPrazo, "CP");
+    assert.equal(r.itens[0].classificacaoPrazo, "curto_prazo");
     assert.equal(r.itens[0].curtoPrazo, 1);
   });
 
