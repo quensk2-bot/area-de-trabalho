@@ -1,10 +1,39 @@
 import type { MotorProdutoLojaConsolidado } from "../consolidar/consolidacaoTypes.ts";
+import { mapCdsParaColunasFlatEstoque } from "./cds/normalizarV7Cds.ts";
+
+function estoqueColsFromConsolidado(item: MotorProdutoLojaConsolidado): Record<string, number | null> {
+  if ((item.cds?.length ?? 0) > 0) {
+    return mapCdsParaColunasFlatEstoque(
+      item.cds.map((cd) => ({
+        posicaoLogica: cd.posicaoLogica,
+        codigoFisico: cd.codigoFisico,
+        estoque: cd.estoque,
+        pendencia: cd.pendencia,
+        statusCompra: cd.statusCompra,
+        diasCompra: cd.diasCompra,
+        diasRecebimento: cd.diasRecebimento,
+        flagCentralizacao: null,
+        origem: "v7" as const,
+        alertas: [],
+      })),
+    );
+  }
+
+  return {
+    ESTQ_CD1: item.estoqueCd1 ?? null,
+    ESTQ_CD2: item.estoqueCd2 ?? null,
+    ESTQ_CD3: item.estoqueCd3 ?? null,
+    ESTQ_CD4: item.estoqueCd4 ?? null,
+    ESTQ_CD5: item.estoqueCd5 ?? null,
+  };
+}
 
 /** Mapeia consolidado V7 → campos comparáveis com Excel/Power Query. */
 export function mapConsolidadoParaCompare(
   item: MotorProdutoLojaConsolidado,
 ): Record<string, string | number | boolean | null> {
   return {
+    ...estoqueColsFromConsolidado(item),
     LOJA: item.loja,
     SEQPRODUTO: item.seqproduto,
     DESCCOMPLETA: item.descricao,

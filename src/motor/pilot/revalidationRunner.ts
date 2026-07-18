@@ -5,11 +5,16 @@ import { loadCatalogos } from "../catalog/catalogService.ts";
 import type { MotorProdutoLojaConsolidado } from "../consolidar/consolidacaoTypes.ts";
 import {
   buildCdMapping,
-  buildV7CdContexto,
-  compararCampoCd,
   resolverBandeiraLoja,
   type MotorCdConfiguracaoVigente,
+  type MotorComparacaoCdResultado,
 } from "../compare/cdNormalization/index.ts";
+import {
+  PERFIL_EXCEL_MT_LEGADO_5CD,
+  mapConsolidadoCdsParaCompare,
+} from "../compare/cds/index.ts";
+import type { MotorComparacaoCdPosicaoResultado } from "../compare/cds/motorCdComparacaoTypes.ts";
+import type { MotorEquivalenciaSemanticaResultado } from "../compare/cds/equivalenciaSemanticaCds.ts";
 import { CAMPOS_PILOTO_COMPARE, mapConsolidadoParaCompare } from "../compare/mapConsolidadoParaCompare.ts";
 import { calcularParidadeChaves } from "../compare/keyParityGate.ts";
 import { investigarDivergenciasReais, resumirInvestigacaoReais } from "../compare/investigateRealDivergences.ts";
@@ -35,7 +40,34 @@ export type RevalidacaoResultado = {
   metricas: Record<string, unknown>;
 };
 
+const PERFIL_REVALIDACAO = PERFIL_EXCEL_MT_LEGADO_5CD;
 const CAMPOS_CD = new Set(["Produto Centralizado", "Status Estoque CDs", "Status Solicitação Ativação CD"]);
+
+function camposEstqDoPerfil(): string[] {
+  const n = PERFIL_REVALIDACAO.quantidadePosicoes === "auto" ? 5 : PERFIL_REVALIDACAO.quantidadePosicoes;
+  return Array.from({ length: n }, (_, i) => `ESTQ_CD${i + 1}`);
+}
+
+function semanticToResultado(sem: MotorEquivalenciaSemanticaResultado): MotorComparacaoCdResultado {
+  return {
+    campo: sem.campo,
+    estado: sem.estado,
+    valorExcel: sem.valorExcel,
+    valorV7: sem.valorV7,
+    alertas: sem.alertas,
+  };
+}
+
+function posicaoEstqToResultado(pos: MotorComparacaoCdPosicaoResultado, campo: string): MotorComparacaoCdResultado {
+  const det = pos.detalhes.find((d) => d.campo === "estoque");
+  return {
+    campo,
+    estado: pos.estado,
+    valorExcel: det?.valorExcel != null ? String(det.valorExcel) : null,
+    valorV7: det?.valorV7 != null ? String(det.valorV7) : null,
+    alertas: pos.alertas,
+  };
+}
 
 async function loadJsonl<T>(filePath: string): Promise<T[]> {
   const items: T[] = [];
@@ -100,9 +132,15 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
   const colunasExcel = new Set(excelData.fonte.camposPresentes);
   const consolidadoMap = new Map(consolidado.map((c) => [`${c.loja}|${c.seqproduto}`, c]));
   const divergencias: MotorDivergenciaReclassificada[] = [];
+  const divergenciasPorPosicao: Record<string, unknown>[] = [];
 
   let comparacoesCampo = 0;
   let iguaisExactSemantic = 0;
+
+  const camposCompare = [
+    ...CAMPOS_PILOTO_COMPARE,
+    ...camposEstqDoPerfil().map((campo) => ({ campo })),
+  ];
 
   for (const chave of paridade.chavesIntersecao) {
     const item = consolidadoMap.get(chave);
@@ -110,21 +148,44 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     if (!item || !excelRow) continue;
 
     const v7Flat = mapConsolidadoParaCompare(item);
-    const v7Cd = buildV7CdContexto(item);
+    const cdsCompare = mapConsolidadoCdsParaCompare(
+      item,
+      PERFIL_REVALIDACAO,
+      excelRow as Record<string, unknown>,
+      excelData.fonte.camposPresentes,
+      cdConfig,
+    );
+    const semanticMap = new Map(cdsCompare.semanticos.map((s) => [s.campo, s]));
 
-    for (const cfg of CAMPOS_PILOTO_COMPARE) {
+    for (const cfg of camposCompare) {
       comparacoesCampo++;
       const valorExcel = (excelRow as Record<string, unknown>)[cfg.campo] as string | number | boolean | null ?? null;
       const valorV7 = v7Flat[cfg.campo] ?? null;
 
-      const resultadoCd = CAMPOS_CD.has(cfg.campo)
-        ? compararCampoCd(
-            cfg.campo,
-            cdConfig,
-            typeof valorExcel === "string" ? valorExcel : valorExcel != null ? String(valorExcel) : null,
-            v7Cd,
-          )
-        : undefined;
+      let resultadoCd: MotorComparacaoCdResultado | undefined;
+
+      if (CAMPOS_CD.has(cfg.campo)) {
+        const sem = semanticMap.get(cfg.campo);
+        if (sem) resultadoCd = semanticToResultado(sem);
+      } else if (/^ESTQ_CD\d+$/i.test(cfg.campo)) {
+        const posNum = Number(cfg.campo.replace(/^ESTQ_CD/i, ""));
+        const posResult = cdsCompare.comparacaoPosicoes?.posicoes.find((p) => p.posicaoLogica === posNum);
+        if (posResult) {
+          resultadoCd = posicaoEstqToResultado(posResult, cfg.campo);
+          if (posResult.estado !== "igual_exato" && posResult.estado !== "igual_semantico") {
+            divergenciasPorPosicao.push({
+              loja: item.loja,
+              seqproduto: item.seqproduto,
+              posicaoLogica: posNum,
+              estado: posResult.estado,
+              codigoExcel: posResult.codigoExcel,
+              codigoV7: posResult.codigoV7,
+              valorExcel: posResult.detalhes.find((d) => d.campo === "estoque")?.valorExcel ?? null,
+              valorV7: posResult.detalhes.find((d) => d.campo === "estoque")?.valorV7 ?? null,
+            });
+          }
+        }
+      }
 
       if (resultadoCd && (resultadoCd.estado === "igual_exato" || resultadoCd.estado === "igual_semantico")) {
         iguaisExactSemantic++;
@@ -167,7 +228,8 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
   );
 
   const metricas = {
-    fase: "2E.3",
+    fase: "2E.3.3-EtapaD",
+    perfilComparacaoCd: PERFIL_REVALIDACAO.id,
     regional: opcoes.regional,
     loja: opcoes.loja,
     dataReferencia: opcoes.dataReferencia,
@@ -238,6 +300,12 @@ export async function executarRevalidacao(opcoes: RevalidacaoOpcoes): Promise<Re
     path.join(outputDir, "divergencias_resolvidas.csv"),
     ["loja", "seqproduto", "campo", "classificacao", "severidade", "observacao"],
     resolvidasRows as unknown as Record<string, unknown>[],
+  );
+
+  writeCsv(
+    path.join(outputDir, "divergencias_por_posicao_cd.csv"),
+    ["loja", "seqproduto", "posicaoLogica", "estado", "codigoExcel", "codigoV7", "valorExcel", "valorV7"],
+    divergenciasPorPosicao,
   );
 
   const resumo = [

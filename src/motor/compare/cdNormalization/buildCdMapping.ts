@@ -1,4 +1,4 @@
-import type { CatalogoBandeiraLoja, CatalogoOrdemCd, CatalogoSequenciaCd } from "../../catalog/catalogTypes.ts";
+import type { CatalogoOrdemCd, CatalogoSequenciaCd } from "../../catalog/catalogTypes.ts";
 import type {
   MotorCdConfiguracaoVigente,
   MotorCdMapeamento,
@@ -6,18 +6,14 @@ import type {
 } from "./cdNormalizationTypes.ts";
 import { MOTOR_CD_POSICOES } from "./cdNormalizationTypes.ts";
 
-function posicaoFromIndice(idx: number): MotorCdPosicaoLogica {
-  return MOTOR_CD_POSICOES[idx];
-}
-
 function normalizarBandeira(bandeira: string): string {
   return bandeira.trim().toLowerCase();
 }
 
 export function resolverBandeiraLoja(
   loja: number,
-  bandeiraCatalogo: CatalogoBandeiraLoja[],
-): CatalogoBandeiraLoja | null {
+  bandeiraCatalogo: import("../../catalog/catalogTypes.ts").CatalogoBandeiraLoja[],
+): import("../../catalog/catalogTypes.ts").CatalogoBandeiraLoja | null {
   return bandeiraCatalogo.find((b) => b.loja === loja) ?? null;
 }
 
@@ -46,6 +42,9 @@ export function buildCdMapping(input: {
       vigenciaStatus: "nao_disponivel",
       alertas,
       mapeamentos: [],
+      posicoes: [],
+      porPosicaoNumerico: new Map(),
+      porCodigoNumerico: new Map(),
       porPosicao: vazio,
       porCodigo: new Map(),
     };
@@ -60,20 +59,30 @@ export function buildCdMapping(input: {
 
   const codigos = [ordem.cd1, ordem.cd2, ordem.cd3, ordem.cd4, ordem.cd5];
   const mapeamentos: MotorCdMapeamento[] = [];
+  const posicoes: Array<{ posicaoLogica: number; codigoFisico: number | null }> = [];
+  const porPosicaoNumerico = new Map<number, number | null>();
+  const porCodigoNumerico = new Map<number, number>();
   const porPosicao = {} as Record<MotorCdPosicaoLogica, number | null>;
   const porCodigo = new Map<number, MotorCdPosicaoLogica>();
 
   codigos.forEach((codigo, idx) => {
-    const pos = posicaoFromIndice(idx);
+    const posNum = idx + 1;
+    const pos = MOTOR_CD_POSICOES[idx];
     if (!Number.isFinite(codigo) || codigo <= 0) {
       porPosicao[pos] = null;
-      alertas.push(`posicao_sem_codigo:${pos}`);
+      porPosicaoNumerico.set(posNum, null);
+      posicoes.push({ posicaoLogica: posNum, codigoFisico: null });
+      alertas.push(`posicao_sem_codigo:CD${posNum}`);
       return;
     }
     porPosicao[pos] = codigo;
+    porPosicaoNumerico.set(posNum, codigo);
+    porCodigoNumerico.set(codigo, posNum);
     porCodigo.set(codigo, pos);
+    posicoes.push({ posicaoLogica: posNum, codigoFisico: codigo });
     mapeamentos.push({
       posicaoLogica: pos,
+      posicaoNumerica: posNum,
       codigoFisico: codigo,
       ordemPivot: seqMap.get(String(codigo)) ?? null,
     });
@@ -87,6 +96,9 @@ export function buildCdMapping(input: {
     vigenciaStatus: "nao_disponivel",
     alertas: [...new Set(alertas)],
     mapeamentos,
+    posicoes: posicoes.sort((a, b) => a.posicaoLogica - b.posicaoLogica),
+    porPosicaoNumerico,
+    porCodigoNumerico,
     porPosicao,
     porCodigo,
   };
@@ -104,9 +116,17 @@ export function codigoParaPosicao(
   return config.porCodigo.get(codigo) ?? null;
 }
 
+export function codigoParaPosicaoNumerica(config: MotorCdConfiguracaoVigente, codigo: number): number | null {
+  return config.porCodigoNumerico.get(codigo) ?? null;
+}
+
 export function posicaoParaCodigo(
   config: MotorCdConfiguracaoVigente,
   posicao: MotorCdPosicaoLogica,
 ): number | null {
   return config.porPosicao[posicao];
+}
+
+export function posicaoNumericaParaCodigo(config: MotorCdConfiguracaoVigente, posicao: number): number | null {
+  return config.porPosicaoNumerico.get(posicao) ?? null;
 }

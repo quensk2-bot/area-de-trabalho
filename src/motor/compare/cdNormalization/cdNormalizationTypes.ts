@@ -8,6 +8,7 @@ export type MotorCdVigenciaStatus = "nao_disponivel" | "vigente" | "ausente";
 
 export type MotorCdMapeamento = {
   posicaoLogica: MotorCdPosicaoLogica;
+  posicaoNumerica: number;
   codigoFisico: number;
   ordemPivot: string | null;
 };
@@ -20,6 +21,10 @@ export type MotorCdConfiguracaoVigente = {
   vigenciaStatus: MotorCdVigenciaStatus;
   alertas: string[];
   mapeamentos: MotorCdMapeamento[];
+  /** Posições ordenadas — fonte dinâmica (sem teto). */
+  posicoes: Array<{ posicaoLogica: number; codigoFisico: number | null }>;
+  porPosicaoNumerico: ReadonlyMap<number, number | null>;
+  porCodigoNumerico: ReadonlyMap<number, number>;
   porPosicao: Record<MotorCdPosicaoLogica, number | null>;
   porCodigo: ReadonlyMap<number, MotorCdPosicaoLogica>;
 };
@@ -29,7 +34,12 @@ export type MotorCdComparacaoEstado =
   | "igual_semantico"
   | "divergente_codigo"
   | "divergente_posicao"
+  | "divergente_valor"
   | "divergente_texto"
+  | "posicao_ausente_excel"
+  | "posicao_ausente_v7"
+  | "codigo_fisico_ausente"
+  | "coluna_nao_reconhecida"
   | "cadastro_ausente"
   | "vigencia_ausente"
   | "nao_comparavel";

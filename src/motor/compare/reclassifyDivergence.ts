@@ -105,6 +105,16 @@ export function mapearEstadoCdParaClassificacao(
     case "divergente_codigo":
     case "divergente_posicao":
       return "texto_fisico_vs_logico";
+    case "divergente_valor":
+      return "transformacao";
+    case "posicao_ausente_excel":
+      return "dado_ausente_excel";
+    case "posicao_ausente_v7":
+      return "dado_ausente_v7";
+    case "codigo_fisico_ausente":
+      return "cadastro_cd_ausente";
+    case "coluna_nao_reconhecida":
+      return "formato";
     case "divergente_texto":
       if (campo === "Status Solicitação Ativação CD" || campo === "Status Estoque CDs") {
         return "texto_fisico_vs_logico";
