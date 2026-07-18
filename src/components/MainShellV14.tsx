@@ -44,6 +44,12 @@ import {
   PontoExtraRelatorio,
 } from "./loja/PontoExtraPages";
 import { PontoExtraSimulador } from "./loja/ponto-extra/PontoExtraSimulador";
+import {
+  RupturaCentralAcoesPage,
+  RupturaDashboardPage,
+  RupturaExecucoesPage,
+  RupturaGestaoPage,
+} from "../ruptura-v7/RupturaPages";
 
 type Props = {
   perfil: Usuario;
@@ -84,7 +90,11 @@ type MenuKey =
   | "loja-ponto-analise"
   | "loja-ponto-exportacao"
   | "loja-ponto-acompanhamento"
-  | "loja-ponto-relatorio";
+  | "loja-ponto-relatorio"
+  | "loja-ruptura-dashboard"
+  | "loja-ruptura-gestao"
+  | "loja-ruptura-acoes"
+  | "loja-ruptura-execucoes";
 
 type Rotina = {
   id: string;
@@ -347,6 +357,10 @@ const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
   "loja-ponto-exportacao": "/loja/ponto-extra/exportacao",
   "loja-ponto-acompanhamento": "/loja/ponto-extra/acompanhamento",
   "loja-ponto-relatorio": "/loja/ponto-extra/relatorio",
+  "loja-ruptura-dashboard": "/loja/ruptura",
+  "loja-ruptura-gestao": "/loja/ruptura/gestao",
+  "loja-ruptura-acoes": "/loja/ruptura/acoes",
+  "loja-ruptura-execucoes": "/loja/ruptura/execucoes",
 };
 
 const appBasePath = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
@@ -376,6 +390,7 @@ type ShellMenuState = {
     recebimentoGestaoAgendas: boolean;
     loja: boolean;
     lojaPontoExtra: boolean;
+    lojaRuptura: boolean;
   };
 };
 
@@ -389,6 +404,7 @@ const defaultGruposMenuAbertos = () => ({
   recebimentoGestaoAgendas: false,
   loja: false,
   lojaPontoExtra: false,
+  lojaRuptura: false,
 });
 
 const readShellMenuState = (): ShellMenuState | null => {
@@ -475,6 +491,7 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
       | "recebimentoGestaoAgendas"
       | "loja"
       | "lojaPontoExtra"
+      | "lojaRuptura"
   ) => {
     setGruposMenuAbertos((prev) => ({
       ...prev,
@@ -605,6 +622,17 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
   const recebimentoGestaoAgendasItems = useMemo(
     () => [["recebimento-gestao-agendas", "Painel de Gestão das Agendas"]] as [MenuKey, string][],
     []
+  );
+
+  const lojaRupturaItems = useMemo(
+    () =>
+      [
+        ["loja-ruptura-dashboard", "Dashboard"],
+        ["loja-ruptura-gestao", "Gestão Operacional"],
+        ["loja-ruptura-acoes", "Central de Ações"],
+        ["loja-ruptura-execucoes", "Execuções do Motor"],
+      ] as [MenuKey, string][],
+    [],
   );
 
   const lojaPontoExtraItems = useMemo(
@@ -823,7 +851,15 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
 
   const renderLoja = () => {
     let content: React.ReactNode;
-    if (menu === "loja-ponto-importacao") {
+    if (menu === "loja-ruptura-gestao") {
+      content = <RupturaGestaoPage />;
+    } else if (menu === "loja-ruptura-acoes") {
+      content = <RupturaCentralAcoesPage />;
+    } else if (menu === "loja-ruptura-execucoes") {
+      content = <RupturaExecucoesPage />;
+    } else if (menu === "loja-ruptura-dashboard") {
+      content = <RupturaDashboardPage onAbrirGestao={() => navegarMenu("loja-ruptura-gestao")} />;
+    } else if (menu === "loja-ponto-importacao") {
       content = <PontoExtraImportacao perfil={perfil} />;
     } else if (menu === "loja-ponto-cubagem") {
       content = <PontoExtraCubagem />;
@@ -1089,6 +1125,34 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
                   </button>
                   {gruposMenuAbertos.lojaPontoExtra &&
                     lojaPontoExtraItems.map(([key, label]) => {
+                      const active = menu === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => navegarMenu(key)}
+                          style={{
+                            ...shellStyles.menuButton,
+                            ...(active ? shellStyles.menuButtonActive : {}),
+                          }}
+                        >
+                          <span style={shellStyles.menuButtonLeft}>
+                            <span style={shellStyles.menuBullet} />
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupoMenu("lojaRuptura")}
+                    style={shellStyles.menuSubGroupTitle}
+                  >
+                    <span>02 Ruptura</span>
+                    <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.lojaRuptura ? "-" : "+"}</span>
+                  </button>
+                  {gruposMenuAbertos.lojaRuptura &&
+                    lojaRupturaItems.map(([key, label]) => {
                       const active = menu === key;
                       return (
                         <button

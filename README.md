@@ -5,7 +5,8 @@ Repositório do Motor Operacional V7 (ruptura regional) e shell React/Vite.
 ## Motor V7 — comandos
 
 ```bash
-npm run motor:test              # 562 testes
+npm run motor:test              # 580 testes
+npm run ruptura-v7:test         # 23 testes consumo UI
 npm run motor:piloto            # piloto MT loja 73
 npm run motor:revalidacao       # revalidação Excel × V7
 npm run motor:piloto-revalidar  # piloto + revalidação em uma execução
@@ -16,7 +17,11 @@ npm run motor:persistencia-carga-piloto-mt  # carga piloto MT loja 73 (chunks)
 npm run build
 ```
 
-Documentação: `architecture/motor-operacional-v7/`
+Documentação: `architecture/motor-operacional-v7/` e `architecture/ruptura-v7/` (Fase 4A)
+
+### Fase 4A — Gestão de Ruptura V7 (Views + telas)
+
+Módulo `src/ruptura-v7/` — Dashboard, Gestão Operacional, Central de Ações, Execuções. Schema `consumo_v7` no Supabase. Ver `architecture/ruptura-v7/FASE-4A-VIEWS-E-TELAS.md`.
 
 ### Fase 3A — Data Mart (publicação, sem banco)
 

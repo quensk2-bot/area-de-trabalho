@@ -20,7 +20,8 @@
     "motor:persistencia-teste-chunks": "npx tsx src/motor/scripts/persistenciaTesteChunks.ts",
     "motor:persistencia-carga-piloto-mt": "npx tsx src/motor/scripts/persistenciaCargaPilotoMt.ts",
     "motor:diagnostico-classificacao-prazo": "npx tsx src/motor/scripts/diagnosticoClassificacaoPrazo.ts",
-    "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts"
+    "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts",
+    "ruptura-v7:test": "node --import tsx --test --test-concurrency=1 src/ruptura-v7/tests/**/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.81.1",

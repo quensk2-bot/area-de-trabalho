@@ -1,0 +1,20 @@
+export type RupturaProdutoCd = {
+  execucao_id: string;
+  regional: string;
+  data_referencia: string;
+  loja: number;
+  seqproduto: number;
+  posicao_logica: number;
+  codigo_cd_fisico: number | null;
+  estoque: number | null;
+  pendencia: number | null;
+  status_compra: string | null;
+  dias_compra: number | null;
+  dias_recebimento: number | null;
+  flag_centralizacao: boolean | null;
+  origem_arquivo: string | null;
+  numero_bloco: number | null;
+  posicao_no_arquivo: number | null;
+  versao: number;
+  versao_ativa: boolean;
+};
