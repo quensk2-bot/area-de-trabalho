@@ -3,10 +3,25 @@ import type { CatalogoRedeFornecedor } from "../catalog/catalogTypes.ts";
 import { resolverComprador } from "../catalog/parseCompradores.ts";
 import type { MotorCd5Normalizado, MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
 import type { MotorInventarioAgrupado, MotorLinhaValidacao } from "../types/motorLinhaTypes.ts";
-import { chaveCompradorHierarquia, chaveConsolidacao, chaveLojaProduto, chaveRegionalProduto } from "./consolidacaoKeys.ts";
+import type { MotorBlocoCdsComplementar } from "./cds/consolidarCdsProduto.ts";
+import {
+  chaveCompradorHierarquia,
+  chaveConsolidacao,
+  chaveLojaProduto,
+  chaveRegionalLojaProduto,
+  chaveRegionalProduto,
+} from "./consolidacaoKeys.ts";
 import { criarJoinDiagnostico } from "./consolidacaoDiagnostics.ts";
 import type { MotorConsolidacaoIndexes, MotorJoinDiagnostico } from "./consolidacaoTypes.ts";
 
+export type MotorJoinBlocosCdsResultado = {
+  blocos: MotorBlocoCdsComplementar[];
+  alertas: MotorAlerta[];
+  diagnostico: MotorJoinDiagnostico;
+  ambiguo: boolean;
+};
+
+/** @deprecated Use MotorJoinBlocosCdsResultado */
 export type MotorJoinCd5Resultado = {
   cd5: MotorCd5Normalizado | null;
   alertas: MotorAlerta[];
@@ -35,6 +50,81 @@ function alerta(codigo: string, mensagem: string, severidade: MotorAlerta["sever
   return { codigo, mensagem, severidade };
 }
 
+export function joinBlocosCdsComplementares(
+  regional: string,
+  loja: number,
+  seqproduto: number,
+  indexes: MotorConsolidacaoIndexes,
+  diagnosticos: MotorJoinDiagnostico[],
+): MotorJoinBlocosCdsResultado {
+  const chaveLoja = chaveRegionalLojaProduto(regional, loja, seqproduto);
+  const chaveRegional = chaveRegionalProduto(regional, seqproduto);
+  const alertas: MotorAlerta[] = [];
+
+  const porLoja = indexes.blocosCdsPorChaveLojaProduto.get(chaveLoja) ?? [];
+  const porRegional = indexes.blocosCdsPorChaveRegionalProduto.get(chaveRegional) ?? [];
+  const matches = porLoja.length > 0 ? porLoja : porRegional;
+  const chaveUsada = porLoja.length > 0 ? chaveLoja : chaveRegional;
+
+  if (matches.length === 0) {
+    const diagnostico = criarJoinDiagnostico(
+      "blocos_cds_complementares",
+      chaveRegional,
+      0,
+      false,
+      "blocos_cds_null",
+      "aviso",
+      "Produto sem blocos complementares de CDs",
+    );
+    diagnosticos.push(diagnostico);
+    alertas.push(alerta("grupo2_ausente", "Produto sem correspondência no Grupo 2 / blocos complementares"));
+    return { blocos: [], alertas, diagnostico, ambiguo: false };
+  }
+
+  const blocosUnicos = new Map<string, MotorBlocoCdsComplementar>();
+  for (const b of matches) {
+    const chaveBloco = `${b.numeroBloco}|${b.origemArquivo}|${b.loja ?? "null"}`;
+    if (!blocosUnicos.has(chaveBloco)) blocosUnicos.set(chaveBloco, b);
+  }
+
+  const contagemPorBloco = new Map<number, number>();
+  for (const b of matches) {
+    contagemPorBloco.set(b.numeroBloco, (contagemPorBloco.get(b.numeroBloco) ?? 0) + 1);
+  }
+  const blocoDuplicado = [...contagemPorBloco.values()].some((c) => c > 1);
+
+  const blocos = [...blocosUnicos.values()];
+  const ambiguo = blocoDuplicado;
+
+  if (ambiguo) {
+    const diagnostico = criarJoinDiagnostico(
+      "blocos_cds_complementares",
+      chaveUsada,
+      matches.length,
+      true,
+      "blocos_cds_ambiguo",
+      "aviso",
+      `Ambiguidade blocos CDs: ${matches.length} correspondências para ${chaveUsada}`,
+    );
+    diagnosticos.push(diagnostico);
+    alertas.push(alerta("cd5_ambiguo", diagnostico.mensagem, "aviso"));
+    return { blocos: [], alertas, diagnostico, ambiguo: true };
+  }
+
+  const diagnostico = criarJoinDiagnostico(
+    "blocos_cds_complementares",
+    chaveUsada,
+    blocos.length,
+    true,
+    "blocos_cds_encontrados",
+    "info",
+    `${blocos.length} bloco(s) complementar(es) encontrado(s)`,
+  );
+  diagnosticos.push(diagnostico);
+  return { blocos, alertas, diagnostico, ambiguo: false };
+}
+
+/** @deprecated Use joinBlocosCdsComplementares */
 export function joinCd5(
   regional: string,
   seqproduto: number,

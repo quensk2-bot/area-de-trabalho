@@ -1,5 +1,11 @@
 import type { MotorAlerta, MotorBreItemResultado } from "../bre/breTypes.ts";
-import type { MotorCd5Normalizado, MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
+import type { MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
+import {
+  acumularMetricasCdsProduto,
+  adaptarCdsLegadoCentralizacao,
+  adaptarCdsLegadoFlat,
+  consolidarCdsProduto,
+} from "./cds/index.ts";
 import {
   calcularQualidadeDados,
   calcularStatusOperacional,
@@ -10,7 +16,7 @@ import { incrementarMetrica } from "./consolidacaoMetrics.ts";
 import {
   joinBandeira,
   joinBre,
-  joinCd5,
+  joinBlocosCdsComplementares,
   joinComprador,
   joinInventario,
   joinOrdemCd,
@@ -87,6 +93,10 @@ function montarErrosConsolidacao(
     }));
 }
 
+function blocosEsperadosDefault(ctx: MotorConsolidacaoLoteContexto): number[] {
+  return ctx.entrada.contexto.blocosEsperados ?? [2];
+}
+
 export type ConsolidarProdutoLojaParams = {
   duplicidadeBase: boolean;
   quantidadeDuplicidade?: number;
@@ -97,7 +107,7 @@ export function consolidarProdutoLoja(
   ctx: MotorConsolidacaoLoteContexto,
   params: ConsolidarProdutoLojaParams,
 ): MotorProdutoLojaConsolidado {
-  const { entrada, indexes, diagnosticosJoin, duplicidades, erros, metricasParciais } = ctx;
+  const { entrada, indexes, diagnosticosJoin, duplicidades, erros, metricasParciais, metricasCdsParciais } = ctx;
   const chaveVal = validarChaveConsolidacao(produto.regional, produto.loja, produto.seqproduto);
   const chaveInvalida = !chaveVal.valida;
 
@@ -134,14 +144,17 @@ export function consolidarProdutoLoja(
     );
   }
 
-  const cd5Join = joinCd5(produto.regional, produto.seqproduto, indexes, diagnosticosJoin);
-  alertas.push(...cd5Join.alertas);
-  if (!cd5Join.cd5) {
+  const blocosJoin = joinBlocosCdsComplementares(
+    produto.regional,
+    produto.loja,
+    produto.seqproduto,
+    indexes,
+    diagnosticosJoin,
+  );
+  alertas.push(...blocosJoin.alertas);
+  if (blocosJoin.blocos.length === 0 && !blocosJoin.ambiguo) {
     incrementarMetrica(metricasParciais, "semGrupo2");
     fontesAusentes.push("grupo2_cd5");
-  }
-  if (cd5Join.alertas.some((a) => a.codigo === "cd5_ambiguo")) {
-    // qualidade tratada abaixo
   }
 
   const invJoin = joinInventario(produto.loja, produto.seqproduto, indexes, diagnosticosJoin);
@@ -203,7 +216,31 @@ export function consolidarProdutoLoja(
   const posicaoResolvida = resolverPosicaoCdSelecionada(bre);
   alertas.push(...posicaoResolvida.alertas);
 
-  const cd5: MotorCd5Normalizado | null = cd5Join.cd5;
+  const cdsMerge = consolidarCdsProduto({
+    regional: produto.regional,
+    loja: produto.loja,
+    seqproduto: produto.seqproduto,
+    cdsBlocoPrincipal: produto.cds.map((cd) => ({ ...cd, alertas: [...cd.alertas] })),
+    blocosComplementares: blocosJoin.ambiguo ? [] : blocosJoin.blocos,
+    blocosEsperados: blocosEsperadosDefault(ctx),
+  });
+  alertas.push(...cdsMerge.alertas);
+
+  acumularMetricasCdsProduto(metricasCdsParciais, {
+    cds: cdsMerge.cds,
+    posicaoDuplicada: cdsMerge.posicaoDuplicada,
+    blocoSobreposto: cdsMerge.blocoSobreposto,
+    posicoesNaoContiguas: cdsMerge.posicoesNaoContiguas,
+    codigoFisicoAusente: cdsMerge.codigoFisicoAusente,
+  });
+
+  const legadoFlat = adaptarCdsLegadoFlat(cdsMerge.cds);
+  const legadoCentralizacao = adaptarCdsLegadoCentralizacao({
+    cds: cdsMerge.cds,
+    bre,
+    ordemCds: ordemJoin.ordem,
+  });
+
   const alertasDedup = deduplicarAlertas(alertas);
   const errosLocais = montarErrosConsolidacao(
     produto.regional,
@@ -213,7 +250,7 @@ export function consolidarProdutoLoja(
   );
   erros.push(...errosLocais);
 
-  const cd5Ambiguo = alertasDedup.some((a) => a.codigo === "cd5_ambiguo");
+  const blocosAmbiguo = blocosJoin.ambiguo;
   const breAusente = bre == null;
   const breBloqueado =
     bre != null &&
@@ -221,14 +258,15 @@ export function consolidarProdutoLoja(
       bre.regras.some((r) => r.status === "bloqueada_dependencia"));
 
   const classificacaoConfiavel =
-    !chaveInvalida && !params.duplicidadeBase && !breAusente && !cd5Ambiguo;
+    !chaveInvalida && !params.duplicidadeBase && !breAusente && !blocosAmbiguo && !cdsMerge.posicaoDuplicada;
 
   const qualidadeDados = calcularQualidadeDados(
     errosLocais,
     alertasDedup,
     params.duplicidadeBase,
     chaveInvalida,
-    breAusente || cd5Ambiguo,
+    breAusente || blocosAmbiguo,
+    cdsMerge.posicaoDuplicada,
   );
 
   const statusOperacional = calcularStatusOperacional({
@@ -240,6 +278,7 @@ export function consolidarProdutoLoja(
     medioPrazo: bre?.medioPrazo ?? null,
     longoPrazo: bre?.longoPrazo ?? null,
     classificacaoConfiavel,
+    cdsPosicaoDuplicada: cdsMerge.posicaoDuplicada,
   });
 
   return {
@@ -272,31 +311,8 @@ export function consolidarProdutoLoja(
     diasRuptura: produto.diasRuptura,
     ultimaEntradaLoja: produto.ultimaEntradaLoja,
     ultimaSaidaLoja: produto.ultimaSaidaLoja,
-    estoqueCd1: produto.estoqueCd1,
-    estoqueCd2: produto.estoqueCd2,
-    estoqueCd3: produto.estoqueCd3,
-    estoqueCd4: produto.estoqueCd4,
-    estoqueCd5: cd5?.estoqueCd5 ?? null,
-    pendenciaCd1: produto.pendenciaCd1,
-    pendenciaCd2: produto.pendenciaCd2,
-    pendenciaCd3: produto.pendenciaCd3,
-    pendenciaCd4: produto.pendenciaCd4,
-    pendenciaCd5: cd5?.pendenciaCd5 ?? null,
-    statusCompraCd1: produto.statusCompraCd1,
-    statusCompraCd2: produto.statusCompraCd2,
-    statusCompraCd3: produto.statusCompraCd3,
-    statusCompraCd4: produto.statusCompraCd4,
-    statusCompraCd5: cd5?.statusCompraCd5 ?? null,
-    diasCompraCd1: produto.diasCompraCd1,
-    diasCompraCd2: produto.diasCompraCd2,
-    diasCompraCd3: produto.diasCompraCd3,
-    diasCompraCd4: produto.diasCompraCd4,
-    diasCompraCd5: cd5?.diasCompraCd5 ?? null,
-    diasRecebtoCd1: produto.diasRecebtoCd1,
-    diasRecebtoCd2: produto.diasRecebtoCd2,
-    diasRecebtoCd3: produto.diasRecebtoCd3,
-    diasRecebtoCd4: produto.diasRecebtoCd4,
-    diasRecebtoCd5: cd5?.diasRecebtoCd5 ?? null,
+    cds: cdsMerge.cds,
+    ...legadoFlat,
     somaEstoqueCd: bre?.somaEstoqueCd ?? null,
     crossSum: bre?.crossSum ?? null,
     crossDocking: bre?.crossDocking ?? null,
@@ -315,21 +331,12 @@ export function consolidarProdutoLoja(
     diasPedido: bre?.diasPedido ?? null,
     acaoCurtoPrazo: bre?.acaoCurtoPrazo ?? null,
     acaoMedioPrazo: bre?.acaoMedioPrazo ?? null,
-    primeiroCd: bre?.primeiroCd ?? ordemJoin.ordem?.cd1 ?? null,
-    segundoCd: bre?.segundoCd ?? ordemJoin.ordem?.cd2 ?? null,
-    terceiroCd: bre?.terceiroCd ?? ordemJoin.ordem?.cd3 ?? null,
-    quartoCd: bre?.quartoCd ?? ordemJoin.ordem?.cd4 ?? null,
-    quintoCd: bre?.quintoCd ?? ordemJoin.ordem?.cd5 ?? null,
+    ...legadoCentralizacao,
     menorDiasRecebimento: bre?.menorRecebimentoCd ?? null,
     produtoCentralizado: bre?.produtoCentralizado ?? null,
     textoProdutoCentralizado: bre?.textoProdutoCentralizado ?? null,
     posicaoCdSelecionada: posicaoResolvida.posicao,
     codigoCdSelecionado: bre?.codigoCdSelecionado ?? null,
-    flagPrimeiroCd: bre?.flagPrimeiroCd ?? null,
-    flagSegundoCd: bre?.flagSegundoCd ?? null,
-    flagTerceiroCd: bre?.flagTerceiroCd ?? null,
-    flagQuartoCd: bre?.flagQuartoCd ?? null,
-    flagQuintoCd: bre?.flagQuintoCd ?? null,
     statusRecebto: bre?.statusRecebtoCentralizacao ?? null,
     statusEstoqueCds: bre?.statusEstoqueCds ?? null,
     statusSolicitacaoAtivacaoCd: bre?.statusSolicitacaoAtivacaoCd ?? null,

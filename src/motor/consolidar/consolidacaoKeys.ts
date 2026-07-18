@@ -20,6 +20,10 @@ export function chaveRegionalProduto(regional: string, seqproduto: number): stri
   return `${regional.trim()}|${seqproduto}`;
 }
 
+export function chaveRegionalLojaProduto(regional: string, loja: number, seqproduto: number): string {
+  return `${regional.trim()}|${loja}|${seqproduto}`;
+}
+
 export function chaveCompradorHierarquia(rede: string, divisao: string, setorN2: string, grupoN3: string): string {
   return `${rede.trim()}|${divisao.trim()}|${setorN2.trim()}|${grupoN3.trim()}`;
 }

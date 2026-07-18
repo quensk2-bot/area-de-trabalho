@@ -1,7 +1,10 @@
 import type { MotorAlerta, MotorBreItemResultado, MotorBreResultado, MotorClassificacaoPrazo } from "../bre/breTypes.ts";
+import type { MotorProdutoCdNormalizado } from "../cds/cdTypes.ts";
 import type { MotorCatalogos } from "../catalog/catalogTypes.ts";
 import type { MotorCd5Normalizado, MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
 import type { MotorInventarioAgrupado, MotorLinhaValidacao } from "../types/motorLinhaTypes.ts";
+import type { MotorBlocoCdsComplementar } from "./cds/consolidarCdsProduto.ts";
+import type { MotorProdutoCdNormalizado } from "../cds/cdTypes.ts";
 
 export type MotorStatusOperacional =
   | "erro_estrutural"
@@ -18,12 +21,25 @@ export type MotorConsolidacaoContexto = {
   regional: string;
   dataReferencia: string;
   catalogos: MotorCatalogos;
+  /** Blocos complementares esperados para a regional (ex.: [2] no piloto MT). Vazio = somente bloco principal. */
+  blocosEsperados?: number[];
+};
+
+export type MotorBlocoCdsComplementarEntrada = {
+  regional?: string;
+  loja: number | null;
+  seqproduto: number;
+  numeroBloco: number;
+  origemArquivo: string;
+  cds: MotorProdutoCdNormalizado[];
 };
 
 export type MotorConsolidacaoEntrada = {
   contexto: MotorConsolidacaoContexto;
   produtosLoja: MotorProdutoLojaNormalizado[];
   cds5: Map<number, MotorCd5Normalizado>;
+  /** Blocos complementares adicionais (bloco 3+, ou com loja na fonte). */
+  blocosCdsComplementares?: MotorBlocoCdsComplementarEntrada[];
   inventario: Map<string, MotorInventarioAgrupado>;
   validacao: Map<string, MotorLinhaValidacao>;
   bre: MotorBreResultado | null;
@@ -58,6 +74,24 @@ export type MotorDuplicidadeDiagnostico = {
   mensagem: string;
 };
 
+export type MotorConsolidacaoMetricasCds = {
+  totalCdsConsolidados: number;
+  produtosCom1Cd: number;
+  produtosCom4Cds: number;
+  produtosCom5Cds: number;
+  produtosComMaisDe5Cds: number;
+  produtosCom8Cds: number;
+  posicoesDuplicadas: number;
+  blocosSobrepostos: number;
+  cdsSemCodigoFisico: number;
+  totalProdutosComCds: number;
+  totalProdutosSemCds: number;
+  mediaCdsPorProduto: number;
+  maxCdsEmUmProduto: number;
+  produtosComPosicoesNaoContiguas: number;
+  produtosComCodigoFisicoAusente: number;
+};
+
 export type MotorConsolidacaoMetricas = {
   linhasEntrada: number;
   linhasSaida: number;
@@ -75,6 +109,7 @@ export type MotorConsolidacaoMetricas = {
   totalAlertas: number;
   totalErros: number;
   duracaoMs: number;
+  cds: MotorConsolidacaoMetricasCds;
 };
 
 export type MotorProdutoLojaConsolidado = {
@@ -107,6 +142,9 @@ export type MotorProdutoLojaConsolidado = {
   diasRuptura: number | null;
   ultimaEntradaLoja: string | null;
   ultimaSaidaLoja: string | null;
+  /** Fonte oficial dos dados por CD — ordenada por posicaoLogica. */
+  cds: MotorProdutoCdNormalizado[];
+  /** Campos flat CD1..5 — derivados via ConsolidadoCdsLegadoAdapter (compatibilidade). */
   estoqueCd1: number | null;
   estoqueCd2: number | null;
   estoqueCd3: number | null;
@@ -192,6 +230,11 @@ export type MotorConsolidacaoResultado = {
 };
 
 export type MotorConsolidacaoIndexes = {
+  /** Blocos complementares indexados por regional|loja|seqproduto (preferencial). */
+  blocosCdsPorChaveLojaProduto: Map<string, MotorBlocoCdsComplementar[]>;
+  /** Blocos complementares sem loja na fonte — regional|seqproduto. */
+  blocosCdsPorChaveRegionalProduto: Map<string, MotorBlocoCdsComplementar[]>;
+  /** @deprecated Use blocosCdsPorChave* — alias legado para testes de transição. */
   cd5PorRegionalProduto: Map<string, MotorCd5Normalizado[]>;
   inventarioPorLojaProduto: Map<string, MotorInventarioAgrupado>;
   validacaoPorLojaProduto: Map<string, MotorLinhaValidacao>;
@@ -212,4 +255,5 @@ export type MotorConsolidacaoLoteContexto = {
   duplicidades: MotorDuplicidadeDiagnostico[];
   erros: MotorConsolidacaoErro[];
   metricasParciais: Omit<MotorConsolidacaoMetricas, "duracaoMs" | "linhasSaida" | "totalAlertas" | "totalErros">;
+  metricasCdsParciais: MotorConsolidacaoMetricasCds;
 };

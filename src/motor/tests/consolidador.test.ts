@@ -10,12 +10,15 @@ import {
   consolidarLote,
   consolidarProdutoLoja,
   construirIndexes,
+  criarMetricasVazias,
   deduplicarAlertas,
   detectarDuplicidadesBase,
+  joinBlocosCdsComplementares,
   joinCd5,
   ordenarProdutos,
   validarChaveConsolidacao,
 } from "../consolidar/index.ts";
+import { criarMetricasCdsVazias } from "../consolidar/cds/consolidacaoCdsMetrics.ts";
 import { compararExcelV7 } from "../compare/compareExcelV7.ts";
 import { CAMPOS_PRIORITARIOS_COMPARE } from "../compare/compareTypes.ts";
 import { ensureCatalogFixtures } from "./fixtures/catalogFixtures.ts";
@@ -41,6 +44,21 @@ function loadFixturesCatalogos() {
     plan6: fixtures.plan6,
     regras: fixtures.regras,
   }).catalogos;
+}
+
+function ctxConsolidadorTeste(
+  entrada: ReturnType<typeof entradaConsolidadorBase>,
+  indexes: ReturnType<typeof construirIndexes>,
+) {
+  return {
+    entrada,
+    indexes,
+    diagnosticosJoin: [] as import("../consolidar/consolidacaoTypes.ts").MotorJoinDiagnostico[],
+    duplicidades: [],
+    erros: [],
+    metricasParciais: criarMetricasVazias(1),
+    metricasCdsParciais: criarMetricasCdsVazias(),
+  };
 }
 
 describe("consolidador keys", () => {
@@ -128,33 +146,16 @@ describe("consolidador joins", () => {
     const catalogos = loadFixturesCatalogos();
     const entrada = entradaConsolidadorBase(catalogos);
     const indexes = construirIndexes(entrada);
-    indexes.cd5PorRegionalProduto.set("NORDESTE|2505088", [cd5Base({ estoqueCd5: 1 }), cd5Base({ estoqueCd5: 9 })]);
+    indexes.blocosCdsPorChaveRegionalProduto.set("NORDESTE|2505088", [
+      { numeroBloco: 2, origemArquivo: "a.txt", loja: null, cds: cd5Base({ estoqueCd5: 1 }).cds },
+      { numeroBloco: 2, origemArquivo: "b.txt", loja: null, cds: cd5Base({ estoqueCd5: 9 }).cds },
+    ]);
     const diagnosticos: import("../consolidar/consolidacaoTypes.ts").MotorJoinDiagnostico[] = [];
-    const join = joinCd5("NORDESTE", 2505088, indexes, diagnosticos);
-    assert.equal(join.cd5, null);
+    const join = joinBlocosCdsComplementares("NORDESTE", 103, 2505088, indexes, diagnosticos);
+    assert.equal(join.blocos.length, 0);
     assert.ok(join.alertas.some((a) => a.codigo === "cd5_ambiguo"));
 
-    const ctx = {
-      entrada,
-      indexes,
-      diagnosticosJoin: [],
-      duplicidades: [],
-      erros: [],
-      metricasParciais: {
-        linhasEntrada: 1,
-        linhasInvalidas: 0,
-        duplicidadesBase: 0,
-        duplicidadesCatalogos: 0,
-        semGrupo2: 0,
-        semInventario: 0,
-        semValidacao: 0,
-        semRede: 0,
-        semBandeira: 0,
-        semOrdem: 0,
-        semComprador: 0,
-        semBre: 0,
-      },
-    };
+    const ctx = ctxConsolidadorTeste(entrada, indexes);
     const item = consolidarProdutoLoja(entrada.produtosLoja[0], ctx, { duplicidadeBase: false });
     assert.equal(item.estoqueCd5, null);
     assert.equal(item.qualidadeDados, "incompleto");
@@ -479,58 +480,21 @@ describe("consolidador item isolado", () => {
       produtosLoja: [produtoConsolidadorBase({ regional: "" })],
     });
     const indexes = construirIndexes(entrada);
-    const ctx = {
-      entrada,
-      indexes,
-      diagnosticosJoin: [],
-      duplicidades: [],
-      erros: [],
-      metricasParciais: {
-        linhasEntrada: 1,
-        linhasInvalidas: 0,
-        duplicidadesBase: 0,
-        duplicidadesCatalogos: 0,
-        semGrupo2: 0,
-        semInventario: 0,
-        semValidacao: 0,
-        semRede: 0,
-        semBandeira: 0,
-        semOrdem: 0,
-        semComprador: 0,
-        semBre: 0,
-      },
-    };
+    const ctx = ctxConsolidadorTeste(entrada, indexes);
     const item = consolidarProdutoLoja(entrada.produtosLoja[0], ctx, { duplicidadeBase: false });
     assert.equal(item.statusOperacional, "erro_estrutural");
     assert.ok(item.alertas.some((a) => a.codigo === "chave_invalida"));
   });
 
-  it("45. dados incompletos com CD5 ambíguo", () => {
+  it("45. dados incompletos com blocos CDs ambíguos", () => {
     const catalogos = loadFixturesCatalogos();
     const entrada = entradaConsolidadorBase(catalogos);
     const indexes = construirIndexes(entrada);
-    indexes.cd5PorRegionalProduto.set("NORDESTE|2505088", [cd5Base({ estoqueCd5: 1 }), cd5Base({ estoqueCd5: 9 })]);
-    const ctx = {
-      entrada,
-      indexes,
-      diagnosticosJoin: [],
-      duplicidades: [],
-      erros: [],
-      metricasParciais: {
-        linhasEntrada: 1,
-        linhasInvalidas: 0,
-        duplicidadesBase: 0,
-        duplicidadesCatalogos: 0,
-        semGrupo2: 0,
-        semInventario: 0,
-        semValidacao: 0,
-        semRede: 0,
-        semBandeira: 0,
-        semOrdem: 0,
-        semComprador: 0,
-        semBre: 0,
-      },
-    };
+    indexes.blocosCdsPorChaveRegionalProduto.set("NORDESTE|2505088", [
+      { numeroBloco: 2, origemArquivo: "a.txt", loja: null, cds: cd5Base({ estoqueCd5: 1 }).cds },
+      { numeroBloco: 2, origemArquivo: "b.txt", loja: null, cds: cd5Base({ estoqueCd5: 9 }).cds },
+    ]);
+    const ctx = ctxConsolidadorTeste(entrada, indexes);
     const item = consolidarProdutoLoja(entrada.produtosLoja[0], ctx, { duplicidadeBase: false });
     assert.equal(item.statusOperacional, "dados_incompletos");
     assert.equal(item.qualidadeDados, "incompleto");

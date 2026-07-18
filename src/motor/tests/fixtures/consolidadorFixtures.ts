@@ -1,13 +1,92 @@
 import type { MotorBreItemResultado, MotorBreResultado } from "../../bre/breTypes.ts";
 import type { MotorCatalogos } from "../../catalog/catalogTypes.ts";
 import type { MotorConsolidacaoEntrada } from "../../consolidar/consolidacaoTypes.ts";
+import type { MotorProdutoCdNormalizado } from "../../cds/cdTypes.ts";
 import type { MotorCd5Normalizado, MotorProdutoLojaNormalizado } from "../../types/motorProdutoLojaNormalizado.ts";
 import type { MotorInventarioAgrupado, MotorLinhaValidacao } from "../../types/motorLinhaTypes.ts";
+import { cdBase } from "./cdsDinamicosFixtures.ts";
+
+/** Helper de fixture — monta cds[] bloco 1 a partir dos valores flat do produto (não usado no Consolidador). */
+export function cdsBloco1FromProdutoFlat(
+  p: Pick<
+    MotorProdutoLojaNormalizado,
+    | "estoqueCd1"
+    | "estoqueCd2"
+    | "estoqueCd3"
+    | "estoqueCd4"
+    | "pendenciaCd1"
+    | "pendenciaCd2"
+    | "pendenciaCd3"
+    | "pendenciaCd4"
+    | "statusCompraCd1"
+    | "statusCompraCd2"
+    | "statusCompraCd3"
+    | "statusCompraCd4"
+    | "diasCompraCd1"
+    | "diasCompraCd2"
+    | "diasCompraCd3"
+    | "diasCompraCd4"
+    | "diasRecebtoCd1"
+    | "diasRecebtoCd2"
+    | "diasRecebtoCd3"
+    | "diasRecebtoCd4"
+    | "regional"
+  >,
+): MotorProdutoCdNormalizado[] {
+  const origem = `${p.regional}-grupo1.txt`;
+  const posicoes: Array<{
+    pos: 1 | 2 | 3 | 4;
+    estoque: number | null;
+    pendencia: number | null;
+    status: string | null;
+    diasCompra: number | null;
+    diasReceb: number | null;
+  }> = [
+    { pos: 1, estoque: p.estoqueCd1, pendencia: p.pendenciaCd1, status: p.statusCompraCd1, diasCompra: p.diasCompraCd1, diasReceb: p.diasRecebtoCd1 },
+    { pos: 2, estoque: p.estoqueCd2, pendencia: p.pendenciaCd2, status: p.statusCompraCd2, diasCompra: p.diasCompraCd2, diasReceb: p.diasRecebtoCd2 },
+    { pos: 3, estoque: p.estoqueCd3, pendencia: p.pendenciaCd3, status: p.statusCompraCd3, diasCompra: p.diasCompraCd3, diasReceb: p.diasRecebtoCd3 },
+    { pos: 4, estoque: p.estoqueCd4, pendencia: p.pendenciaCd4, status: p.statusCompraCd4, diasCompra: p.diasCompraCd4, diasReceb: p.diasRecebtoCd4 },
+  ];
+  return posicoes.map(({ pos, estoque, pendencia, status, diasCompra, diasReceb }) =>
+    cdBase(pos, {
+      estoque,
+      pendencia,
+      statusCompra: status,
+      diasCompra,
+      diasRecebimento: diasReceb,
+      origemArquivo: origem,
+      numeroBloco: 1,
+      posicaoNoArquivo: pos,
+    }),
+  );
+}
+
+/** Helper de fixture — monta cds[] bloco 2 posição 5 a partir do CD5 flat. */
+export function cdsBloco2FromCd5Flat(
+  cd5: Pick<
+    MotorCd5Normalizado,
+    "estoqueCd5" | "pendenciaCd5" | "statusCompraCd5" | "diasCompraCd5" | "diasRecebtoCd5"
+  >,
+  regional = "NORDESTE",
+): MotorProdutoCdNormalizado[] {
+  return [
+    cdBase(5, {
+      estoque: cd5.estoqueCd5,
+      pendencia: cd5.pendenciaCd5,
+      statusCompra: cd5.statusCompraCd5,
+      diasCompra: cd5.diasCompraCd5,
+      diasRecebimento: cd5.diasRecebtoCd5,
+      origemArquivo: `${regional}-grupo2.txt`,
+      numeroBloco: 2,
+      posicaoNoArquivo: 1,
+    }),
+  ];
+}
 
 export function produtoConsolidadorBase(
   overrides: Partial<MotorProdutoLojaNormalizado> = {},
 ): MotorProdutoLojaNormalizado {
-  return {
+  const base: MotorProdutoLojaNormalizado = {
     regional: "NORDESTE",
     dataReferencia: "2026-07-13",
     loja: 103,
@@ -63,10 +142,14 @@ export function produtoConsolidadorBase(
     alertas: [],
     ...overrides,
   };
+  if (base.cds.length === 0) {
+    base.cds = cdsBloco1FromProdutoFlat(base);
+  }
+  return base;
 }
 
 export function cd5Base(overrides: Partial<MotorCd5Normalizado> = {}): MotorCd5Normalizado {
-  return {
+  const base: MotorCd5Normalizado = {
     seqproduto: 2505088,
     statusCompraCd5: "A",
     estoqueCd5: 3,
@@ -77,6 +160,10 @@ export function cd5Base(overrides: Partial<MotorCd5Normalizado> = {}): MotorCd5N
     cds: [],
     ...overrides,
   };
+  if (base.cds.length === 0) {
+    base.cds = cdsBloco2FromCd5Flat(base);
+  }
+  return base;
 }
 
 export function breItemBase(overrides: Partial<MotorBreItemResultado> = {}): MotorBreItemResultado {
@@ -186,6 +273,7 @@ export function entradaConsolidadorBase(
       regional: "NORDESTE",
       dataReferencia: "2026-07-13",
       catalogos,
+      blocosEsperados: [2],
     },
     produtosLoja: [produto],
     cds5: new Map([[2505088, cd5Base()]]),
@@ -193,5 +281,43 @@ export function entradaConsolidadorBase(
     validacao: new Map([[chave, validacao]]),
     bre: breResultadoBase([breItemBase()]),
     ...overrides,
+  };
+}
+
+/** Simula saída flat legada (pré-Etapa C) para gate de equivalência MT. */
+export function simularFlatLegadoConsolidado(
+  produto: MotorProdutoLojaNormalizado,
+  estoqueCd5: number | null,
+  pendenciaCd5: number | null,
+  statusCompraCd5: string | null,
+  diasCompraCd5: number | null,
+  diasRecebtoCd5: number | null,
+) {
+  return {
+    estoqueCd1: produto.estoqueCd1,
+    estoqueCd2: produto.estoqueCd2,
+    estoqueCd3: produto.estoqueCd3,
+    estoqueCd4: produto.estoqueCd4,
+    estoqueCd5,
+    pendenciaCd1: produto.pendenciaCd1,
+    pendenciaCd2: produto.pendenciaCd2,
+    pendenciaCd3: produto.pendenciaCd3,
+    pendenciaCd4: produto.pendenciaCd4,
+    pendenciaCd5,
+    statusCompraCd1: produto.statusCompraCd1,
+    statusCompraCd2: produto.statusCompraCd2,
+    statusCompraCd3: produto.statusCompraCd3,
+    statusCompraCd4: produto.statusCompraCd4,
+    statusCompraCd5,
+    diasCompraCd1: produto.diasCompraCd1,
+    diasCompraCd2: produto.diasCompraCd2,
+    diasCompraCd3: produto.diasCompraCd3,
+    diasCompraCd4: produto.diasCompraCd4,
+    diasCompraCd5,
+    diasRecebtoCd1: produto.diasRecebtoCd1,
+    diasRecebtoCd2: produto.diasRecebtoCd2,
+    diasRecebtoCd3: produto.diasRecebtoCd3,
+    diasRecebtoCd4: produto.diasRecebtoCd4,
+    diasRecebtoCd5,
   };
 }

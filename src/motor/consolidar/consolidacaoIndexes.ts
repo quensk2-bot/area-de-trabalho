@@ -3,10 +3,12 @@ import { mergeCompradores } from "../catalog/parseCompradores.ts";
 import type { MotorBreItemResultado } from "../bre/breTypes.ts";
 import type { MotorCd5Normalizado, MotorProdutoLojaNormalizado } from "../types/motorProdutoLojaNormalizado.ts";
 import type { MotorInventarioAgrupado, MotorLinhaValidacao } from "../types/motorLinhaTypes.ts";
+import type { MotorBlocoCdsComplementar } from "./cds/consolidarCdsProduto.ts";
 import {
   chaveCompradorHierarquia,
   chaveConsolidacao,
   chaveLojaProduto,
+  chaveRegionalLojaProduto,
   chaveRegionalProduto,
   validarChaveConsolidacao,
 } from "./consolidacaoKeys.ts";
@@ -25,6 +27,15 @@ function buildCompradorIndex(compradores: CatalogoComprador[]): Map<string, stri
     appendMultiMap(map, chave, c.comprador);
   }
   return map;
+}
+
+function cd5ParaBlocoComplementar(cd5: MotorCd5Normalizado, regional: string): MotorBlocoCdsComplementar {
+  return {
+    numeroBloco: 2,
+    origemArquivo: cd5.cds[0]?.origemArquivo ?? `${regional}-grupo2.txt`,
+    loja: null,
+    cds: cd5.cds.map((cd) => ({ ...cd, numeroBloco: cd.numeroBloco || 2 })),
+  };
 }
 
 export function detectarDuplicidadesBase(produtos: MotorProdutoLojaNormalizado[]): Map<string, number> {
@@ -46,9 +57,37 @@ export function construirIndexes(entrada: MotorConsolidacaoEntrada): MotorConsol
   const { contexto, produtosLoja, cds5, inventario, validacao, bre } = entrada;
   const regional = contexto.regional;
 
+  const blocosCdsPorChaveLojaProduto = new Map<string, MotorBlocoCdsComplementar[]>();
+  const blocosCdsPorChaveRegionalProduto = new Map<string, MotorBlocoCdsComplementar[]>();
   const cd5PorRegionalProduto = new Map<string, MotorCd5Normalizado[]>();
+
   for (const [seqproduto, cd5] of cds5) {
+    const bloco = cd5ParaBlocoComplementar(cd5, regional);
+    appendMultiMap(
+      blocosCdsPorChaveRegionalProduto,
+      chaveRegionalProduto(regional, seqproduto),
+      bloco,
+    );
     appendMultiMap(cd5PorRegionalProduto, chaveRegionalProduto(regional, seqproduto), cd5);
+  }
+
+  for (const extra of entrada.blocosCdsComplementares ?? []) {
+    const chaveRegional = chaveRegionalProduto(extra.regional ?? regional, extra.seqproduto);
+    const bloco: MotorBlocoCdsComplementar = {
+      numeroBloco: extra.numeroBloco,
+      origemArquivo: extra.origemArquivo,
+      loja: extra.loja,
+      cds: extra.cds.map((cd) => ({ ...cd })),
+    };
+    if (extra.loja != null && extra.loja > 0) {
+      appendMultiMap(
+        blocosCdsPorChaveLojaProduto,
+        chaveRegionalLojaProduto(extra.regional ?? regional, extra.loja, extra.seqproduto),
+        bloco,
+      );
+    } else {
+      appendMultiMap(blocosCdsPorChaveRegionalProduto, chaveRegional, bloco);
+    }
   }
 
   const inventarioPorLojaProduto = new Map<string, MotorInventarioAgrupado>(inventario);
@@ -97,6 +136,8 @@ export function construirIndexes(entrada: MotorConsolidacaoEntrada): MotorConsol
   const chavesDuplicadasBase = detectarDuplicidadesBase(produtosLoja);
 
   return {
+    blocosCdsPorChaveLojaProduto,
+    blocosCdsPorChaveRegionalProduto,
     cd5PorRegionalProduto,
     inventarioPorLojaProduto,
     validacaoPorLojaProduto,

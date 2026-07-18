@@ -1,4 +1,5 @@
 import type { MotorConsolidacaoMetricas } from "./consolidacaoTypes.ts";
+import { criarMetricasCdsVazias } from "./cds/consolidacaoCdsMetrics.ts";
 
 export function criarMetricasVazias(linhasEntrada: number): Omit<
   MotorConsolidacaoMetricas,
@@ -17,6 +18,7 @@ export function criarMetricasVazias(linhasEntrada: number): Omit<
     semOrdem: 0,
     semComprador: 0,
     semBre: 0,
+    cds: criarMetricasCdsVazias(),
   };
 }
 

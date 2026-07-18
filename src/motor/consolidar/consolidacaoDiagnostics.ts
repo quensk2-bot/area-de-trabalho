@@ -62,12 +62,20 @@ const ALERTAS_CRITICOS = new Set([
   "duplicidade_base",
   "resultado_bre_ausente",
   "cd5_ambiguo",
+  "cd_posicao_duplicada",
+  "cd_bloco_sobreposto",
+  "cd_colecao_invalida",
+  "cd_origem_repetida",
   "rede_duplicada",
   "catalogo_duplicado",
 ]);
 
 const ALERTAS_OPCIONAIS = new Set([
   "grupo2_ausente",
+  "cd_bloco_ausente",
+  "cd_codigo_fisico_ausente",
+  "cd_posicao_nao_contigua",
+  "cd_posicao_fora_de_ordem",
   "inventario_ausente",
   "validacao_ausente",
   "rede_ausente",
@@ -85,8 +93,11 @@ export function calcularQualidadeDados(
   duplicidadeBase: boolean,
   chaveInvalida: boolean,
   breAusente: boolean,
+  cdsPosicaoDuplicada = false,
 ): MotorQualidadeDados {
-  if (chaveInvalida || duplicidadeBase || erros.some((e) => e.severidade === "erro")) return "invalido";
+  if (chaveInvalida || duplicidadeBase || cdsPosicaoDuplicada || erros.some((e) => e.severidade === "erro")) {
+    return "invalido";
+  }
   if (breAusente || alertas.some((a) => ALERTAS_CRITICOS.has(a.codigo))) return "incompleto";
   if (alertas.some((a) => ALERTAS_OPCIONAIS.has(a.codigo))) return "completo_com_alertas";
   return "completo";
@@ -101,8 +112,9 @@ export function calcularStatusOperacional(params: {
   medioPrazo: number | null;
   longoPrazo: number | null;
   classificacaoConfiavel: boolean;
+  cdsPosicaoDuplicada?: boolean;
 }): MotorStatusOperacional {
-  if (params.chaveInvalida || params.duplicidadeBase) return "erro_estrutural";
+  if (params.chaveInvalida || params.duplicidadeBase || params.cdsPosicaoDuplicada) return "erro_estrutural";
   if (params.breAusente || params.breBloqueado) return "bloqueado";
   if (!params.classificacaoConfiavel) return "dados_incompletos";
   if (params.curtoPrazo === 1) return "curto_prazo";

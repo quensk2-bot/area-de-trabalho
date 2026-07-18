@@ -2,6 +2,7 @@ import { consolidarProdutoLoja } from "./consolidarProdutoLoja.ts";
 import { construirIndexes, contarDuplicidadesCatalogo, detectarDuplicidadesBase } from "./consolidacaoIndexes.ts";
 import { chaveConsolidacao, validarChaveConsolidacao } from "./consolidacaoKeys.ts";
 import { criarMetricasVazias, finalizarMetricas } from "./consolidacaoMetrics.ts";
+import { criarMetricasCdsVazias, finalizarMetricasCds } from "./cds/consolidacaoCdsMetrics.ts";
 import type { MotorConsolidacaoEntrada, MotorConsolidacaoLoteContexto, MotorConsolidacaoResultado } from "./consolidacaoTypes.ts";
 
 function ordenarProdutos(entrada: MotorConsolidacaoEntrada): MotorConsolidacaoEntrada["produtosLoja"] {
@@ -17,6 +18,7 @@ export function consolidarLote(entrada: MotorConsolidacaoEntrada, chunkSize = 50
   const inicioMs = Date.now();
   const indexes = construirIndexes(entrada);
   const metricasParciais = criarMetricasVazias(entrada.produtosLoja.length);
+  const metricasCdsParciais = criarMetricasCdsVazias();
   metricasParciais.duplicidadesCatalogos = contarDuplicidadesCatalogo(entrada);
 
   const ctx: MotorConsolidacaoLoteContexto = {
@@ -26,6 +28,7 @@ export function consolidarLote(entrada: MotorConsolidacaoEntrada, chunkSize = 50
     duplicidades: [],
     erros: [],
     metricasParciais,
+    metricasCdsParciais,
   };
 
   const ordenados = ordenarProdutos(entrada);
@@ -53,6 +56,9 @@ export function consolidarLote(entrada: MotorConsolidacaoEntrada, chunkSize = 50
       itens.push(item);
     }
   }
+
+  finalizarMetricasCds(metricasCdsParciais);
+  metricasParciais.cds = metricasCdsParciais;
 
   const totalAlertas = itens.reduce((acc, i) => acc + i.alertas.length, 0);
   const metricas = finalizarMetricas(metricasParciais, itens.length, totalAlertas, ctx.erros.length, Date.now() - inicioMs);
