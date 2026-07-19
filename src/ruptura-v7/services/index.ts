@@ -3,4 +3,7 @@ export * from "./rupturaProdutosService.ts";
 export * from "./rupturaAcoesService.ts";
 export * from "./rupturaExecucoesService.ts";
 export * from "./rupturaCdsService.ts";
+export * from "./rupturaDriveListService.ts";
+export * from "./rupturaPacoteDriveService.ts";
+export * from "./rupturaOficialService.ts";
 export * from "./rupturaDb.ts";

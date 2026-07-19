@@ -7,9 +7,11 @@ type Props = {
   onChange: (patch: Partial<RupturaFiltrosContexto>) => void;
   onAtualizar?: () => void;
   extra?: ReactNode;
+  /** Importação Drive usa escopo regional — loja não filtra o pacote. */
+  ocultarLoja?: boolean;
 };
 
-export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra }: Props) {
+export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarLoja }: Props) {
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
@@ -25,15 +27,17 @@ export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra }: Props)
           onChange={(e) => onChange({ dataReferencia: e.target.value })}
         />
       </label>
-      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-        Loja
-        <input
-          style={inputStyle}
-          type="number"
-          value={ctx.loja}
-          onChange={(e) => onChange({ loja: Number(e.target.value) || 0 })}
-        />
-      </label>
+      {!ocultarLoja && (
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+          Loja
+          <input
+            style={inputStyle}
+            type="number"
+            value={ctx.loja}
+            onChange={(e) => onChange({ loja: Number(e.target.value) || 0 })}
+          />
+        </label>
+      )}
       {onAtualizar && (
         <button type="button" style={buttonGhostStyle} onClick={onAtualizar}>
           Atualizar

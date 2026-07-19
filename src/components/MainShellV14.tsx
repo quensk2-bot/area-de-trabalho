@@ -49,6 +49,8 @@ import {
   RupturaDashboardPage,
   RupturaExecucoesPage,
   RupturaGestaoPage,
+  RupturaImportacaoDrivePage,
+  RupturaVisao360Page,
 } from "../ruptura-v7/RupturaPages";
 
 type Props = {
@@ -92,6 +94,8 @@ type MenuKey =
   | "loja-ponto-acompanhamento"
   | "loja-ponto-relatorio"
   | "loja-ruptura-dashboard"
+  | "loja-ruptura-importacao"
+  | "loja-ruptura-visao360"
   | "loja-ruptura-gestao"
   | "loja-ruptura-acoes"
   | "loja-ruptura-execucoes";
@@ -358,6 +362,8 @@ const LOJA_ROUTES: Partial<Record<MenuKey, string>> = {
   "loja-ponto-acompanhamento": "/loja/ponto-extra/acompanhamento",
   "loja-ponto-relatorio": "/loja/ponto-extra/relatorio",
   "loja-ruptura-dashboard": "/loja/ruptura",
+  "loja-ruptura-importacao": "/loja/ruptura/importacao",
+  "loja-ruptura-visao360": "/loja/ruptura/visao-360",
   "loja-ruptura-gestao": "/loja/ruptura/gestao",
   "loja-ruptura-acoes": "/loja/ruptura/acoes",
   "loja-ruptura-execucoes": "/loja/ruptura/execucoes",
@@ -628,6 +634,8 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     () =>
       [
         ["loja-ruptura-dashboard", "Dashboard"],
+        ["loja-ruptura-importacao", "Importação Drive"],
+        ["loja-ruptura-visao360", "Visão 360° Oficial"],
         ["loja-ruptura-gestao", "Gestão Operacional"],
         ["loja-ruptura-acoes", "Central de Ações"],
         ["loja-ruptura-execucoes", "Execuções do Motor"],
@@ -853,6 +861,10 @@ export const MainShellV14: React.FC<Props> = ({ perfil, onLogout }) => {
     let content: React.ReactNode;
     if (menu === "loja-ruptura-gestao") {
       content = <RupturaGestaoPage />;
+    } else if (menu === "loja-ruptura-importacao") {
+      content = <RupturaImportacaoDrivePage />;
+    } else if (menu === "loja-ruptura-visao360") {
+      content = <RupturaVisao360Page />;
     } else if (menu === "loja-ruptura-acoes") {
       content = <RupturaCentralAcoesPage />;
     } else if (menu === "loja-ruptura-execucoes") {

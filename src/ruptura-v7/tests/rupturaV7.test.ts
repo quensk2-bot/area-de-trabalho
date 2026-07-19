@@ -180,3 +180,38 @@ describe("ruptura-v7 — fronteiras", () => {
   });
 });
 
+describe("ruptura-v7 — visao 360 oficial", () => {
+  it("universo oficial default e referencia planilha loja 73", async () => {
+    const { UNIVERSO_LEITURA_DEFAULT, REFERENCIA_PLANILHA_LOJA73 } = await import("../types/rupturaOficialTypes.ts");
+    assert.equal(UNIVERSO_LEITURA_DEFAULT, "base_oficial_elegivel");
+    assert.equal(REFERENCIA_PLANILHA_LOJA73.skus, 8275);
+    assert.equal(REFERENCIA_PLANILHA_LOJA73.ruptura, 799);
+  });
+
+  it("rupturaDriveListService nao contem credenciais Google", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("../services/rupturaDriveListService.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /GOOGLE_DRIVE_PRIVATE_KEY/);
+    assert.doesNotMatch(src, /client_secret/);
+    assert.match(src, /functions\.invoke\("listar-arquivos-motor-drive"/);
+  });
+
+  it("rupturaPacoteDriveService usa consumo_v7 e infra_v7", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("../services/rupturaPacoteDriveService.ts", import.meta.url), "utf8");
+    assert.match(src, /consumoDb\(\)/);
+    assert.match(src, /schema\("infra_v7"\)/);
+    assert.match(src, /\.rpc\("sincronizar_pacote_motor_drive_v1"/);
+    assert.match(src, /\.rpc\("validar_pacote_motor_drive_v1"/);
+    assert.doesNotMatch(src, /GOOGLE_DRIVE_PRIVATE_KEY/);
+  });
+
+  it("processar permanece desabilitado na pagina importacao drive", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("../pages/RupturaImportacaoDrivePage.tsx", import.meta.url), "utf8");
+    assert.match(src, /Processar — disponível na Fase 4C\.4/);
+    assert.match(src, /PIPELINE_PROCESSAR_TOOLTIP/);
+    assert.match(src, /disabled/);
+  });
+});
+
