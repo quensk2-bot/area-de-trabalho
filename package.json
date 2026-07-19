@@ -21,7 +21,8 @@
     "motor:persistencia-carga-piloto-mt": "npx tsx src/motor/scripts/persistenciaCargaPilotoMt.ts",
     "motor:diagnostico-classificacao-prazo": "npx tsx src/motor/scripts/diagnosticoClassificacaoPrazo.ts",
     "motor:test": "node --import tsx --test --test-concurrency=1 src/motor/tests/**/*.test.ts",
-    "motor:drive:test": "node --import tsx --test --test-concurrency=1 src/motor/drive/tests/**/*.test.ts",
+    "motor:drive:test": "node --import tsx --test --test-concurrency=1 src/motor/drive/tests/**/*.test.ts src/motor/drive/worker/tests/**/*.test.ts",
+    "motor:drive-worker": "npx tsx src/motor/cli/motorDriveWorkerCli.ts",
     "drive:setup-secrets": "node scripts/drive-setup-supabase-secrets.mjs",
     "drive:explore": "node scripts/drive-explore-tree.mjs",
     "ruptura-v7:test": "node --import tsx --test --test-concurrency=1 src/ruptura-v7/tests/**/*.test.ts"

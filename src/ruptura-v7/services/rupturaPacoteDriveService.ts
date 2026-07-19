@@ -69,6 +69,47 @@ export type PacoteMotorDriveArquivoView = {
   status: string;
   precisa_padronizacao: boolean;
   observacao: string | null;
+  tamanho_baixado_bytes?: number | null;
+  hash_validado?: boolean;
+  validacao_conteudo_status?: string | null;
+  padronizacao_status?: string | null;
+};
+
+export type PacoteMotorDriveProgresso = {
+  pacote_id: string;
+  regional: string;
+  competencia: string;
+  data_referencia: string;
+  status: string;
+  hash_metadados_pacote: string | null;
+  hash_conteudo_pacote: string | null;
+  hash_reduzido: string | null;
+  worker_id: string | null;
+  download_iniciado_em: string | null;
+  download_finalizado_em: string | null;
+  padronizacao_iniciada_em: string | null;
+  padronizacao_finalizada_em: string | null;
+  tamanho_total_bytes: number | null;
+  quantidade_arquivos_encontrados?: number | null;
+  erro_resumo: string | null;
+};
+
+export type WorkerSolicitacaoResumo = {
+  solicitacao_id: string;
+  pacote_id: string;
+  tipo: string;
+  status: string;
+  metricas: Record<string, unknown>;
+  erro_resumo: string | null;
+  pacote_status: string;
+};
+
+export type CriarSolicitacaoWorkerResult = {
+  ok: boolean;
+  solicitacaoId?: string;
+  pacoteId?: string;
+  status?: string;
+  message?: string;
 };
 
 export type SincronizarPacoteResult = {
@@ -231,23 +272,54 @@ export async function validarPacoteMotorDrive(pacoteId: string, origem: "drive" 
   };
 }
 
+export async function criarSolicitacaoWorker(pacoteId: string): Promise<CriarSolicitacaoWorkerResult> {
+  const { data, error } = await infraDb().rpc("criar_solicitacao_worker_v1", { p_pacote_id: pacoteId });
+  if (error) return { ok: false, message: error.message };
+  const parsed = data as Record<string, unknown>;
+  return {
+    ok: !!parsed.ok,
+    solicitacaoId: parsed.solicitacaoId as string | undefined,
+    pacoteId: parsed.pacoteId as string | undefined,
+    status: parsed.status as string | undefined,
+    message: parsed.message as string | undefined,
+  };
+}
+
+export async function buscarProgressoPacote(pacoteId: string): Promise<PacoteMotorDriveProgresso | null> {
+  const { data, error } = await consumoDb()
+    .from("vw_pacote_motor_drive_progresso")
+    .select("*")
+    .eq("pacote_id", pacoteId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as PacoteMotorDriveProgresso | null) ?? null;
+}
+
+export async function listarArquivosProgressoPacote(pacoteId: string): Promise<PacoteMotorDriveArquivoView[]> {
+  const { data, error } = await consumoDb()
+    .from("vw_pacote_motor_drive_arquivo_progresso")
+    .select("*")
+    .eq("pacote_id", pacoteId)
+    .order("ordem_processamento", { ascending: true, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PacoteMotorDriveArquivoView[];
+}
+
+export async function buscarSolicitacaoWorkerPacote(pacoteId: string): Promise<WorkerSolicitacaoResumo | null> {
+  const { data, error } = await consumoDb()
+    .from("vw_worker_solicitacao_resumo")
+    .select("*")
+    .eq("pacote_id", pacoteId)
+    .order("solicitado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as WorkerSolicitacaoResumo | null) ?? null;
+}
+
 export function competenciaDivergeDaPasta(competenciaAno: number, competenciaMes: number, pasta: DrivePastaMotorAtiva | null): boolean {
   if (!pasta) return false;
   return pasta.ano !== competenciaAno || pasta.mes !== competenciaMes;
 }
 
-export const PIPELINE_PROCESSAR_TOOLTIP = [
-  "Drive",
-  "↓",
-  "Worker Node",
-  "↓",
-  "Padronização",
-  "↓",
-  "Motor Operacional",
-  "↓",
-  "Data Mart",
-  "↓",
-  "Versão Ativa",
-  "↓",
-  "Dashboard",
-].join("\n");
+export const PIPELINE_PROCESSAR_TOOLTIP = "O Motor será liberado somente na Fase 4C.4.";

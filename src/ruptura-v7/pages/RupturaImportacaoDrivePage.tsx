@@ -29,15 +29,22 @@ import {
 import {
   PIPELINE_PROCESSAR_TOOLTIP,
   buscarPastaMotorAtiva,
+  buscarProgressoPacote,
+  buscarSolicitacaoWorkerPacote,
   competenciaDivergeDaPasta,
+  criarSolicitacaoWorker,
   listarArquivosPacote,
+  listarArquivosProgressoPacote,
   listarHistoricoPacotes,
   prepararClassificacaoDrive,
   sincronizarPacoteMotorDrive,
   validarPacoteMotorDrive,
   type DrivePastaMotorAtiva,
   type PacoteMotorDriveHistorico,
+  type PacoteMotorDriveProgresso,
+  type WorkerSolicitacaoResumo,
 } from "../services/rupturaPacoteDriveService.ts";
+import { RupturaPacoteDriveWorkerTimeline } from "../components/RupturaPacoteDriveWorkerTimeline.tsx";
 
 function formatBytes(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -75,6 +82,8 @@ export function RupturaImportacaoDrivePage() {
   const [ultimaConferencia, setUltimaConferencia] = useState<string | null>(null);
   const [perm, setPerm] = useState<{ podeListar: boolean; podeValidar: boolean; nivel?: string; msg?: string } | null>(null);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
+  const [progresso, setProgresso] = useState<PacoteMotorDriveProgresso | null>(null);
+  const [solicitacaoWorker, setSolicitacaoWorker] = useState<WorkerSolicitacaoResumo | null>(null);
 
   const competenciaLabel = useMemo(() => `${String(mes).padStart(2, "0")}/${ano}`, [mes, ano]);
   const competenciaInformadaDiverge = useMemo(
@@ -114,6 +123,66 @@ export function RupturaImportacaoDrivePage() {
   useEffect(() => {
     void carregarPastaEHistorico();
   }, [carregarPastaEHistorico]);
+
+  const carregarProgressoWorker = useCallback(async (id: string) => {
+    try {
+      const [p, s, arqs] = await Promise.all([
+        buscarProgressoPacote(id),
+        buscarSolicitacaoWorkerPacote(id),
+        listarArquivosProgressoPacote(id),
+      ]);
+      setProgresso(p);
+      setSolicitacaoWorker(s);
+      if (arqs.length) {
+        setClassificados(
+          arqs.map((a) => ({
+            driveFileId: a.drive_file_id,
+            nome: a.nome_original,
+            mimeType: null,
+            tamanhoBytes: a.tamanho_bytes,
+            modifiedTime: a.modified_time,
+            md5Checksum: a.md5_drive,
+            tipoArquivo: a.tipo_arquivo as ArquivoPacoteDriveClassificado["tipoArquivo"],
+            nomeNormalizado: a.nome_original,
+            extensao: a.extensao ?? "",
+            obrigatorio: true,
+            reconhecido: a.status === "reconhecido",
+            duplicado: a.status === "duplicado",
+            vazio: a.status === "vazio",
+            precisaPadronizacao: a.precisa_padronizacao,
+            ordemProcessamento: a.ordem_processamento,
+            categoriaTamanho: (a.categoria_tamanho as ArquivoPacoteDriveClassificado["categoriaTamanho"]) ?? "pequeno",
+            parserDestino: a.parser_destino,
+            motorEtapa: a.motor_etapa,
+            status: a.status as ArquivoPacoteDriveClassificado["status"],
+            observacao: a.observacao,
+            avisos: a.observacao ? [a.observacao] : [],
+          })),
+        );
+      }
+      if (p?.status) setStatusPacote(p.status);
+    } catch {
+      /* progresso opcional */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pacoteId) return;
+    const workerStatuses = [
+      "aguardando_worker",
+      "baixando",
+      "validando_conteudo",
+      "padronizando",
+      "pronto_motor",
+      "falhou_download",
+      "falhou_validacao",
+      "falhou_padronizacao",
+    ];
+    if (!statusPacote || !workerStatuses.includes(statusPacote)) return;
+    void carregarProgressoWorker(pacoteId);
+    const t = setInterval(() => void carregarProgressoWorker(pacoteId), 8000);
+    return () => clearInterval(t);
+  }, [pacoteId, statusPacote, carregarProgressoWorker]);
 
   const diagnostico = useMemo(() => {
     if (!resumo) return null;
@@ -226,6 +295,32 @@ export function RupturaImportacaoDrivePage() {
     setLoading(false);
   };
 
+  const prepararArquivos = async () => {
+    if (!pacoteId) {
+      setErro("Valide o pacote antes de preparar os arquivos.");
+      return;
+    }
+    setLoading(true);
+    setErro(null);
+    const res = await criarSolicitacaoWorker(pacoteId);
+    if (!res.ok) {
+      setErro(res.message ?? "Falha ao criar solicitação do Worker");
+      setLoading(false);
+      return;
+    }
+    setStatusPacote(res.status ?? "aguardando_worker");
+    setInfo(res.message ?? "Solicitação registrada. Aguardando Worker.");
+    await carregarProgressoWorker(pacoteId);
+    await carregarPastaEHistorico();
+    setLoading(false);
+  };
+
+  const metricasWorker = solicitacaoWorker?.metricas as Record<string, unknown> | undefined;
+  const arquivosConcluidos = Number(metricasWorker?.arquivosBaixados ?? progresso?.quantidade_arquivos_encontrados ?? 0);
+  const bytesBaixados = Number(metricasWorker?.bytesBaixados ?? 0);
+  const bytesTotal = Number(metricasWorker?.bytesTotal ?? progresso?.tamanho_total_bytes ?? 0);
+  const duracaoSeg = metricasWorker?.duracaoMs ? Math.round(Number(metricasWorker.duracaoMs) / 1000) : null;
+
   const abrirPacoteHistorico = async (id: string) => {
     setLoading(true);
     try {
@@ -276,7 +371,7 @@ export function RupturaImportacaoDrivePage() {
           Importação Drive — Motor Ruptura
         </h1>
         <p style={{ margin: "6px 0 0", color: theme.colors.textMuted, fontSize: 13 }}>
-          Fase 4C.2 — cadastro de pastas, pacotes e validação de metadados. Nenhum download ou processamento nesta etapa.
+          Fase 4C.3 — metadados, solicitação Worker, download local e padronização. O Motor ainda não é executado nesta etapa.
         </p>
       </header>
 
@@ -321,6 +416,14 @@ export function RupturaImportacaoDrivePage() {
         <button type="button" style={buttonGhostStyle} disabled={loading || !perm?.podeValidar || !pacoteId} onClick={() => void validarPacote()}>
           Validar pacote
         </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          disabled={loading || !perm?.podeValidar || !pacoteId || statusPacote !== "pronto_processamento"}
+          onClick={() => void prepararArquivos()}
+        >
+          Preparar arquivos
+        </button>
         <button type="button" style={buttonGhostStyle} disabled={loading} onClick={() => void carregarPastaEHistorico()}>
           Atualizar
         </button>
@@ -329,7 +432,7 @@ export function RupturaImportacaoDrivePage() {
         </button>
         <span title={PIPELINE_PROCESSAR_TOOLTIP}>
           <button type="button" style={{ ...buttonGhostStyle, opacity: 0.55, cursor: "not-allowed" }} disabled>
-            Processar — disponível na Fase 4C.4
+            Processar Motor
           </button>
         </span>
       </div>
@@ -404,6 +507,26 @@ export function RupturaImportacaoDrivePage() {
       />
 
       <RupturaPacoteDriveChecklist diagnostico={diagnostico} />
+
+      <RupturaPacoteDriveWorkerTimeline
+        status={statusPacote}
+        bytesBaixados={bytesBaixados}
+        bytesTotal={bytesTotal}
+        arquivoAtual={(metricasWorker?.arquivoAtual as string) ?? null}
+        duracaoSegundos={duracaoSeg}
+        erroResumo={progresso?.erro_resumo ?? solicitacaoWorker?.erro_resumo}
+        arquivosConcluidos={arquivosConcluidos}
+        arquivosTotal={classificados.length}
+      />
+
+      {progresso?.hash_conteudo_pacote && (
+        <p style={helpTextStyle}>
+          Hash conteúdo: <code>{progresso.hash_conteudo_pacote.slice(0, 12)}…</code>
+          {progresso.hash_metadados_pacote ? (
+            <> · Hash metadados: <code>{progresso.hash_metadados_pacote.slice(0, 12)}…</code></>
+          ) : null}
+        </p>
+      )}
 
       {arquivosOrdenados.length > 0 && (
         <div style={{ ...cardStyle, overflowX: "auto" }}>

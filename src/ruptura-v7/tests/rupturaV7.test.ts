@@ -209,8 +209,9 @@ describe("ruptura-v7 — visao 360 oficial", () => {
   it("processar permanece desabilitado na pagina importacao drive", async () => {
     const fs = await import("node:fs/promises");
     const src = await fs.readFile(new URL("../pages/RupturaImportacaoDrivePage.tsx", import.meta.url), "utf8");
-    assert.match(src, /Processar — disponível na Fase 4C\.4/);
+    assert.match(src, /Processar Motor/);
     assert.match(src, /PIPELINE_PROCESSAR_TOOLTIP/);
+    assert.match(src, /Preparar arquivos/);
     assert.match(src, /disabled/);
   });
 });
