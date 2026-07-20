@@ -31,10 +31,27 @@ export function isProjetoHibridoUrl(url: string): boolean {
 }
 
 export function assertFrontendEnvSeguro(): void {
+  const err = getHybridEnvError();
+  if (err) console.warn(`[auth-v7] ${err}`);
+}
+
+/** Bloqueia app híbrido se URL/anon inválidos (ex.: GitHub Secrets desatualizados). */
+export function getHybridEnvError(): string | null {
+  if (!isModoHibrido()) return null;
   const url = getSupabaseUrl();
-  if (isModoHibrido() && url && !isProjetoHibridoUrl(url)) {
-    console.warn("[auth-v7] VITE_MODO_HIBRIDO=true mas URL não aponta para o projeto híbrido.");
+  const anon = getSupabaseAnonKey();
+  if (!url || !anon) {
+    return "VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY ausentes no build. Atualize os GitHub Secrets e rode o deploy novamente.";
   }
+  if (!isProjetoHibridoUrl(url)) {
+    return `VITE_SUPABASE_URL não aponta para o projeto híbrido (${PROJETO_HIBRIDO_REF}). Atualize o secret no GitHub e redeploy.`;
+  }
+  try {
+    new URL(url);
+  } catch {
+    return "VITE_SUPABASE_URL inválida no build. Verifique o GitHub Secret (sem espaços ou quebras de linha).";
+  }
+  return null;
 }
 
 export function getPasswordResetRedirectUrl(): string {

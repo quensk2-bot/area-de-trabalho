@@ -1,9 +1,10 @@
 // src/components/LoginScreen.tsx
 import type React from "react";
-import { useState, type FormEvent } from "react";
+import { useState, useMemo, type FormEvent } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { theme } from "../styles";
 import { useOptionalAuthV7, AUTH_V7_MESSAGES } from "../auth-v7";
+import { getSupabaseUrl, isModoHibrido, isProjetoHibridoUrl, PROJETO_HIBRIDO_REF } from "../lib/env";
 
 const loginStyles: Record<string, React.CSSProperties> = {
   container: {
@@ -113,7 +114,15 @@ export function LoginScreen({ modo = "legado" }: Props) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [focusField, setFocusField] = useState<"email" | "senha" | null>(null);
+  const supabaseHost = useMemo(() => {
+    try {
+      return new URL(getSupabaseUrl()).hostname;
+    } catch {
+      return "(url inválida)";
+    }
+  }, []);
+
+  const envOk = isModoHibrido() && isProjetoHibridoUrl(getSupabaseUrl());
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -219,6 +228,19 @@ export function LoginScreen({ modo = "legado" }: Props) {
 
           {errorMsg && <p style={loginStyles.error}>{errorMsg}</p>}
           {successMsg && <p style={loginStyles.success}>{successMsg}</p>}
+
+          {hibrido && !envOk ? (
+            <p style={{ ...loginStyles.error, fontSize: 11 }}>
+              Ambiente híbrido ativo, mas VITE_SUPABASE_URL não aponta para {PROJETO_HIBRIDO_REF}. Reinicie{" "}
+              <code>npm run dev</code> após atualizar o <code>.env</code>.
+            </p>
+          ) : null}
+
+          {hibrido && import.meta.env.DEV ? (
+            <p style={{ fontSize: 10, color: "#9ca3af", textAlign: "center", marginTop: 4 }}>
+              Supabase: {supabaseHost || "—"}
+            </p>
+          ) : null}
 
           <button type="submit" style={{ ...loginStyles.buttonBase, opacity: loading ? 0.7 : 1 }} disabled={loading}>
             {loading ? "Entrando..." : "Entrar"}

@@ -3,7 +3,7 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
-import { isModoHibrido } from "./lib/env";
+import { isModoHibrido, getHybridEnvError, PROJETO_HIBRIDO_REF } from "./lib/env";
 import type { Usuario } from "./types";
 import { styles } from "./styles";
 import { MainShellV14 } from "./components/MainShellV14";
@@ -15,7 +15,27 @@ import { MainShellHibrido } from "./components/MainShellHibrido";
 type PerfilStatus = "idle" | "loading" | "ok" | "error";
 
 function AppHibridoInner() {
+  const envError = getHybridEnvError();
   const { session, loading } = useAuthV7();
+
+  if (envError) {
+    return (
+      <div style={styles.appShell}>
+        <div style={styles.mainContent}>
+          <div style={{ ...styles.card, minHeight: 200, padding: 24, maxWidth: 520, margin: "0 auto" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12, color: "#f97316" }}>
+              Configuração híbrida incompleta
+            </h2>
+            <p style={{ color: "#f97373", fontSize: 14, lineHeight: 1.5 }}>{envError}</p>
+            <p style={{ color: "#9ca3af", fontSize: 12, marginTop: 16 }}>
+              GitHub → Settings → Secrets → Actions → <code>VITE_SUPABASE_URL</code> e{" "}
+              <code>VITE_SUPABASE_ANON_KEY</code> do projeto <code>{PROJETO_HIBRIDO_REF}</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && !session) {
     return (
