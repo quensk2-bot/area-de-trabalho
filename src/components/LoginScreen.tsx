@@ -111,6 +111,7 @@ export function LoginScreen({ modo = "legado" }: Props) {
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [focusField, setFocusField] = useState<"email" | "senha" | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
