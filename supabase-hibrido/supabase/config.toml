@@ -1,0 +1,13 @@
+project_id = "kdlhztpzedanwirifzsb"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public", "app_v7"]
+max_rows = 1000
+
+[db]
+major_version = 15
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["https://trabalhov8.github.io/area-de-trabalho/"]
