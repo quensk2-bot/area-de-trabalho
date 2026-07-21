@@ -27,7 +27,11 @@
     "drive:setup-secrets": "node scripts/drive-setup-supabase-secrets.mjs",
     "drive:explore": "node scripts/drive-explore-tree.mjs",
     "ruptura-v7:test": "node --import tsx --test --test-concurrency=1 src/ruptura-v7/tests/**/*.test.ts",
+    "hibrido-publicacao:test": "node --import tsx --test --test-concurrency=1 src/hibrido-v7/tests/**/*.test.ts",
+    "hibrido:publicar-piloto": "npx tsx src/motor/export/hibrido/publicarPilotoCli.ts",
+    "hibrido:reparar-manifest": "npx tsx src/motor/export/hibrido/repararManifestPilotoCli.ts",
     "auth-v7:test": "node --import tsx --test --test-concurrency=1 src/auth-v7/tests/**/*.test.ts",
+    "auth-v7:verify-storage-rls": "npx tsx src/scripts/hibridoVerifyStorageRlsPiloto.ts",
     "auth-v7:verify-rls": "npx tsx src/scripts/hibridoVerifyRlsPiloto.ts"
   },
   "dependencies": {

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthV7, toPermissionContext } from "../../auth-v7/index.ts";
+import { HybridDataPending } from "../../hibrido-v7/components/HybridDataPending.tsx";
+import { isModoHibrido } from "../../lib/env.ts";
 import { theme } from "../../styles.ts";
 import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { RupturaContextHelp } from "../components/RupturaHelp.tsx";
@@ -14,8 +17,15 @@ import {
   tdStyle,
   thStyle,
 } from "../components/rupturaSharedStyles.ts";
-import { useDebouncedValue, useRupturaContexto } from "../hooks/useRupturaContexto.ts";
+import { useDebouncedValue } from "../hooks/useRupturaContexto.ts";
+import { useRupturaContextoScoped } from "../hooks/useRupturaContextoScoped.ts";
 import { consultarProdutosPaginados } from "../services/rupturaProdutosService.ts";
+import {
+  consultarProdutosPaginadosHibrido,
+  EXPORT_HIBRIDO_DISABLED,
+  invalidateGestaoCache,
+} from "../services/hibrido/rupturaGestaoHibridoService.ts";
+import type { HybridServiceError } from "../../hibrido-v7/hybridErrors.ts";
 import type { RupturaFiltrosProdutos } from "../types/rupturaFiltrosTypes.ts";
 import {
   RUPTURA_BUSCA_DEBOUNCE_MS,
@@ -70,7 +80,22 @@ const COLUNAS: { id: ColunaId; label: string; default: boolean }[] = [
 ];
 
 export function RupturaGestaoPage() {
-  const [ctx, setCtx] = useRupturaContexto();
+  const auth = useAuthV7();
+  const permCtx = useMemo(
+    () =>
+      auth.perfil
+        ? toPermissionContext({
+            perfil: auth.perfil,
+            regionais: auth.regionais,
+            bandeiras: auth.bandeiras,
+            lojas: auth.lojas,
+            permissoes: auth.permissoes,
+          })
+        : null,
+    [auth],
+  );
+
+  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
   const [filtros, setFiltros] = useState<Partial<RupturaFiltrosProdutos>>({});
   const [busca, setBusca] = useState("");
   const buscaDebounced = useDebouncedValue(busca, RUPTURA_BUSCA_DEBOUNCE_MS);
@@ -86,6 +111,7 @@ export function RupturaGestaoPage() {
   );
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [configColunasAberto, setConfigColunasAberto] = useState(false);
+  const [hybridState, setHybridState] = useState<HybridServiceError | null>(null);
 
   const filtrosCompletos = useMemo((): RupturaFiltrosProdutos => {
     const termo = buscaDebounced.trim();
@@ -99,6 +125,22 @@ export function RupturaGestaoPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
+    setHybridState(null);
+
+    if (isModoHibrido()) {
+      const r = await consultarProdutosPaginadosHibrido({
+        filtros: filtrosCompletos,
+        pagina,
+        tamanho,
+        authCtx: permCtx,
+      });
+      if (r.erro) setHybridState(r.erro);
+      setDados(r.dados);
+      setTotal(r.total);
+      setLoading(false);
+      return;
+    }
+
     const r = await consultarProdutosPaginados({
       filtros: filtrosCompletos,
       pagina,
@@ -109,7 +151,7 @@ export function RupturaGestaoPage() {
     setDados(r.dados);
     setTotal(r.total);
     setLoading(false);
-  }, [filtrosCompletos, pagina, tamanho]);
+  }, [filtrosCompletos, pagina, tamanho, permCtx]);
 
   useEffect(() => {
     void carregar();
@@ -119,9 +161,17 @@ export function RupturaGestaoPage() {
     setPagina(1);
   }, [ctx.regional, ctx.dataReferencia, ctx.loja, buscaDebounced, filtros.classificacao]);
 
+  useEffect(() => {
+    if (isModoHibrido()) invalidateGestaoCache();
+  }, [ctx.regional, ctx.dataReferencia, ctx.loja]);
+
   const totalPaginas = Math.max(1, Math.ceil(total / tamanho));
 
   async function handleExport(formato: "csv" | "xlsx") {
+    if (isModoHibrido()) {
+      setExportProgress(EXPORT_HIBRIDO_DISABLED);
+      return;
+    }
     setExportProgress("Preparando exportação…");
     const r = await exportarProdutosCsvXlsx({
       filtros: filtrosCompletos,
@@ -151,7 +201,11 @@ export function RupturaGestaoPage() {
         texto="Cada linha representa um produto processado pelo Motor. As classificações e ações não são calculadas nesta tela."
       />
 
-      <RupturaContextoBar ctx={ctx} onChange={setCtx} onAtualizar={() => void carregar()} />
+      <RupturaContextoBar ctx={ctx} onChange={setCtx} onAtualizar={() => void carregar()} readonlyFields={readonly} />
+
+      {hybridState && !dados.length && !loading ? (
+        <HybridDataPending code={hybridState.code} message={hybridState.message} />
+      ) : null}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <input
@@ -189,8 +243,8 @@ export function RupturaGestaoPage() {
         <button type="button" style={buttonGhostStyle} onClick={() => setConfigColunasAberto((v) => !v)}>
           Configurar colunas
         </button>
-        <button type="button" style={buttonGhostStyle} onClick={() => void handleExport("csv")}>Exportar CSV</button>
-        <button type="button" style={buttonStyle} onClick={() => void handleExport("xlsx")}>Exportar XLSX</button>
+        <button type="button" style={buttonGhostStyle} disabled={isModoHibrido()} title={isModoHibrido() ? EXPORT_HIBRIDO_DISABLED : undefined} onClick={() => void handleExport("csv")}>Exportar CSV</button>
+        <button type="button" style={buttonStyle} disabled={isModoHibrido()} title={isModoHibrido() ? EXPORT_HIBRIDO_DISABLED : undefined} onClick={() => void handleExport("xlsx")}>Exportar XLSX</button>
       </div>
 
       {configColunasAberto && (

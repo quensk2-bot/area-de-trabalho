@@ -1,7 +1,10 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useAuthV7, toPermissionContext } from "../../auth-v7/index.ts";
+import { isModoHibrido } from "../../lib/env.ts";
 import type { RupturaProdutoLoja } from "../types/rupturaTypes.ts";
 import type { RupturaProdutoCd } from "../types/rupturaCdTypes.ts";
 import { consultarCdsProduto } from "../services/rupturaCdsService.ts";
+import { consultarCdsProdutoHibrido } from "../services/hibrido/rupturaCdsHibridoService.ts";
 import { theme } from "../../styles.ts";
 import { CLASSIFICACAO_LABEL, formatNumero, tableStyle, tdStyle, thStyle } from "./rupturaSharedStyles.ts";
 import { RupturaLegendaClassificacao } from "./RupturaHelp.tsx";
@@ -13,6 +16,21 @@ type Props = {
 };
 
 export function RupturaProdutoDetalhe({ produto, aberto, onFechar }: Props) {
+  const auth = useAuthV7();
+  const permCtx = useMemo(
+    () =>
+      auth.perfil
+        ? toPermissionContext({
+            perfil: auth.perfil,
+            regionais: auth.regionais,
+            bandeiras: auth.bandeiras,
+            lojas: auth.lojas,
+            permissoes: auth.permissoes,
+          })
+        : null,
+    [auth],
+  );
+
   const [cds, setCds] = useState<RupturaProdutoCd[]>([]);
   const [loadingCds, setLoadingCds] = useState(false);
 
@@ -22,15 +40,24 @@ export function RupturaProdutoDetalhe({ produto, aberto, onFechar }: Props) {
       return;
     }
     setLoadingCds(true);
-    void consultarCdsProduto({
+    const input = {
       regional: produto.regional,
       dataReferencia: produto.data_referencia,
       loja: produto.loja,
       seqproduto: produto.seqproduto,
-    })
+    };
+
+    if (isModoHibrido()) {
+      void consultarCdsProdutoHibrido({ ctx: input, seqproduto: input.seqproduto, authCtx: permCtx })
+        .then((r) => setCds(r.dados))
+        .finally(() => setLoadingCds(false));
+      return;
+    }
+
+    void consultarCdsProduto(input)
       .then((r) => setCds(r.dados))
       .finally(() => setLoadingCds(false));
-  }, [aberto, produto]);
+  }, [aberto, produto, permCtx]);
 
   if (!aberto || !produto) return null;
 

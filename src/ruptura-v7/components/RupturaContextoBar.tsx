@@ -9,21 +9,29 @@ type Props = {
   extra?: ReactNode;
   /** Importação Drive usa escopo regional — loja não filtra o pacote. */
   ocultarLoja?: boolean;
+  readonlyFields?: { regional?: boolean; loja?: boolean; dataReferencia?: boolean };
 };
 
-export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarLoja }: Props) {
+export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarLoja, readonlyFields }: Props) {
+  const readOnlyStyle = { opacity: 0.72, cursor: "not-allowed" as const };
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
         Regional
-        <input style={inputStyle} value={ctx.regional} onChange={(e) => onChange({ regional: e.target.value.toUpperCase() })} />
+        <input
+          style={{ ...inputStyle, ...(readonlyFields?.regional ? readOnlyStyle : {}) }}
+          value={ctx.regional}
+          readOnly={readonlyFields?.regional}
+          onChange={(e) => onChange({ regional: e.target.value.toUpperCase() })}
+        />
       </label>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
         Data referência
         <input
-          style={inputStyle}
+          style={{ ...inputStyle, ...(readonlyFields?.dataReferencia ? readOnlyStyle : {}) }}
           type="date"
           value={ctx.dataReferencia}
+          readOnly={readonlyFields?.dataReferencia}
           onChange={(e) => onChange({ dataReferencia: e.target.value })}
         />
       </label>
@@ -31,9 +39,10 @@ export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarL
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
           Loja
           <input
-            style={inputStyle}
+            style={{ ...inputStyle, ...(readonlyFields?.loja ? readOnlyStyle : {}) }}
             type="number"
             value={ctx.loja}
+            readOnly={readonlyFields?.loja}
             onChange={(e) => onChange({ loja: Number(e.target.value) || 0 })}
           />
         </label>

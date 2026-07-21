@@ -1,24 +1,45 @@
 import { useEffect, useState } from "react";
+import { HIBRIDO_PILOTO } from "../../hibrido-v7/constants.ts";
+import { isModoHibrido } from "../../lib/env.ts";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
 import { RUPTURA_CONTEXTO_DEFAULT } from "../types/rupturaFiltrosTypes.ts";
 
 const STORAGE_KEY = "ruptura-v7-contexto";
 
+function defaultContexto(): RupturaFiltrosContexto {
+  if (isModoHibrido()) {
+    return {
+      regional: HIBRIDO_PILOTO.regional,
+      dataReferencia: HIBRIDO_PILOTO.dataReferencia,
+      loja: HIBRIDO_PILOTO.loja,
+    };
+  }
+  return RUPTURA_CONTEXTO_DEFAULT;
+}
+
+export function normalizeContextoHibrido(ctx: RupturaFiltrosContexto): RupturaFiltrosContexto {
+  if (!isModoHibrido()) return ctx;
+  return { ...ctx, dataReferencia: HIBRIDO_PILOTO.dataReferencia };
+}
+
+function readStoredContexto(): RupturaFiltrosContexto {
+  const base = defaultContexto();
+  if (typeof window === "undefined") return base;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as Partial<RupturaFiltrosContexto>;
+    return normalizeContextoHibrido({ ...base, ...parsed });
+  } catch {
+    return base;
+  }
+}
+
 export function useRupturaContexto(): [
   RupturaFiltrosContexto,
   (patch: Partial<RupturaFiltrosContexto>) => void,
 ] {
-  const [ctx, setCtx] = useState<RupturaFiltrosContexto>(() => {
-    if (typeof window === "undefined") return RUPTURA_CONTEXTO_DEFAULT;
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return RUPTURA_CONTEXTO_DEFAULT;
-      const parsed = JSON.parse(raw) as Partial<RupturaFiltrosContexto>;
-      return { ...RUPTURA_CONTEXTO_DEFAULT, ...parsed };
-    } catch {
-      return RUPTURA_CONTEXTO_DEFAULT;
-    }
-  });
+  const [ctx, setCtx] = useState<RupturaFiltrosContexto>(() => readStoredContexto());
 
   useEffect(() => {
     try {
@@ -29,7 +50,7 @@ export function useRupturaContexto(): [
   }, [ctx]);
 
   const update = (patch: Partial<RupturaFiltrosContexto>) => {
-    setCtx((prev) => ({ ...prev, ...patch }));
+    setCtx((prev) => normalizeContextoHibrido({ ...prev, ...patch }));
   };
 
   return [ctx, update];

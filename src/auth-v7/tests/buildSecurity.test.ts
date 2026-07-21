@@ -11,7 +11,7 @@ const FORBIDDEN = [
   "BEGIN PRIVATE KEY",
 ];
 
-const RUNTIME_DIRS = ["src/lib", "src/auth-v7", "src/components", "src/ruptura-v7"];
+const RUNTIME_DIRS = ["src/lib", "src/auth-v7", "src/components", "src/ruptura-v7", "src/hibrido-v7"];
 
 function walk(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

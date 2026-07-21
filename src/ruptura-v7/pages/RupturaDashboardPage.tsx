@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthV7, toPermissionContext } from "../../auth-v7/index.ts";
+import { HybridDataPending } from "../../hibrido-v7/components/HybridDataPending.tsx";
+import { isConsumoV7SchemaError, toHybridPendingError } from "../../hibrido-v7/hybridErrors.ts";
+import { isModoHibrido } from "../../lib/env.ts";
 import { theme } from "../../styles.ts";
 import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { DonutChartSvg, HorizontalBarChartSvg, BarChartSvg } from "../components/charts/RupturaCharts.tsx";
 import { RupturaContextHelp } from "../components/RupturaHelp.tsx";
 import { RupturaKpiCards, RupturaResumoTexto } from "../components/RupturaKpiCards.tsx";
-import { buttonGhostStyle, buttonStyle, cardStyle } from "../components/rupturaSharedStyles.ts";
-import { useRupturaContexto } from "../hooks/useRupturaContexto.ts";
+import { buttonStyle, cardStyle } from "../components/rupturaSharedStyles.ts";
+import { useRupturaContextoScoped } from "../hooks/useRupturaContextoScoped.ts";
 import {
   consultarCompradoresTop,
   consultarDashboardFornecedores,
@@ -14,12 +18,36 @@ import {
   consultarEstoquePorCd,
   consultarExecucaoAtiva,
 } from "../services/rupturaDashboardService.ts";
+import {
+  consultarCompradoresTopHibrido,
+  consultarDashboardFornecedoresHibrido,
+  consultarDashboardLojaHibrido,
+  consultarDashboardSetoresHibrido,
+  consultarEstoquePorCdHibrido,
+  consultarExecucaoAtivaHibrido,
+} from "../services/hibrido/rupturaResumoHibridoService.ts";
+import type { HybridServiceError } from "../../hibrido-v7/hybridErrors.ts";
 import type { RupturaDashboardLoja } from "../types/rupturaDashboardTypes.ts";
 
 type Props = { onAbrirGestao?: () => void };
 
 export function RupturaDashboardPage({ onAbrirGestao }: Props) {
-  const [ctx, setCtx] = useRupturaContexto();
+  const auth = useAuthV7();
+  const permCtx = useMemo(
+    () =>
+      auth.perfil
+        ? toPermissionContext({
+            perfil: auth.perfil,
+            regionais: auth.regionais,
+            bandeiras: auth.bandeiras,
+            lojas: auth.lojas,
+            permissoes: auth.permissoes,
+          })
+        : null,
+    [auth],
+  );
+
+  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
   const [kpi, setKpi] = useState<RupturaDashboardLoja | null>(null);
   const [setores, setSetores] = useState<Awaited<ReturnType<typeof consultarDashboardSetores>>["dados"]>([]);
   const [fornecedores, setFornecedores] = useState<Awaited<ReturnType<typeof consultarDashboardFornecedores>>["dados"]>([]);
@@ -28,10 +56,34 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
   const [execucao, setExecucao] = useState<{ versao?: number; finalizado_em?: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [hybridState, setHybridState] = useState<HybridServiceError | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
+    setHybridState(null);
+
+    if (isModoHibrido()) {
+      const [k, s, f, c, cd, ex] = await Promise.all([
+        consultarDashboardLojaHibrido(ctx, permCtx),
+        consultarDashboardSetoresHibrido(ctx, permCtx),
+        consultarDashboardFornecedoresHibrido(ctx, permCtx, 10),
+        consultarCompradoresTopHibrido(ctx, permCtx, 10),
+        consultarEstoquePorCdHibrido(ctx, permCtx),
+        consultarExecucaoAtivaHibrido(ctx, permCtx),
+      ]);
+      const firstErr = k.erro ?? s.erro ?? f.erro ?? c.erro ?? cd.erro ?? ex.erro;
+      if (firstErr) setHybridState(firstErr);
+      setKpi(k.dado);
+      setSetores(s.dados);
+      setFornecedores(f.dados);
+      setCompradores(c.dados);
+      setCds(cd.dados);
+      setExecucao(ex.dado ?? null);
+      setLoading(false);
+      return;
+    }
+
     const [k, s, f, c, cd, ex] = await Promise.all([
       consultarDashboardLoja(ctx),
       consultarDashboardSetores(ctx),
@@ -40,8 +92,13 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
       consultarEstoquePorCd(ctx),
       consultarExecucaoAtiva(ctx),
     ]);
-    if (k.erro || s.erro || f.erro || c.erro || cd.erro || ex.erro) {
-      setErro(k.erro?.message ?? s.erro?.message ?? f.erro?.message ?? c.erro?.message ?? cd.erro?.message ?? ex.erro?.message ?? "Erro ao consultar dashboard");
+    const errMsg =
+      k.erro?.message ?? s.erro?.message ?? f.erro?.message ?? c.erro?.message ?? cd.erro?.message ?? ex.erro?.message;
+    if (errMsg) {
+      const pending = toHybridPendingError(errMsg);
+      if (pending) setHybridState(pending);
+      else if (!isConsumoV7SchemaError(errMsg)) setErro(errMsg);
+      else setHybridState(toHybridPendingError(errMsg));
     }
     setKpi(k.dado);
     setSetores(s.dados);
@@ -50,7 +107,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
     setCds(cd.dados);
     setExecucao(ex.dado ?? null);
     setLoading(false);
-  }, [ctx]);
+  }, [ctx, permCtx]);
 
   useEffect(() => {
     void carregar();
@@ -68,28 +125,59 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
     [kpi],
   );
 
+  if (hybridState && !kpi && !loading) {
+    return (
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <header>
+          <h1 style={{ margin: 0, color: theme.colors.neonOrange, fontSize: 24, fontWeight: 800 }}>
+            Gestão de Ruptura — Dashboard
+          </h1>
+        </header>
+        <RupturaContextoBar ctx={ctx} onChange={setCtx} readonlyFields={readonly} />
+        <HybridDataPending
+          code={hybridState.code}
+          detail={hybridState.code === "invalid_manifest" ? hybridState.message : undefined}
+        />
+      </section>
+    );
+  }
+
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <header>
         <h1 style={{ margin: 0, color: theme.colors.neonOrange, fontSize: 24, fontWeight: 800 }}>Gestão de Ruptura — Dashboard</h1>
         <p style={{ margin: "6px 0 0", color: theme.colors.textMuted, fontSize: 13 }}>
           Versão ativa {execucao?.versao ?? "—"} | Última atualização: {execucao?.finalizado_em ? new Date(execucao.finalizado_em).toLocaleString("pt-BR") : "—"}
+          {isModoHibrido() ? " · Storage privado" : ""}
         </p>
       </header>
 
       <RupturaContextHelp
         titulo="Leitura operacional"
-        texto="O Dashboard apresenta somente a versão ativa do Motor para a regional, loja e data selecionadas."
+        texto={
+          isModoHibrido()
+            ? "Dashboard alimentado por JSON publicado no Storage privado (modo híbrido)."
+            : "O Dashboard apresenta somente a versão ativa do Motor para a regional, loja e data selecionadas."
+        }
       />
 
-      <RupturaContextoBar ctx={ctx} onChange={setCtx} onAtualizar={() => void carregar()} extra={
-        <>
-          {onAbrirGestao && (
-            <button type="button" style={buttonStyle} onClick={onAbrirGestao}>Abrir Gestão Operacional</button>
-          )}
-        </>
-      } />
+      <RupturaContextoBar
+        ctx={ctx}
+        onChange={setCtx}
+        onAtualizar={() => void carregar()}
+        readonlyFields={readonly}
+        extra={
+          <>
+            {onAbrirGestao && (
+              <button type="button" style={buttonStyle} onClick={onAbrirGestao}>Abrir Gestão Operacional</button>
+            )}
+          </>
+        }
+      />
 
+      {hybridState && kpi ? (
+        <HybridDataPending code={hybridState.code} detail={hybridState.message} />
+      ) : null}
       {erro && <div style={{ color: theme.colors.danger, fontSize: 13 }}>{erro}</div>}
 
       <RupturaKpiCards kpi={kpi} loading={loading} />

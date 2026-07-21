@@ -3,7 +3,10 @@ export type RupturaDashboardLoja = {
   data_referencia: string;
   loja: number;
   total_produtos: number;
+  /** Operacional CP+MP+LP+bloqueados */
   total_em_ruptura: number;
+  total_ruptura_geral: number;
+  total_ruptura_classificada: number;
   total_curto_prazo: number;
   total_medio_prazo: number;
   total_longo_prazo: number;
@@ -19,7 +22,10 @@ export type RupturaDashboardLoja = {
   compradores_distintos: number;
   fornecedores_distintos: number;
   total_base_limpa_elegivel: number;
+  /** @deprecated use percentual_ruptura_geral */
   percentual_ruptura: number | null;
+  percentual_ruptura_geral: number | null;
+  percentual_ruptura_classificada: number | null;
 };
 
 export type RupturaDashboardSetor = {

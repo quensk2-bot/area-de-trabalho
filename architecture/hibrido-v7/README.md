@@ -29,6 +29,9 @@ Schema leve `app_v7` — **sem** datamart de produtos/CDs.
 
 - [H5 — Auth e Permissões](./H5-AUTH-PERMISSOES.md)
 - [H16 — Piloto de Usuários](./H16-PILOTO-USUARIOS.md)
+- [H6 — Mapa consumo → JSON](./H6-MAPA-CONSUMO-JSON.md)
+- [H6 — Publicação JSON](./H6-PUBLICACAO-JSON.md)
+- [H9 — Consumo leve frontend](./H9-CONSUMO-LEVE.md)
 
 ## Estrutura
 
@@ -36,7 +39,7 @@ Schema leve `app_v7` — **sem** datamart de produtos/CDs.
 supabase-hibrido/
 └── supabase/
     ├── config.toml
-    └── migrations/   (11 arquivos)
+    └── migrations/   (12 arquivos — incl. storage ruptura-v7)
 ```
 
 ## CLI
