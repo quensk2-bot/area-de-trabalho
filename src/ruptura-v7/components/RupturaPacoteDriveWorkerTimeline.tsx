@@ -9,6 +9,11 @@ const ETAPAS = [
   { key: "validando", label: "Validando conteúdo", statuses: ["validando_conteudo"] },
   { key: "padronizando", label: "Padronizando planilhas", statuses: ["padronizando"] },
   { key: "pronto", label: "Pronto para Motor", statuses: ["pronto_motor"] },
+  { key: "parser", label: "Parser / Transform", statuses: ["processando_parser", "processando_transformacao"] },
+  { key: "bre", label: "BRE / Consolidador", statuses: ["processando_bre", "processando_consolidacao"] },
+  { key: "dm", label: "Data Mart / Persistência", statuses: ["gerando_datamart", "persistindo", "ativando"] },
+  { key: "planilha", label: "Planilha padrão", statuses: ["gerando_planilha"] },
+  { key: "concluido", label: "Concluído", statuses: ["concluido"] },
 ] as const;
 
 const FALHAS = ["falhou_download", "falhou_validacao", "falhou_padronizacao", "falhou"];

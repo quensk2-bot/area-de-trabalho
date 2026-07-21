@@ -360,7 +360,7 @@ export async function executarWorkerPacote(config: WorkerConfig, signal?: AbortS
       await atualizarStatusWorker(db, {
         solicitacaoId,
         workerId: config.workerId,
-        pacoteStatus: "aguardando_worker",
+        pacoteStatus: pacoteStatus,
         metricas: {
           ...metricas,
           modoTesteParcial: true,
@@ -368,6 +368,7 @@ export async function executarWorkerPacote(config: WorkerConfig, signal?: AbortS
           maxFiles: config.maxFiles,
           tiposProcessados: arquivos.map((a) => a.tipo_arquivo),
         },
+        arquivos: arquivos.map((a) => serializarArquivoUpdate(a)),
       }, pacoteStatus);
 
       await db

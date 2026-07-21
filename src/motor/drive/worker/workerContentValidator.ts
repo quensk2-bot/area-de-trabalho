@@ -1,7 +1,10 @@
 import fs from "node:fs";
-import { createReadStream } from "node:fs";
-import readline from "node:readline";
 import path from "node:path";
+import iconv from "iconv-lite";
+import {
+  INVENTARIO_COL_EMPRESA,
+  INVENTARIO_COL_PRODUTO,
+} from "../../constants/headers.ts";
 import { obterContratoPorTipo } from "../../standardize/standards/standardContracts.ts";
 import type { MotorStandardizeTipo } from "../../standardize/standardizeTypes.ts";
 import { abrirWorkbook, inspecionarWorkbook } from "../../standardize/workbookInspector.ts";
@@ -23,21 +26,34 @@ const TIPO_PADRONIZACAO: Record<string, MotorStandardizeTipo> = {
 
 const COLUNAS_MIN_TXT: Record<string, string[]> = {
   rede: ["SEQPESSOA", "RAZAO"],
-  inventario_lojas: ["LOJA", "PRODUTO"],
+  inventario_lojas: [INVENTARIO_COL_PRODUTO, INVENTARIO_COL_EMPRESA],
   plan_6_cd: ["CD"],
   grupo_ruptura_1: ["LOJA"],
   grupo_ruptura_2: ["LOJA"],
 };
 
+function normalizarCabecalhoTxt(valor: string): string {
+  return valor
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+function lerAmostraTxt(caminho: string, maxBytes = 65536, maxLinhas = 20): string[] {
+  const fd = fs.openSync(caminho, "r");
+  const buf = Buffer.alloc(maxBytes);
+  const lidos = fs.readSync(fd, buf, 0, maxBytes, 0);
+  fs.closeSync(fd);
+  const texto = iconv.decode(buf.subarray(0, lidos), "win1252");
+  return texto
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0)
+    .slice(0, maxLinhas);
+}
+
 async function amostrarLinhasTxt(caminho: string, maxLinhas = 5): Promise<string[]> {
-  const linhas: string[] = [];
-  const rl = readline.createInterface({ input: createReadStream(caminho), crlfDelay: Infinity });
-  for await (const line of rl) {
-    linhas.push(line);
-    if (linhas.length >= maxLinhas) break;
-  }
-  rl.close();
-  return linhas;
+  return lerAmostraTxt(caminho, 65536, maxLinhas);
 }
 
 async function validarTxt(caminho: string, tipo: string | null): Promise<ValidacaoConteudoResultado> {
@@ -50,12 +66,12 @@ async function validarTxt(caminho: string, tipo: string | null): Promise<Validac
   const separador = linhas[0]?.includes(";") ? ";" : linhas[0]?.includes("\t") ? "\t" : null;
   if (!separador) return { status: "invalido", erro: "Separador não identificado (; ou tab)" };
 
-  const cabecalho = linhas[0]!.split(separador).map((c) => c.trim().toUpperCase());
+  const cabecalho = linhas[0]!.split(separador).map((c) => normalizarCabecalhoTxt(c));
   if (cabecalho.length < 2) return { status: "invalido", erro: "Cabeçalho com colunas insuficientes" };
 
   const minCols = tipo ? COLUNAS_MIN_TXT[tipo] : null;
   if (minCols?.length) {
-    const faltando = minCols.filter((c) => !cabecalho.includes(c));
+    const faltando = minCols.filter((c) => !cabecalho.includes(normalizarCabecalhoTxt(c)));
     if (faltando.length) {
       return { status: "invalido", erro: `Colunas mínimas ausentes: ${faltando.join(", ")}` };
     }

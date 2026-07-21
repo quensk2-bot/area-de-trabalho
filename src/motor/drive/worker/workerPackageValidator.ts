@@ -3,8 +3,8 @@ import type { WorkerArquivoDb, WorkerPacoteDb } from "./workerTypes.ts";
 
 const TRANSICOES_PACOTE: Record<string, Set<string>> = {
   baixando: new Set(["validando_conteudo", "falhou_download", "baixando"]),
-  validando_conteudo: new Set(["padronizando", "falhou_validacao", "validando_conteudo"]),
-  padronizando: new Set(["pronto_motor", "falhou_padronizacao", "padronizando"]),
+  validando_conteudo: new Set(["padronizando", "falhou_validacao", "validando_conteudo", "baixando", "aguardando_worker"]),
+  padronizando: new Set(["pronto_motor", "falhou_padronizacao", "padronizando", "aguardando_worker"]),
   aguardando_worker: new Set(["baixando"]),
   pronto_motor: new Set(["pronto_motor"]),
   falhou_download: new Set(["falhou_download", "aguardando_worker"]),

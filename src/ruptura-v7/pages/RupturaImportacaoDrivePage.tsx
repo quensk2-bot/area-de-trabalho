@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HybridDataPending } from "../../hibrido-v7/components/HybridDataPending.tsx";
+import { toHybridPendingError } from "../../hibrido-v7/hybridErrors.ts";
+import { isModoHibrido } from "../../lib/env.ts";
 import { theme } from "../../styles.ts";
 import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { RupturaPacoteDriveChecklist } from "../components/RupturaPacoteDriveChecklist.tsx";
@@ -32,6 +35,7 @@ import {
   buscarProgressoPacote,
   buscarSolicitacaoWorkerPacote,
   competenciaDivergeDaPasta,
+  criarSolicitacaoMotor,
   criarSolicitacaoWorker,
   listarArquivosPacote,
   listarArquivosProgressoPacote,
@@ -72,6 +76,7 @@ export function RupturaImportacaoDrivePage() {
   const [historico, setHistorico] = useState<PacoteMotorDriveHistorico[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [hybridPending, setHybridPending] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [listagem, setListagem] = useState<ListarDriveResponse | null>(null);
   const [classificados, setClassificados] = useState<ArquivoPacoteDriveClassificado[]>([]);
@@ -112,7 +117,13 @@ export function RupturaImportacaoDrivePage() {
       setPasta(p);
       setHistorico(h);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
+      const pending = toHybridPendingError(e);
+      if (pending) {
+        setHybridPending(pending.message);
+        setErro(null);
+      } else {
+        setErro(e instanceof Error ? e.message : String(e));
+      }
     }
   }, [ctx.regional]);
 
@@ -174,9 +185,19 @@ export function RupturaImportacaoDrivePage() {
       "validando_conteudo",
       "padronizando",
       "pronto_motor",
+      "processando_parser",
+      "processando_transformacao",
+      "processando_bre",
+      "processando_consolidacao",
+      "gerando_datamart",
+      "persistindo",
+      "ativando",
+      "gerando_planilha",
+      "concluido",
       "falhou_download",
       "falhou_validacao",
       "falhou_padronizacao",
+      "falhou",
     ];
     if (!statusPacote || !workerStatuses.includes(statusPacote)) return;
     void carregarProgressoWorker(pacoteId);
@@ -315,6 +336,27 @@ export function RupturaImportacaoDrivePage() {
     setLoading(false);
   };
 
+  const processarMotor = async () => {
+    if (!pacoteId) {
+      setErro("Pacote não identificado.");
+      return;
+    }
+    setLoading(true);
+    setErro(null);
+    const res = await criarSolicitacaoMotor(pacoteId);
+    if (!res.ok) {
+      setErro(res.message ?? "Falha ao enfileirar processamento Motor");
+      setLoading(false);
+      return;
+    }
+    setInfo(
+      (res.message ?? "Solicitação Motor registrada.") +
+        " Execute: npm run motor:pacote-process -- --once",
+    );
+    await carregarProgressoWorker(pacoteId);
+    setLoading(false);
+  };
+
   const metricasWorker = solicitacaoWorker?.metricas as Record<string, unknown> | undefined;
   const arquivosConcluidos = Number(metricasWorker?.arquivosBaixados ?? progresso?.quantidade_arquivos_encontrados ?? 0);
   const bytesBaixados = Number(metricasWorker?.bytesBaixados ?? 0);
@@ -359,7 +401,13 @@ export function RupturaImportacaoDrivePage() {
       setMostrarHistorico(false);
       setInfo(`Pacote ${id.slice(0, 8)}… carregado do histórico.`);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
+      const pending = toHybridPendingError(e);
+      if (pending) {
+        setHybridPending(pending.message);
+        setErro(null);
+      } else {
+        setErro(e instanceof Error ? e.message : String(e));
+      }
     }
     setLoading(false);
   };
@@ -371,7 +419,7 @@ export function RupturaImportacaoDrivePage() {
           Importação Drive — Motor Ruptura
         </h1>
         <p style={{ margin: "6px 0 0", color: theme.colors.textMuted, fontSize: 13 }}>
-          Fase 4C.3 — metadados, solicitação Worker, download local e padronização. O Motor ainda não é executado nesta etapa.
+          Fase 4C.4 — fluxo completo: Worker → Motor → Data Mart → planilha padrão BASE_RUPTURA_V7.
         </p>
       </header>
 
@@ -431,7 +479,17 @@ export function RupturaImportacaoDrivePage() {
           Ver histórico
         </button>
         <span title={PIPELINE_PROCESSAR_TOOLTIP}>
-          <button type="button" style={{ ...buttonGhostStyle, opacity: 0.55, cursor: "not-allowed" }} disabled>
+          <button
+            type="button"
+            style={buttonStyle}
+            disabled={
+              loading ||
+              !perm?.podeValidar ||
+              !pacoteId ||
+              !["pronto_motor", "falhou"].includes(statusPacote ?? "")
+            }
+            onClick={() => void processarMotor()}
+          >
             Processar Motor
           </button>
         </span>
@@ -470,6 +528,7 @@ export function RupturaImportacaoDrivePage() {
         </p>
       )}
 
+      {hybridPending && isModoHibrido() ? <HybridDataPending code="hybrid_pending" message={hybridPending} /> : null}
       {erro && <p style={{ color: theme.colors.danger }}>{erro}</p>}
       {info && <p style={{ color: theme.colors.neonGreen }}>{info}</p>}
 
@@ -518,6 +577,21 @@ export function RupturaImportacaoDrivePage() {
         arquivosConcluidos={arquivosConcluidos}
         arquivosTotal={classificados.length}
       />
+
+      {statusPacote === "concluido" && (
+        <div style={{ ...cardStyle, borderColor: theme.colors.neonGreen }}>
+          <h3 style={{ margin: "0 0 8px", color: theme.colors.neonGreen }}>Processamento concluído</h3>
+          <p style={{ ...helpTextStyle, marginBottom: 8 }}>
+            Base gerada no Worker local em{" "}
+            <code>src/motor/.tmp/worker/{pacoteId}/exportados/</code>
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <a href="/ruptura/gestao" style={{ ...buttonGhostStyle, textDecoration: "none" }}>
+              Abrir Dashboard
+            </a>
+          </div>
+        </div>
+      )}
 
       {progresso?.hash_conteudo_pacote && (
         <p style={helpTextStyle}>

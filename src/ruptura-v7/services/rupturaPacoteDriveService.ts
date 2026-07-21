@@ -322,4 +322,26 @@ export function competenciaDivergeDaPasta(competenciaAno: number, competenciaMes
   return pasta.ano !== competenciaAno || pasta.mes !== competenciaMes;
 }
 
-export const PIPELINE_PROCESSAR_TOOLTIP = "O Motor será liberado somente na Fase 4C.4.";
+export const PIPELINE_PROCESSAR_TOOLTIP =
+  "Enfileira processamento Motor (Parser → BRE → Data Mart → persistência → planilha). Execute npm run motor:pacote-process -- --once";
+
+export type CriarSolicitacaoMotorResult = {
+  ok: boolean;
+  solicitacaoId?: string;
+  pacoteId?: string;
+  status?: string;
+  message?: string;
+};
+
+export async function criarSolicitacaoMotor(pacoteId: string): Promise<CriarSolicitacaoMotorResult> {
+  const { data, error } = await infraDb().rpc("criar_solicitacao_motor_v1", { p_pacote_id: pacoteId });
+  if (error) return { ok: false, message: error.message };
+  const parsed = data as Record<string, unknown>;
+  return {
+    ok: !!parsed.ok,
+    solicitacaoId: parsed.solicitacaoId as string | undefined,
+    pacoteId: parsed.pacoteId as string | undefined,
+    status: parsed.status as string | undefined,
+    message: parsed.message as string | undefined,
+  };
+}
