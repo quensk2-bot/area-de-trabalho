@@ -18,11 +18,12 @@ import type { ResumoLojaJson } from "../../hibrido-v7/manifest/manifestTypes.ts"
 
 const root = dirname(fileURLToPath(new URL("../..", import.meta.url)));
 
-function ctxBase(partial: Partial<{ regional: string; bandeira: string | null; loja: number; dataReferencia: string }> = {}) {
+function ctxBase(partial: Partial<{ regional: string; bandeira: string | null; loja: number; lojas: number[]; dataReferencia: string }> = {}) {
   return {
     regional: "MT",
     bandeira: "COMPER" as string | null,
     loja: 73,
+    lojas: [73],
     dataReferencia: "2026-07-13",
     ...partial,
   };
@@ -63,11 +64,11 @@ describe("ruptura-v7 hibrido — ordenacao default (ETAPA 7)", () => {
     assert.ok(prioridadeClassificacaoGestao("bloqueado") < prioridadeClassificacaoGestao("sem_ruptura"));
   });
 
-  it("dentro do grupo: maior pendencia, maior estoque CD, seqproduto", () => {
+  it("dentro do grupo: loja, maior pendencia, maior estoque CD, seqproduto", () => {
     const items = ordenarProdutosGestaoDefault([
-      produto({ seqproduto: 3, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 5, somaEstoqueCd: 10 }),
-      produto({ seqproduto: 1, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 20, somaEstoqueCd: 1 }),
-      produto({ seqproduto: 2, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 20, somaEstoqueCd: 50 }),
+      produto({ seqproduto: 3, loja: 82, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 5, somaEstoqueCd: 10 }),
+      produto({ seqproduto: 1, loja: 73, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 20, somaEstoqueCd: 1 }),
+      produto({ seqproduto: 2, loja: 73, classificacaoPrazo: "curto_prazo", pendenciaCpaCd: 20, somaEstoqueCd: 50 }),
     ]);
     assert.deepEqual(
       items.map((p) => p.seqproduto),
@@ -151,7 +152,7 @@ describe("ruptura-v7 hibrido — escopo e erros (ETAPA 1/403/404)", () => {
       lojas: [],
       permissoes: ["ruptura.ver"],
     });
-    const err = assertEscopoHibrido(n1, { ...ctxBase(), loja: 0 });
+    const err = assertEscopoHibrido(n1, { ...ctxBase(), loja: 0, lojas: [] });
     assert.equal(err, null);
   });
 

@@ -3,12 +3,14 @@ import { theme } from "../../styles.ts";
 import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { RupturaContextHelp } from "../components/RupturaHelp.tsx";
 import { badgeStyle, formatNumero, PRIORIDADE_LABEL, tableStyle, tdStyle, thStyle } from "../components/rupturaSharedStyles.ts";
+import { useAuthV7 } from "../../auth-v7/index.ts";
 import { useRupturaContexto } from "../hooks/useRupturaContexto.ts";
 import { consultarCentralAcoes } from "../services/rupturaAcoesService.ts";
 import { classificarFilaCentralAcao, FILAS_CENTRAL_ACOES, type RupturaCentralAcao } from "../types/rupturaAcoesTypes.ts";
 
 export function RupturaCentralAcoesPage() {
-  const [ctx, setCtx] = useRupturaContexto();
+  const auth = useAuthV7();
+  const [ctx, setCtx] = useRupturaContexto("central-acoes", auth.perfil?.user_id);
   const [dados, setDados] = useState<RupturaCentralAcao[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);

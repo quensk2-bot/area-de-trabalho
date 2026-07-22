@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { FiltroRegionalBandeiraLoja } from "../../components/filtros/FiltroRegionalBandeiraLoja.tsx";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
+import { FILTRO_LOJA_TODAS } from "../../auth-v7/catalogoLojasTypes.ts";
 import { buttonGhostStyle, inputStyle } from "./rupturaSharedStyles.ts";
 
 type Props = {
@@ -12,6 +13,8 @@ type Props = {
   ocultarLoja?: boolean;
   permitirTodasBandeira?: boolean;
   permitirTodasLoja?: boolean;
+  multiSelectLoja?: boolean;
+  lojasNaoPublicadas?: number[];
   readonlyFields?: {
     regional?: boolean;
     bandeira?: boolean;
@@ -28,6 +31,8 @@ export function RupturaContextoBar({
   ocultarLoja,
   permitirTodasBandeira,
   permitirTodasLoja,
+  multiSelectLoja = true,
+  lojasNaoPublicadas,
   readonlyFields,
 }: Props) {
   const readOnlyStyle = { opacity: 0.72, cursor: "not-allowed" as const };
@@ -39,12 +44,15 @@ export function RupturaContextoBar({
           regional: ctx.regional,
           bandeira: ctx.bandeira,
           loja: ctx.loja,
+          lojas: ctx.lojas ?? (ctx.loja === FILTRO_LOJA_TODAS ? [] : [ctx.loja]),
         }}
         onChange={(patch) => onChange(patch)}
         readonlyFields={readonlyFields}
         ocultarLoja={ocultarLoja}
         permitirTodasBandeira={permitirTodasBandeira ?? !ocultarLoja}
         permitirTodasLoja={permitirTodasLoja ?? !ocultarLoja}
+        multiSelectLoja={multiSelectLoja && !ocultarLoja}
+        lojasNaoPublicadas={lojasNaoPublicadas}
       />
 
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>

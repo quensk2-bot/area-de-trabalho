@@ -4,8 +4,16 @@ import { isModoHibrido } from "../../../lib/env.ts";
 import type { RupturaFiltrosContexto } from "../../types/rupturaFiltrosTypes.ts";
 import { HIBRIDO_PILOTO } from "../../../hibrido-v7/constants.ts";
 import type { HybridServiceError } from "../../../hibrido-v7/hybridErrors.ts";
+import { HYBRID_NENHUMA_LOJA_MESSAGE } from "../../../hibrido-v7/hybridErrors.ts";
+import { FILTRO_LOJA_TODAS } from "../../../auth-v7/catalogoLojasTypes.ts";
 
 export const HIBRIDO_BANDEIRA_DEFAULT = HIBRIDO_PILOTO.bandeira;
+
+function lojasParaValidar(filtros: RupturaFiltrosContexto): number[] {
+  if (filtros.lojas?.length) return filtros.lojas;
+  if (filtros.loja === FILTRO_LOJA_TODAS || filtros.loja === 0) return [];
+  return [filtros.loja];
+}
 
 export function assertEscopoHibrido(
   ctx: PermissionContext | null,
@@ -15,13 +23,17 @@ export function assertEscopoHibrido(
   if (!ctx) return { code: "forbidden", message: "Sessão necessária" };
 
   const bandeiraEfetiva = filtros.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
+  const lojasAlvo = lojasParaValidar(filtros);
 
   if (ctx.nivel === "GERENTE_LOJA") {
     const lojaFixa = ctx.lojas[0]?.loja;
-    if (filtros.loja === 0 || (lojaFixa != null && filtros.loja !== lojaFixa)) {
+    if (lojasAlvo.length === 0 || lojasAlvo.length > 1) {
       return { code: "forbidden", message: "Loja fora do seu escopo." };
     }
-    if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, filtros.loja)) {
+    if (lojaFixa != null && lojasAlvo[0] !== lojaFixa) {
+      return { code: "forbidden", message: "Loja fora do seu escopo." };
+    }
+    if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, lojasAlvo[0]!)) {
       return { code: "forbidden", message: "Loja fora do seu escopo." };
     }
     return null;
@@ -35,10 +47,19 @@ export function assertEscopoHibrido(
     return { code: "forbidden", message: "Regional/bandeira fora do seu escopo." };
   }
 
-  if (filtros.loja === 0) return null;
+  if (lojasAlvo.length === 0) return null;
 
-  if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, filtros.loja)) {
-    return { code: "forbidden", message: "Loja fora do seu escopo." };
+  for (const loja of lojasAlvo) {
+    if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, loja)) {
+      return { code: "forbidden", message: "Loja fora do seu escopo." };
+    }
+  }
+  return null;
+}
+
+export function assertLojasSelecionadas(lojasEfetivas: number[]): HybridServiceError | null {
+  if (lojasEfetivas.length === 0) {
+    return { code: "no_loja_selected", message: HYBRID_NENHUMA_LOJA_MESSAGE };
   }
   return null;
 }
@@ -50,6 +71,7 @@ export function contextoFixoGerente(ctx: PermissionContext): Partial<RupturaFilt
     regional: loja.regional,
     bandeira: loja.bandeira,
     loja: loja.loja,
+    lojas: [loja.loja],
   };
 }
 

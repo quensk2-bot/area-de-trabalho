@@ -98,18 +98,39 @@ export function buildCatalogoTree(rows: CatalogoLoja[]): CatalogoRegional[] {
     }));
 }
 
+function sincronizarLojaSentinela(next: FiltroRegionalBandeiraLojaValores, totalEscopo: number): void {
+  if (next.lojas.length === 0 || next.lojas.length >= totalEscopo) {
+    next.loja = FILTRO_LOJA_TODAS;
+    return;
+  }
+  if (next.lojas.length === 1) {
+    next.loja = next.lojas[0]!;
+    return;
+  }
+  next.loja = FILTRO_LOJA_TODAS;
+}
+
 /** Ajusta valores quando regional/bandeira mudam (cascata). */
 export function normalizarFiltroCascade(
   catalogo: CatalogoLoja[],
   valores: FiltroRegionalBandeiraLojaValores,
   patch: Partial<FiltroRegionalBandeiraLojaValores>,
 ): FiltroRegionalBandeiraLojaValores {
-  const next: FiltroRegionalBandeiraLojaValores = { ...valores, ...patch };
+  const next: FiltroRegionalBandeiraLojaValores = {
+    ...valores,
+    ...patch,
+    lojas: patch.lojas ?? valores.lojas ?? [],
+  };
+
+  if (patch.loja !== undefined && patch.lojas === undefined) {
+    next.lojas = patch.loja === FILTRO_LOJA_TODAS ? [] : [patch.loja];
+  }
+
   const regionais = listarRegionaisDoCatalogo(catalogo);
   if (regionais.length && !regionais.includes(norm(next.regional))) {
     next.regional = regionais[0]!;
     next.bandeira = FILTRO_BANDEIRA_TODAS;
-    next.loja = FILTRO_LOJA_TODAS;
+    next.lojas = [];
   }
 
   const bandeiras = listarBandeirasDoCatalogo(catalogo, next.regional);
@@ -118,20 +139,44 @@ export function normalizarFiltroCascade(
     if (!ok) next.bandeira = FILTRO_BANDEIRA_TODAS;
   }
 
-  const lojas = listarLojasDoCatalogo(catalogo, next.regional, next.bandeira);
-  if (next.loja !== FILTRO_LOJA_TODAS && !lojas.some((l) => l.loja === next.loja)) {
-    next.loja = lojas[0]?.loja ?? FILTRO_LOJA_TODAS;
-  }
+  const lojasEscopo = listarLojasDoCatalogo(catalogo, next.regional, next.bandeira);
+  const codigosEscopo = new Set(lojasEscopo.map((l) => l.loja));
 
   if (patch.regional !== undefined && patch.regional !== valores.regional) {
     next.bandeira = FILTRO_BANDEIRA_TODAS;
-    next.loja = FILTRO_LOJA_TODAS;
+    next.lojas = [];
   }
   if (patch.bandeira !== undefined && patch.bandeira !== valores.bandeira) {
-    next.loja = FILTRO_LOJA_TODAS;
+    next.lojas = [];
   }
 
+  if (next.lojas.length > 0) {
+    next.lojas = next.lojas.filter((l) => codigosEscopo.has(l)).sort((a, b) => a - b);
+    if (next.lojas.length === 0 && lojasEscopo.length) {
+      next.lojas = lojasEscopo.map((l) => l.loja);
+    }
+  }
+
+  if (
+    next.loja !== FILTRO_LOJA_TODAS &&
+    next.lojas.length === 0 &&
+    !codigosEscopo.has(next.loja)
+  ) {
+    next.loja = lojasEscopo[0]?.loja ?? FILTRO_LOJA_TODAS;
+    next.lojas = next.loja === FILTRO_LOJA_TODAS ? [] : [next.loja];
+  }
+
+  sincronizarLojaSentinela(next, lojasEscopo.length);
   return next;
+}
+
+/** Todas as lojas do escopo (para default ao trocar bandeira). */
+export function lojasDefaultEscopo(
+  catalogo: CatalogoLoja[],
+  regional: string,
+  bandeira: string | null,
+): number[] {
+  return listarLojasDoCatalogo(catalogo, regional, bandeira).map((l) => l.loja);
 }
 
 let cacheRows: CatalogoLoja[] | null = null;

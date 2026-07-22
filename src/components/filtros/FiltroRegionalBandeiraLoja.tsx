@@ -6,6 +6,7 @@ import {
 } from "../../auth-v7/catalogoLojasService.ts";
 import type { FiltroRegionalBandeiraLojaValores } from "../../auth-v7/catalogoLojasTypes.ts";
 import { FILTRO_BANDEIRA_TODAS, FILTRO_LOJA_TODAS } from "../../auth-v7/catalogoLojasTypes.ts";
+import { FiltroLojasMultiplo } from "./FiltroLojasMultiplo.tsx";
 import { inputStyle } from "../../ruptura-v7/components/rupturaSharedStyles.ts";
 
 type Props = {
@@ -16,6 +17,9 @@ type Props = {
   ocultarLoja?: boolean;
   permitirTodasBandeira?: boolean;
   permitirTodasLoja?: boolean;
+  /** Exibe multi-select com checkboxes (N1/ADM). Gerente usa loja fixa. */
+  multiSelectLoja?: boolean;
+  lojasNaoPublicadas?: number[];
 };
 
 export function FiltroRegionalBandeiraLoja({
@@ -26,6 +30,8 @@ export function FiltroRegionalBandeiraLoja({
   ocultarLoja,
   permitirTodasBandeira = true,
   permitirTodasLoja = true,
+  multiSelectLoja = true,
+  lojasNaoPublicadas,
 }: Props) {
   const { lojas, regionais, bandeirasPorRegional, lojasPorEscopo, loading, erro } = useCatalogoLojas();
 
@@ -46,6 +52,8 @@ export function FiltroRegionalBandeiraLoja({
     const next = normalizarFiltroCascade(lojas, valores, patch);
     onChange(next);
   };
+
+  const lojasSelecionadas = valores.lojas ?? (valores.loja === FILTRO_LOJA_TODAS ? [] : [valores.loja]);
 
   return (
     <>
@@ -88,7 +96,18 @@ export function FiltroRegionalBandeiraLoja({
         </label>
       )}
 
-      {!ocultarLoja && (
+      {!ocultarLoja && multiSelectLoja && !readonlyFields?.loja ? (
+        <FiltroLojasMultiplo
+          lojasCatalogo={lojasFiltradas}
+          lojasSelecionadas={lojasSelecionadas}
+          onApply={(nextLojas) => patchCascade({ lojas: nextLojas })}
+          readonly={readonlyFields?.loja || loading}
+          agruparPorBandeira={valores.bandeira == null}
+          lojasNaoPublicadas={lojasNaoPublicadas}
+        />
+      ) : null}
+
+      {!ocultarLoja && (!multiSelectLoja || readonlyFields?.loja) && (
         <label style={labelStyle}>
           Loja
           <select

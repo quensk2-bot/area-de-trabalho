@@ -5,8 +5,10 @@ export type RupturaFiltrosContexto = {
   /** null = todas as bandeiras da regional */
   bandeira: string | null;
   dataReferencia: string;
-  /** 0 = todas as lojas (conforme regional/bandeira) */
+  /** 0 = todas as lojas (conforme regional/bandeira). Compatibilidade legada. */
   loja: number;
+  /** Lojas selecionadas. Vazio = Todas no escopo. */
+  lojas: number[];
 };
 
 export type RupturaFiltrosProdutos = RupturaFiltrosContexto & {
@@ -49,4 +51,5 @@ export const RUPTURA_CONTEXTO_DEFAULT: RupturaFiltrosContexto = {
   bandeira: "COMPER",
   dataReferencia: "2026-03-26",
   loja: 73,
+  lojas: [73],
 };

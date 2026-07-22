@@ -1,12 +1,22 @@
 import type { PermissionContext } from "../../../auth-v7/permissionService.ts";
 import type { GestaoJson } from "../../../hibrido-v7/manifest/manifestTypes.ts";
 import type { HybridServiceError } from "../../../hibrido-v7/hybridErrors.ts";
+import {
+  HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE,
+  HYBRID_LOJA_NAO_PUBLICADA_MESSAGE,
+} from "../../../hibrido-v7/hybridErrors.ts";
 import type { HibridoProdutoGestao } from "../../../motor/export/hibrido/hibridoTypes.ts";
+import { listarBandeirasDoCatalogo, fetchCatalogoLojas } from "../../../auth-v7/catalogoLojasService.ts";
 import type { RupturaFiltrosProdutos } from "../../types/rupturaFiltrosTypes.ts";
 import type { RupturaProdutoLoja } from "../../types/rupturaTypes.ts";
-import { carregarManifest, lojaPathsFromManifest } from "./manifestService.ts";
+import { resolverLojasEfetivas } from "../lojasFiltroUtils.ts";
+import {
+  carregarManifest,
+  listarLojasPublicadasManifest,
+  lojaPathsFromManifest,
+} from "./manifestService.ts";
 import { downloadStorageJson } from "./storageJsonService.ts";
-import { assertEscopoHibrido, HIBRIDO_BANDEIRA_DEFAULT } from "./hibridoScope.ts";
+import { assertEscopoHibrido, assertLojasSelecionadas, HIBRIDO_BANDEIRA_DEFAULT } from "./hibridoScope.ts";
 import { isOrdenacaoGestaoDefault, ordenarProdutosGestaoDefault } from "./gestaoOrdering.ts";
 import { filtrarProdutos } from "./gestaoFilters.ts";
 
@@ -23,6 +33,9 @@ type GestaoCacheEntry = {
 };
 
 const gestaoCache = new Map<string, GestaoCacheEntry>();
+const GESTAO_LOJA_CONCURRENCY = 2;
+
+export type GestaoLoadProgress = { atual: number; total: number; loja: number };
 
 /** Limpa cache de gestão (troca de contexto ou testes). */
 export function invalidateGestaoCache(prefix?: string): void {
@@ -135,27 +148,14 @@ async function carregarChunkGestao(
   return null;
 }
 
-/**
- * Carrega gestão com cache por path. Chunks são baixados sequencialmente uma vez;
- * paginação subsequente reutiliza cache (sem re-download de 10k+ produtos).
- */
-async function ensureGestaoProdutos(
-  ctx: RupturaFiltrosProdutos,
-  authCtx: PermissionContext | null,
+async function ensureGestaoLoja(
+  manifest: NonNullable<Awaited<ReturnType<typeof carregarManifest>>["manifest"]>,
+  loja: number,
 ): Promise<{ produtos: HibridoProdutoGestao[]; erro: HybridServiceError | null }> {
-  const scopeErr = assertEscopoHibrido(authCtx, ctx);
-  if (scopeErr) return { produtos: [], erro: scopeErr };
-
-  const bandeira = ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
-  const { manifest, erro: mErr } = await carregarManifest({
-    regional: ctx.regional,
-    bandeira,
-    dataReferencia: ctx.dataReferencia,
-  });
-  if (mErr) return { produtos: [], erro: mErr };
-
-  const paths = lojaPathsFromManifest(manifest!, ctx.loja);
-  if (!paths) return { produtos: [], erro: { code: "not_published", message: "Gestão não publicada." } };
+  const paths = lojaPathsFromManifest(manifest, loja);
+  if (!paths) {
+    return { produtos: [], erro: { code: "loja_not_published", message: HYBRID_LOJA_NAO_PUBLICADA_MESSAGE } };
+  }
 
   const cacheKey = paths.gestao;
   let entry = gestaoCache.get(cacheKey);
@@ -207,14 +207,101 @@ async function ensureGestaoProdutos(
   return { produtos: entry.produtos, erro: loadErr };
 }
 
+async function ensureGestaoProdutos(
+  ctx: RupturaFiltrosProdutos,
+  authCtx: PermissionContext | null,
+  onProgress?: (p: GestaoLoadProgress) => void,
+): Promise<{ produtos: HibridoProdutoGestao[]; erro: HybridServiceError | null }> {
+  const scopeErr = assertEscopoHibrido(authCtx, ctx);
+  if (scopeErr) return { produtos: [], erro: scopeErr };
+
+  const catalogo = await fetchCatalogoLojas();
+  const lojasAlvo = resolverLojasEfetivas(catalogo, ctx);
+  const selErr = assertLojasSelecionadas(lojasAlvo);
+  if (selErr) return { produtos: [], erro: selErr };
+
+  const bandeiras =
+    ctx.bandeira != null
+      ? [ctx.bandeira]
+      : listarBandeirasDoCatalogo(catalogo, ctx.regional).map((b) => b.bandeira);
+
+  const tarefas: { bandeira: string; loja: number }[] = [];
+  for (const bandeira of bandeiras) {
+    const lojasBandeira = lojasAlvo.filter((l) =>
+      catalogo.some((c) => c.loja === l && c.bandeira === bandeira && c.regional === ctx.regional),
+    );
+    for (const loja of lojasBandeira) {
+      tarefas.push({ bandeira, loja });
+    }
+  }
+
+  if (!tarefas.length) {
+    return {
+      produtos: [],
+      erro: { code: "bandeira_not_published", message: HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE },
+    };
+  }
+
+  const produtos: HibridoProdutoGestao[] = [];
+  let concluidas = 0;
+  let primeiroErro: HybridServiceError | null = null;
+
+  async function carregarTarefa(t: { bandeira: string; loja: number }) {
+    const { manifest, erro: mErr } = await carregarManifest({
+      regional: ctx.regional,
+      bandeira: t.bandeira,
+      dataReferencia: ctx.dataReferencia,
+    });
+    if (mErr) {
+      if (!primeiroErro) primeiroErro = { code: "bandeira_not_published", message: HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE };
+      concluidas += 1;
+      onProgress?.({ atual: concluidas, total: tarefas.length, loja: t.loja });
+      return;
+    }
+
+    const publicadas = listarLojasPublicadasManifest(manifest!);
+    if (!publicadas.includes(t.loja)) {
+      if (!primeiroErro) primeiroErro = { code: "loja_not_published", message: HYBRID_LOJA_NAO_PUBLICADA_MESSAGE };
+      concluidas += 1;
+      onProgress?.({ atual: concluidas, total: tarefas.length, loja: t.loja });
+      return;
+    }
+
+    const r = await ensureGestaoLoja(manifest!, t.loja);
+    if (r.erro && !primeiroErro) primeiroErro = r.erro;
+    produtos.push(...r.produtos);
+    concluidas += 1;
+    onProgress?.({ atual: concluidas, total: tarefas.length, loja: t.loja });
+  }
+
+  let next = 0;
+  async function worker() {
+    while (next < tarefas.length) {
+      const i = next++;
+      await carregarTarefa(tarefas[i]!);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(GESTAO_LOJA_CONCURRENCY, tarefas.length) }, () => worker()),
+  );
+
+  if (!produtos.length && primeiroErro) {
+    return { produtos: [], erro: primeiroErro };
+  }
+
+  return { produtos, erro: null };
+}
+
 export async function consultarProdutosPaginadosHibrido(input: {
   filtros: RupturaFiltrosProdutos;
   pagina: number;
   tamanho: number;
   authCtx: PermissionContext | null;
   ordenacao?: { coluna: string; direcao: "asc" | "desc" };
+  onProgress?: (p: GestaoLoadProgress) => void;
 }): Promise<{ dados: RupturaProdutoLoja[]; total: number; erro: HybridServiceError | null }> {
-  const { produtos, erro } = await ensureGestaoProdutos(input.filtros, input.authCtx);
+  const { produtos, erro } = await ensureGestaoProdutos(input.filtros, input.authCtx, input.onProgress);
   if (erro) return { dados: [], total: 0, erro };
 
   const filtrados = filtrarProdutos(produtos, input.filtros);

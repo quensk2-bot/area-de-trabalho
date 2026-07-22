@@ -52,11 +52,14 @@ export function RupturaKpiCards({ kpi, loading }: Props) {
 
 export function RupturaResumoTexto({ kpi }: { kpi: RupturaDashboardLoja | null }) {
   if (!kpi) return null;
+  const escopoLoja =
+    kpi.loja === 0 ? "nas lojas selecionadas" : `na loja ${kpi.loja}`;
   return (
     <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-      Na loja <strong>{kpi.loja}</strong> existem <strong>{formatNumero(kpi.total_ruptura_geral)}</strong> itens na
-      ruptura geral. Destes, <strong>{formatNumero(kpi.total_ruptura_classificada)}</strong> possuem classificação
-      operacional: <strong>{formatNumero(kpi.total_curto_prazo)}</strong> de curto prazo,{" "}
+      {escopoLoja.charAt(0).toUpperCase() + escopoLoja.slice(1)} existem{" "}
+      <strong>{formatNumero(kpi.total_ruptura_geral)}</strong> itens na ruptura geral. Destes,{" "}
+      <strong>{formatNumero(kpi.total_ruptura_classificada)}</strong> possuem classificação operacional:{" "}
+      <strong>{formatNumero(kpi.total_curto_prazo)}</strong> de curto prazo,{" "}
       <strong>{formatNumero(kpi.total_medio_prazo)}</strong> de médio prazo e{" "}
       <strong>{formatNumero(kpi.total_longo_prazo)}</strong> de longo prazo (além de{" "}
       <strong>{formatNumero(kpi.total_bloqueado)}</strong> bloqueados). Percentual sobre Base Limpa elegível:{" "}

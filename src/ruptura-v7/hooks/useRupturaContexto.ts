@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { HIBRIDO_PILOTO } from "../../hibrido-v7/constants.ts";
 import { isModoHibrido } from "../../lib/env.ts";
+import { migrarContextoLojas } from "../services/lojasFiltroUtils.ts";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
 import { RUPTURA_CONTEXTO_DEFAULT } from "../types/rupturaFiltrosTypes.ts";
 
-const STORAGE_KEY = "ruptura-v7-contexto";
+const STORAGE_PREFIX = "ruptura-v7-contexto";
+
+export type RupturaContextoTela = "dashboard" | "gestao" | "central-acoes" | "visao360" | "importacao";
+
+function storageKey(userId: string | undefined, tela: RupturaContextoTela): string {
+  return `${STORAGE_PREFIX}:${userId ?? "anon"}:${tela}`;
+}
 
 function defaultContexto(): RupturaFiltrosContexto {
   if (isModoHibrido()) {
@@ -13,6 +20,7 @@ function defaultContexto(): RupturaFiltrosContexto {
       bandeira: HIBRIDO_PILOTO.bandeira,
       dataReferencia: HIBRIDO_PILOTO.dataReferencia,
       loja: HIBRIDO_PILOTO.loja,
+      lojas: [],
     };
   }
   return RUPTURA_CONTEXTO_DEFAULT;
@@ -23,39 +31,49 @@ export function normalizeContextoHibrido(ctx: RupturaFiltrosContexto): RupturaFi
   return { ...ctx, dataReferencia: HIBRIDO_PILOTO.dataReferencia };
 }
 
-function readStoredContexto(): RupturaFiltrosContexto {
+function readStoredContexto(userId: string | undefined, tela: RupturaContextoTela): RupturaFiltrosContexto {
   const base = defaultContexto();
   if (typeof window === "undefined") return base;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return base;
+    const raw = window.localStorage.getItem(storageKey(userId, tela));
+    if (!raw) {
+      const legacy = window.localStorage.getItem(STORAGE_PREFIX);
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as Partial<RupturaFiltrosContexto>;
+        return normalizeContextoHibrido(migrarContextoLojas(parsed, base));
+      }
+      return base;
+    }
     const parsed = JSON.parse(raw) as Partial<RupturaFiltrosContexto>;
-    return normalizeContextoHibrido({
-      ...base,
-      ...parsed,
-      bandeira: parsed.bandeira ?? base.bandeira,
-    });
+    return normalizeContextoHibrido(migrarContextoLojas(parsed, base));
   } catch {
     return base;
   }
 }
 
-export function useRupturaContexto(): [
+export function useRupturaContexto(
+  tela: RupturaContextoTela = "dashboard",
+  userId?: string,
+): [
   RupturaFiltrosContexto,
   (patch: Partial<RupturaFiltrosContexto>) => void,
 ] {
-  const [ctx, setCtx] = useState<RupturaFiltrosContexto>(() => readStoredContexto());
+  const [ctx, setCtx] = useState<RupturaFiltrosContexto>(() => readStoredContexto(userId, tela));
+
+  useEffect(() => {
+    setCtx(readStoredContexto(userId, tela));
+  }, [userId, tela]);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ctx));
+      window.localStorage.setItem(storageKey(userId, tela), JSON.stringify(ctx));
     } catch {
       // ignore
     }
-  }, [ctx]);
+  }, [ctx, userId, tela]);
 
   const update = (patch: Partial<RupturaFiltrosContexto>) => {
-    setCtx((prev) => normalizeContextoHibrido({ ...prev, ...patch }));
+    setCtx((prev) => normalizeContextoHibrido(migrarContextoLojas({ ...prev, ...patch }, prev)));
   };
 
   return [ctx, update];

@@ -14,12 +14,14 @@ export function prioridadeClassificacaoGestao(classificacao: string | null | und
   return CLASSIFICACAO_PRIORIDADE_GESTAO[classificacao] ?? 99;
 }
 
-/** CP > MP > LP > bloqueado > sem_ruptura; depois pendência ↓, estoque CD ↓, seqproduto ↑ */
+/** CP > MP > LP > bloqueado > sem_ruptura; depois loja ↑, pendência ↓, estoque CD ↓, seqproduto ↑ */
 export function ordenarProdutosGestaoDefault(produtos: readonly HibridoProdutoGestao[]): HibridoProdutoGestao[] {
   return [...produtos].sort((a, b) => {
     const pa = prioridadeClassificacaoGestao(a.classificacaoPrazo);
     const pb = prioridadeClassificacaoGestao(b.classificacaoPrazo);
     if (pa !== pb) return pa - pb;
+
+    if (a.loja !== b.loja) return a.loja - b.loja;
 
     const pendA = a.pendenciaCpaCd ?? 0;
     const pendB = b.pendenciaCpaCd ?? 0;

@@ -6,6 +6,14 @@ export const HYBRID_DATA_PENDING_MESSAGE =
 export const HYBRID_NOT_PUBLISHED_MESSAGE =
   "Versão ainda não publicada no Storage privado para este escopo. Aguarde a publicação do Worker.";
 
+export const HYBRID_LOJA_NAO_PUBLICADA_MESSAGE =
+  "Dados ainda não publicados para a loja selecionada. Aguarde a publicação do Worker.";
+
+export const HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE =
+  "Dados ainda não publicados para esta regional/bandeira. Aguarde a publicação do Worker.";
+
+export const HYBRID_NENHUMA_LOJA_MESSAGE = "Selecione ao menos uma loja para visualizar os dados.";
+
 export const HYBRID_FORBIDDEN_MESSAGE = "Você não possui permissão para acessar estes dados.";
 
 export const HYBRID_CONSUMO_BLOCKED = "HYBRID_MODE: consumo_v7 indisponível no modo híbrido";
@@ -13,6 +21,9 @@ export const HYBRID_CONSUMO_BLOCKED = "HYBRID_MODE: consumo_v7 indisponível no 
 export type HybridServiceErrorCode =
   | "hybrid_pending"
   | "not_published"
+  | "loja_not_published"
+  | "bandeira_not_published"
+  | "no_loja_selected"
   | "forbidden"
   | "invalid_manifest"
   | "network";

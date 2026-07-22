@@ -2,7 +2,10 @@ import type { CSSProperties } from "react";
 import { theme } from "../../styles.ts";
 import {
   HYBRID_DATA_PENDING_MESSAGE,
+  HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE,
   HYBRID_FORBIDDEN_MESSAGE,
+  HYBRID_LOJA_NAO_PUBLICADA_MESSAGE,
+  HYBRID_NENHUMA_LOJA_MESSAGE,
   HYBRID_NOT_PUBLISHED_MESSAGE,
   type HybridServiceErrorCode,
 } from "../hybridErrors.ts";
@@ -24,6 +27,9 @@ const cardStyle: CSSProperties = {
 const messages: Record<HybridServiceErrorCode, string> = {
   hybrid_pending: HYBRID_DATA_PENDING_MESSAGE,
   not_published: HYBRID_NOT_PUBLISHED_MESSAGE,
+  loja_not_published: HYBRID_LOJA_NAO_PUBLICADA_MESSAGE,
+  bandeira_not_published: HYBRID_BANDEIRA_NAO_PUBLICADA_MESSAGE,
+  no_loja_selected: HYBRID_NENHUMA_LOJA_MESSAGE,
   forbidden: HYBRID_FORBIDDEN_MESSAGE,
   invalid_manifest: "Manifest inválido ou corrompido. Contate o administrador.",
   network: "Não foi possível carregar os dados operacionais. Tente novamente.",

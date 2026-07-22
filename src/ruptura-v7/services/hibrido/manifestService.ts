@@ -67,5 +67,18 @@ export async function carregarManifest(input: {
 }
 
 export function lojaPathsFromManifest(manifest: RupturaManifest, loja: number) {
+  if (loja === 0) return null;
   return manifest.lojas[String(loja)] ?? null;
+}
+
+/** Lojas com artefatos publicados no manifest (não usa sentinel "Todas"). */
+export function listarLojasPublicadasManifest(manifest: RupturaManifest): number[] {
+  return Object.keys(manifest.lojas)
+    .map((k) => Number(k))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .sort((a, b) => a - b);
+}
+
+export function lojaPublicadaNoManifest(manifest: RupturaManifest, loja: number): boolean {
+  return loja > 0 && manifest.lojas[String(loja)] != null;
 }

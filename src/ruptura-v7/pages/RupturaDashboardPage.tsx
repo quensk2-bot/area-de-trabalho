@@ -47,7 +47,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
     [auth],
   );
 
-  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
+  const [ctx, setCtx, { readonly, multiSelectLoja }] = useRupturaContextoScoped("dashboard");
   const [kpi, setKpi] = useState<RupturaDashboardLoja | null>(null);
   const [setores, setSetores] = useState<Awaited<ReturnType<typeof consultarDashboardSetores>>["dados"]>([]);
   const [fornecedores, setFornecedores] = useState<Awaited<ReturnType<typeof consultarDashboardFornecedores>>["dados"]>([]);
@@ -133,11 +133,8 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
             Gestão de Ruptura — Dashboard
           </h1>
         </header>
-        <RupturaContextoBar ctx={ctx} onChange={setCtx} readonlyFields={readonly} />
-        <HybridDataPending
-          code={hybridState.code}
-          detail={hybridState.code === "invalid_manifest" ? hybridState.message : undefined}
-        />
+        <RupturaContextoBar ctx={ctx} onChange={setCtx} readonlyFields={readonly} multiSelectLoja={multiSelectLoja} />
+        <HybridDataPending code={hybridState.code} message={hybridState.message} />
       </section>
     );
   }
@@ -166,6 +163,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
         onChange={setCtx}
         onAtualizar={() => void carregar()}
         readonlyFields={readonly}
+        multiSelectLoja={multiSelectLoja}
         extra={
           <>
             {onAbrirGestao && (

@@ -95,7 +95,8 @@ export function RupturaGestaoPage() {
     [auth],
   );
 
-  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
+  const [ctx, setCtx, { readonly, multiSelectLoja }] = useRupturaContextoScoped("gestao");
+  const [loadProgress, setLoadProgress] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<Partial<RupturaFiltrosProdutos>>({});
   const [busca, setBusca] = useState("");
   const buscaDebounced = useDebouncedValue(busca, RUPTURA_BUSCA_DEBOUNCE_MS);
@@ -133,7 +134,9 @@ export function RupturaGestaoPage() {
         pagina,
         tamanho,
         authCtx: permCtx,
+        onProgress: (p) => setLoadProgress(`Carregando loja ${p.atual} de ${p.total}…`),
       });
+      setLoadProgress(null);
       if (r.erro) setHybridState(r.erro);
       setDados(r.dados);
       setTotal(r.total);
@@ -159,11 +162,11 @@ export function RupturaGestaoPage() {
 
   useEffect(() => {
     setPagina(1);
-  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, buscaDebounced, filtros.classificacao]);
+  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, ctx.lojas, buscaDebounced, filtros.classificacao]);
 
   useEffect(() => {
     if (isModoHibrido()) invalidateGestaoCache();
-  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja]);
+  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, ctx.lojas]);
 
   const totalPaginas = Math.max(1, Math.ceil(total / tamanho));
 
@@ -201,7 +204,17 @@ export function RupturaGestaoPage() {
         texto="Cada linha representa um produto processado pelo Motor. As classificações e ações não são calculadas nesta tela."
       />
 
-      <RupturaContextoBar ctx={ctx} onChange={setCtx} onAtualizar={() => void carregar()} readonlyFields={readonly} />
+      <RupturaContextoBar
+        ctx={ctx}
+        onChange={setCtx}
+        onAtualizar={() => void carregar()}
+        readonlyFields={readonly}
+        multiSelectLoja={multiSelectLoja}
+      />
+
+      {loadProgress && (
+        <div style={{ fontSize: 12, color: theme.colors.textMuted }}>{loadProgress}</div>
+      )}
 
       {hybridState && !dados.length && !loading ? (
         <HybridDataPending code={hybridState.code} message={hybridState.message} />

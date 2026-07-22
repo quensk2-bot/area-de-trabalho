@@ -68,7 +68,7 @@ function competenciaDate(ano: number, mes: number): string {
 }
 
 export function RupturaImportacaoDrivePage() {
-  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
+  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped("importacao");
   const [ano, setAno] = useState(() => Number(ctx.dataReferencia.slice(0, 4)));
   const [mes, setMes] = useState(() => Number(ctx.dataReferencia.slice(5, 7)));
   const [folderIdManual, setFolderIdManual] = useState("");

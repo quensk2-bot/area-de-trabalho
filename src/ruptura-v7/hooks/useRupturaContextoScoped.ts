@@ -3,13 +3,18 @@ import { useAuthV7, toPermissionContext } from "../../auth-v7/index.ts";
 import { isModoHibrido } from "../../lib/env.ts";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
 import { contextoFixoGerente } from "../services/hibrido/hibridoScope.ts";
-import { useRupturaContexto } from "./useRupturaContexto.ts";
+import { useRupturaContexto, type RupturaContextoTela } from "./useRupturaContexto.ts";
 
 /** Contexto ruptura com escopo GERENTE_LOJA fixado no modo híbrido. */
-export function useRupturaContextoScoped(): [
+export function useRupturaContextoScoped(
+  tela: RupturaContextoTela = "dashboard",
+): [
   RupturaFiltrosContexto,
   (patch: Partial<RupturaFiltrosContexto>) => void,
-  { readonly: { regional?: boolean; bandeira?: boolean; loja?: boolean } },
+  {
+    readonly: { regional?: boolean; bandeira?: boolean; loja?: boolean; dataReferencia?: boolean };
+    multiSelectLoja: boolean;
+  },
 ] {
   const auth = useAuthV7();
   const permCtx = auth.perfil
@@ -22,7 +27,7 @@ export function useRupturaContextoScoped(): [
       })
     : null;
 
-  const [ctx, setCtx] = useRupturaContexto();
+  const [ctx, setCtx] = useRupturaContexto(tela, auth.perfil?.user_id);
 
   useEffect(() => {
     if (!isModoHibrido() || !permCtx) return;
@@ -32,6 +37,7 @@ export function useRupturaContextoScoped(): [
         regional: fixo.regional ?? ctx.regional,
         bandeira: fixo.bandeira ?? ctx.bandeira,
         loja: fixo.loja ?? ctx.loja,
+        lojas: fixo.lojas ?? (fixo.loja != null ? [fixo.loja] : []),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- aplicar escopo gerente uma vez
@@ -49,13 +55,15 @@ export function useRupturaContextoScoped(): [
         ? { dataReferencia: true }
         : {};
 
+  const multiSelectLoja = permCtx?.nivel !== "GERENTE_LOJA";
+
   const update = (patch: Partial<RupturaFiltrosContexto>) => {
     if (readonly.regional && patch.regional !== undefined) return;
     if (readonly.bandeira && patch.bandeira !== undefined) return;
-    if (readonly.loja && patch.loja !== undefined) return;
+    if (readonly.loja && (patch.loja !== undefined || patch.lojas !== undefined)) return;
     if (readonly.dataReferencia && patch.dataReferencia !== undefined) return;
     setCtx(patch);
   };
 
-  return [ctx, update, { readonly }];
+  return [ctx, update, { readonly, multiSelectLoja }];
 }

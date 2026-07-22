@@ -27,7 +27,7 @@ export type CatalogoRegional = {
 /**
  * Sentinelas de filtro (documentação de contrato V7):
  * - bandeira `null` → Todas as bandeiras da regional selecionada
- * - loja `0` → Todas as lojas (respeitando regional/bandeira)
+ * - loja `0` / lojas `[]` → Todas as lojas (respeitando regional/bandeira)
  */
 export const FILTRO_BANDEIRA_TODAS = null;
 export const FILTRO_LOJA_TODAS = 0;
@@ -35,5 +35,8 @@ export const FILTRO_LOJA_TODAS = 0;
 export type FiltroRegionalBandeiraLojaValores = {
   regional: string;
   bandeira: string | null;
+  /** @deprecated Preferir `lojas`. Mantido para compatibilidade e sentinela 0 = Todas. */
   loja: number;
+  /** Lojas selecionadas. Vazio = Todas no escopo (equivalente a loja 0). */
+  lojas: number[];
 };

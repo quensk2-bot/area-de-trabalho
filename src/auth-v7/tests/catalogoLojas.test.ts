@@ -92,22 +92,24 @@ describe("catalogoLojas — exibição e cascata", () => {
   it("cascata reseta bandeira/loja ao trocar regional", () => {
     const next = normalizarFiltroCascade(
       CATALOGO_MT,
-      { regional: "MT", bandeira: "COMPER", loja: 73 },
+      { regional: "MT", bandeira: "COMPER", loja: 73, lojas: [73] },
       { regional: "SP" },
     );
     assert.equal(next.regional, "SP");
     assert.equal(next.bandeira, FILTRO_BANDEIRA_TODAS);
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
+    assert.deepEqual(next.lojas, []);
   });
 
   it("cascata reseta loja ao trocar bandeira", () => {
     const next = normalizarFiltroCascade(
       CATALOGO_MT,
-      { regional: "MT", bandeira: "COMPER", loja: 73 },
+      { regional: "MT", bandeira: "COMPER", loja: 73, lojas: [73] },
       { bandeira: "FORT" },
     );
     assert.equal(next.bandeira, "FORT");
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
+    assert.deepEqual(next.lojas, []);
   });
 });
 
@@ -139,11 +141,12 @@ describe("catalogoLojas — MT COMPER e FORT", () => {
   it("COMPER → FORT limpa loja anterior na cascata", () => {
     const next = normalizarFiltroCascade(
       CATALOGO_MT_COMPLETO,
-      { regional: "MT", bandeira: "COMPER", loja: 73 },
+      { regional: "MT", bandeira: "COMPER", loja: 73, lojas: [73] },
       { bandeira: "FORT" },
     );
     assert.equal(next.bandeira, "FORT");
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
+    assert.deepEqual(next.lojas, []);
     assert.ok(!listarLojasDoCatalogo(CATALOGO_MT_COMPLETO, "MT", "FORT").some((l) => l.loja === 73));
   });
 
@@ -159,7 +162,7 @@ describe("catalogoLojas — MT COMPER e FORT", () => {
   it("loja inválida após cascata cai em Todas ou primeira válida", () => {
     const next = normalizarFiltroCascade(
       CATALOGO_MT,
-      { regional: "MT", bandeira: "COMPER", loja: 9999 },
+      { regional: "MT", bandeira: "COMPER", loja: 9999, lojas: [9999] },
       {},
     );
     assert.notEqual(next.loja, 9999);

@@ -5,6 +5,7 @@ import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { RupturaHierarquiaTable } from "../components/RupturaHierarquiaTable.tsx";
 import { RupturaVisao360Blocks } from "../components/RupturaVisao360Blocks.tsx";
 import { buttonGhostStyle, buttonStyle, cardStyle, formatNumero, formatPercentual, helpTextStyle } from "../components/rupturaSharedStyles.ts";
+import { useAuthV7 } from "../../auth-v7/index.ts";
 import { useRupturaContexto } from "../hooks/useRupturaContexto.ts";
 import { consultarExecucaoAtiva } from "../services/rupturaDashboardService.ts";
 import { consultarOficialLoja } from "../services/rupturaOficialService.ts";
@@ -43,7 +44,8 @@ function comparar(kpi: RupturaOficialLoja | null, ref = REFERENCIA_PLANILHA_LOJA
 }
 
 export function RupturaVisao360Page() {
-  const [ctx, setCtx] = useRupturaContexto();
+  const auth = useAuthV7();
+  const [ctx, setCtx] = useRupturaContexto("visao360", auth.perfil?.user_id);
   const [universo, setUniverso] = useState<UniversoLeituraOficial>(UNIVERSO_LEITURA_DEFAULT);
   const [modo, setModo] = useState<ModoApresentacaoVisao360>("oficial");
   const [kpi, setKpi] = useState<RupturaOficialLoja | null>(null);
