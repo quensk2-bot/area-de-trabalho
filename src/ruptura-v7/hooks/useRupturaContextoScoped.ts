@@ -30,6 +30,7 @@ export function useRupturaContextoScoped(): [
     if (fixo) {
       setCtx({
         regional: fixo.regional ?? ctx.regional,
+        bandeira: fixo.bandeira ?? ctx.bandeira,
         loja: fixo.loja ?? ctx.loja,
       });
     }
@@ -50,6 +51,7 @@ export function useRupturaContextoScoped(): [
 
   const update = (patch: Partial<RupturaFiltrosContexto>) => {
     if (readonly.regional && patch.regional !== undefined) return;
+    if (readonly.bandeira && patch.bandeira !== undefined) return;
     if (readonly.loja && patch.loja !== undefined) return;
     if (readonly.dataReferencia && patch.dataReferencia !== undefined) return;
     setCtx(patch);

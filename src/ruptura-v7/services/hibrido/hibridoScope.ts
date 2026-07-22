@@ -1,5 +1,5 @@
 import type { PermissionContext } from "../../../auth-v7/permissionService.ts";
-import { canAccessBandeira, canAccessLoja } from "../../../auth-v7/permissionService.ts";
+import { canAccessBandeira, canAccessLoja, canAccessRegional } from "../../../auth-v7/permissionService.ts";
 import { isModoHibrido } from "../../../lib/env.ts";
 import type { RupturaFiltrosContexto } from "../../types/rupturaFiltrosTypes.ts";
 import { HIBRIDO_PILOTO } from "../../../hibrido-v7/constants.ts";
@@ -9,24 +9,35 @@ export const HIBRIDO_BANDEIRA_DEFAULT = HIBRIDO_PILOTO.bandeira;
 
 export function assertEscopoHibrido(
   ctx: PermissionContext | null,
-  filtros: RupturaFiltrosContexto & { bandeira?: string },
+  filtros: RupturaFiltrosContexto & { bandeira?: string | null },
 ): HybridServiceError | null {
   if (!isModoHibrido()) return null;
   if (!ctx) return { code: "forbidden", message: "Sessão necessária" };
 
-  const bandeira = filtros.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
+  const bandeiraEfetiva = filtros.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
 
   if (ctx.nivel === "GERENTE_LOJA") {
-    if (!canAccessLoja(ctx, filtros.regional, bandeira, filtros.loja)) {
+    const lojaFixa = ctx.lojas[0]?.loja;
+    if (filtros.loja === 0 || (lojaFixa != null && filtros.loja !== lojaFixa)) {
+      return { code: "forbidden", message: "Loja fora do seu escopo." };
+    }
+    if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, filtros.loja)) {
       return { code: "forbidden", message: "Loja fora do seu escopo." };
     }
     return null;
   }
 
-  if (!canAccessBandeira(ctx, filtros.regional, bandeira)) {
+  if (filtros.bandeira == null) {
+    if (!canAccessRegional(ctx, filtros.regional)) {
+      return { code: "forbidden", message: "Regional fora do seu escopo." };
+    }
+  } else if (!canAccessBandeira(ctx, filtros.regional, filtros.bandeira)) {
     return { code: "forbidden", message: "Regional/bandeira fora do seu escopo." };
   }
-  if (!canAccessLoja(ctx, filtros.regional, bandeira, filtros.loja)) {
+
+  if (filtros.loja === 0) return null;
+
+  if (!canAccessLoja(ctx, filtros.regional, bandeiraEfetiva, filtros.loja)) {
     return { code: "forbidden", message: "Loja fora do seu escopo." };
   }
   return null;

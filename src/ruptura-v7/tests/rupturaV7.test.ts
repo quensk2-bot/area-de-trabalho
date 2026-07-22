@@ -82,6 +82,7 @@ describe("ruptura-v7 — exportacao", () => {
   it("monta linhas CSV/XLSX com metadados de contexto", () => {
     const rows = montarLinhasExport([produtoBase], {
       regional: "MT",
+      bandeira: "COMPER",
       dataReferencia: "2026-03-26",
       loja: 73,
     });
@@ -119,7 +120,12 @@ describe("ruptura-v7 — classificacoes CP/MP/LP/sem_ruptura/bloqueado", () => {
       seqproduto: 1,
       versao: 1,
     } as RupturaProdutoLoja;
-    const rows = montarLinhasExport([p], { regional: "MT", dataReferencia: "2026-03-26", loja: 73 });
+    const rows = montarLinhasExport([p], {
+      regional: "MT",
+      bandeira: "COMPER",
+      dataReferencia: "2026-03-26",
+      loja: 73,
+    });
     assert.equal(rows[0].Classificação, "curto_prazo");
   });
 

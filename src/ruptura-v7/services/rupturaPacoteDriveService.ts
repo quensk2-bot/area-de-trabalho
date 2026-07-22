@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabaseClient.ts";
+import { isModoHibrido } from "../../lib/env.ts";
 import { consumoDb } from "./rupturaDb.ts";
 
 const infraDb = () => supabase.schema("infra_v7");
@@ -131,7 +132,43 @@ export type ValidarPacoteResult = {
   hashReduzido?: string;
 };
 
-export async function buscarPastaMotorAtiva(regional: string, tipoPasta = "originais"): Promise<DrivePastaMotorAtiva | null> {
+export async function buscarPastaMotorAtiva(
+  regional: string,
+  tipoPasta = "originais",
+  bandeira?: string | null,
+): Promise<DrivePastaMotorAtiva | null> {
+  if (isModoHibrido()) {
+    if (!bandeira) return null;
+    const { appV7Db } = await import("../../lib/supabaseClient.ts");
+    const { data, error } = await appV7Db()
+      .from("drive_pastas")
+      .select("id, regional, ano, mes, tipo_pasta, drive_folder_id, caminho_exibicao")
+      .eq("modulo", "ruptura")
+      .eq("regional", regional.toUpperCase())
+      .eq("bandeira", bandeira.toUpperCase())
+      .eq("tipo_pasta", tipoPasta)
+      .eq("ativo", true)
+      .order("ano", { ascending: false, nullsFirst: false })
+      .order("mes", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      id: data.id,
+      regional: data.regional,
+      ano: data.ano ?? 0,
+      mes: data.mes ?? 0,
+      tipo_pasta: data.tipo_pasta,
+      drive_folder_id: data.drive_folder_id,
+      caminho_exibicao: data.caminho_exibicao,
+      descricao: null,
+      observacao: null,
+      ultima_verificacao: null,
+      ultima_validacao: null,
+    };
+  }
+
   const { data, error } = await consumoDb()
     .from("vw_drive_pasta_motor_ativa")
     .select("*")

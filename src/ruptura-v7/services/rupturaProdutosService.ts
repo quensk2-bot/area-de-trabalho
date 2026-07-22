@@ -4,11 +4,9 @@ import { consumoDb, mapSupabaseError } from "./rupturaDb.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function aplicarFiltrosProdutoQuery(query: any, filtros: RupturaFiltrosProdutos): any {
-  let q = query
-    .eq("regional", filtros.regional)
-    .eq("data_referencia", filtros.dataReferencia)
-    .eq("loja", filtros.loja);
+  let q = query.eq("regional", filtros.regional).eq("data_referencia", filtros.dataReferencia);
 
+  if (filtros.loja > 0) q = q.eq("loja", filtros.loja);
   if (filtros.bandeira) q = q.eq("bandeira", filtros.bandeira);
   if (filtros.divisao) q = q.eq("divisao", filtros.divisao);
   if (filtros.setor) q = q.eq("setor_n2", filtros.setor);

@@ -159,11 +159,11 @@ export function RupturaGestaoPage() {
 
   useEffect(() => {
     setPagina(1);
-  }, [ctx.regional, ctx.dataReferencia, ctx.loja, buscaDebounced, filtros.classificacao]);
+  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, buscaDebounced, filtros.classificacao]);
 
   useEffect(() => {
     if (isModoHibrido()) invalidateGestaoCache();
-  }, [ctx.regional, ctx.dataReferencia, ctx.loja]);
+  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja]);
 
   const totalPaginas = Math.max(1, Math.ceil(total / tamanho));
 

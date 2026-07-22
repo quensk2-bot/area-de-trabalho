@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FiltroRegionalBandeiraLoja } from "../../components/filtros/FiltroRegionalBandeiraLoja.tsx";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
 import { buttonGhostStyle, inputStyle } from "./rupturaSharedStyles.ts";
 
@@ -9,22 +10,43 @@ type Props = {
   extra?: ReactNode;
   /** Importação Drive usa escopo regional — loja não filtra o pacote. */
   ocultarLoja?: boolean;
-  readonlyFields?: { regional?: boolean; loja?: boolean; dataReferencia?: boolean };
+  permitirTodasBandeira?: boolean;
+  permitirTodasLoja?: boolean;
+  readonlyFields?: {
+    regional?: boolean;
+    bandeira?: boolean;
+    loja?: boolean;
+    dataReferencia?: boolean;
+  };
 };
 
-export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarLoja, readonlyFields }: Props) {
+export function RupturaContextoBar({
+  ctx,
+  onChange,
+  onAtualizar,
+  extra,
+  ocultarLoja,
+  permitirTodasBandeira,
+  permitirTodasLoja,
+  readonlyFields,
+}: Props) {
   const readOnlyStyle = { opacity: 0.72, cursor: "not-allowed" as const };
+
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-        Regional
-        <input
-          style={{ ...inputStyle, ...(readonlyFields?.regional ? readOnlyStyle : {}) }}
-          value={ctx.regional}
-          readOnly={readonlyFields?.regional}
-          onChange={(e) => onChange({ regional: e.target.value.toUpperCase() })}
-        />
-      </label>
+      <FiltroRegionalBandeiraLoja
+        valores={{
+          regional: ctx.regional,
+          bandeira: ctx.bandeira,
+          loja: ctx.loja,
+        }}
+        onChange={(patch) => onChange(patch)}
+        readonlyFields={readonlyFields}
+        ocultarLoja={ocultarLoja}
+        permitirTodasBandeira={permitirTodasBandeira ?? !ocultarLoja}
+        permitirTodasLoja={permitirTodasLoja ?? !ocultarLoja}
+      />
+
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
         Data referência
         <input
@@ -35,18 +57,7 @@ export function RupturaContextoBar({ ctx, onChange, onAtualizar, extra, ocultarL
           onChange={(e) => onChange({ dataReferencia: e.target.value })}
         />
       </label>
-      {!ocultarLoja && (
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-          Loja
-          <input
-            style={{ ...inputStyle, ...(readonlyFields?.loja ? readOnlyStyle : {}) }}
-            type="number"
-            value={ctx.loja}
-            readOnly={readonlyFields?.loja}
-            onChange={(e) => onChange({ loja: Number(e.target.value) || 0 })}
-          />
-        </label>
-      )}
+
       {onAtualizar && (
         <button type="button" style={buttonGhostStyle} onClick={onAtualizar}>
           Atualizar

@@ -18,8 +18,8 @@ export { mapResumoToDashboard } from "./mapResumoDashboard.ts";
 async function loadResumo(
   ctx: RupturaFiltrosContexto,
   authCtx: PermissionContext | null,
-  bandeira = HIBRIDO_BANDEIRA_DEFAULT,
 ): Promise<{ resumo: ResumoLojaJson | null; erro: HybridServiceError | null; versao?: number }> {
+  const bandeira = ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
   const scopeErr = assertEscopoHibrido(authCtx, { ...ctx, bandeira });
   if (scopeErr) return { resumo: null, erro: scopeErr };
 

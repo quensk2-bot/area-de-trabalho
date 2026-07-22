@@ -10,6 +10,7 @@ function defaultContexto(): RupturaFiltrosContexto {
   if (isModoHibrido()) {
     return {
       regional: HIBRIDO_PILOTO.regional,
+      bandeira: HIBRIDO_PILOTO.bandeira,
       dataReferencia: HIBRIDO_PILOTO.dataReferencia,
       loja: HIBRIDO_PILOTO.loja,
     };
@@ -29,7 +30,11 @@ function readStoredContexto(): RupturaFiltrosContexto {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return base;
     const parsed = JSON.parse(raw) as Partial<RupturaFiltrosContexto>;
-    return normalizeContextoHibrido({ ...base, ...parsed });
+    return normalizeContextoHibrido({
+      ...base,
+      ...parsed,
+      bandeira: parsed.bandeira ?? base.bandeira,
+    });
   } catch {
     return base;
   }

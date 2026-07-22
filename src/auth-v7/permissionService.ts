@@ -23,6 +23,11 @@ export function canAccessRegional(ctx: PermissionContext, regional: string): boo
 export function canAccessBandeira(ctx: PermissionContext, regional: string, bandeira: string): boolean {
   if (ctx.nivel === "ADM") return true;
   if (ctx.nivel === "N0" || ctx.nivel === "N1") {
+    if (ctx.bandeiras.length > 0) {
+      return ctx.bandeiras.some(
+        (b) => norm(b.regional) === norm(regional) && norm(b.bandeira) === norm(bandeira),
+      );
+    }
     return canAccessRegional(ctx, regional);
   }
   return ctx.bandeiras.some(

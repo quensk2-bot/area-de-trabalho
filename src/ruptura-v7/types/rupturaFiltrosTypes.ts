@@ -2,12 +2,14 @@ import type { ClassificacaoPrazoConsumo, QualidadeDadosConsumo } from "./ruptura
 
 export type RupturaFiltrosContexto = {
   regional: string;
+  /** null = todas as bandeiras da regional */
+  bandeira: string | null;
   dataReferencia: string;
+  /** 0 = todas as lojas (conforme regional/bandeira) */
   loja: number;
 };
 
 export type RupturaFiltrosProdutos = RupturaFiltrosContexto & {
-  bandeira?: string;
   divisao?: string;
   setor?: string;
   grupo?: string;
@@ -44,6 +46,7 @@ export const RUPTURA_EXPORT_MAX_ROWS = 50_000;
 
 export const RUPTURA_CONTEXTO_DEFAULT: RupturaFiltrosContexto = {
   regional: "MT",
+  bandeira: "COMPER",
   dataReferencia: "2026-03-26",
   loja: 73,
 };

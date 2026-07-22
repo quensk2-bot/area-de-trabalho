@@ -39,3 +39,23 @@ export {
   type NivelV7,
   type UsuarioPerfilV7,
 } from "./authV7Types";
+export {
+  FILTRO_BANDEIRA_TODAS,
+  FILTRO_LOJA_TODAS,
+  type CatalogoBandeira,
+  type CatalogoLoja,
+  type CatalogoRegional,
+  type CatalogoLojaRow,
+  type FiltroRegionalBandeiraLojaValores,
+} from "./catalogoLojasTypes";
+export {
+  fetchCatalogoLojas,
+  filtrarCatalogoPorPermissoes,
+  formatLojaLabel,
+  listarBandeirasDoCatalogo,
+  listarLojasDoCatalogo,
+  listarRegionaisDoCatalogo,
+  normalizarFiltroCascade,
+  invalidateCatalogoLojasCache,
+} from "./catalogoLojasService";
+export { useCatalogoLojas } from "./hooks/useCatalogoLojas";

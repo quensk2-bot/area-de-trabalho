@@ -16,7 +16,7 @@ import {
   tdStyle,
   thStyle,
 } from "../components/rupturaSharedStyles.ts";
-import { useRupturaContexto } from "../hooks/useRupturaContexto.ts";
+import { useRupturaContextoScoped } from "../hooks/useRupturaContextoScoped.ts";
 import { CATALOGO_ARQUIVOS_MOTOR_MT } from "../../motor/drive/catalogoArquivosMotor.ts";
 import { rotuloImpactoTamanho } from "../../motor/drive/classificarTamanhoArquivoDrive.ts";
 import {
@@ -68,7 +68,7 @@ function competenciaDate(ano: number, mes: number): string {
 }
 
 export function RupturaImportacaoDrivePage() {
-  const [ctx, setCtx] = useRupturaContexto();
+  const [ctx, setCtx, { readonly }] = useRupturaContextoScoped();
   const [ano, setAno] = useState(() => Number(ctx.dataReferencia.slice(0, 4)));
   const [mes, setMes] = useState(() => Number(ctx.dataReferencia.slice(5, 7)));
   const [folderIdManual, setFolderIdManual] = useState("");
@@ -110,8 +110,14 @@ export function RupturaImportacaoDrivePage() {
 
   const carregarPastaEHistorico = useCallback(async () => {
     try {
+      const bandeira = ctx.bandeira;
+      if (!bandeira) {
+        setPasta(null);
+        setHistorico([]);
+        return;
+      }
       const [p, h] = await Promise.all([
-        buscarPastaMotorAtiva(ctx.regional, "originais"),
+        buscarPastaMotorAtiva(ctx.regional, "originais", bandeira),
         listarHistoricoPacotes(ctx.regional, 15),
       ]);
       setPasta(p);
@@ -125,7 +131,12 @@ export function RupturaImportacaoDrivePage() {
         setErro(e instanceof Error ? e.message : String(e));
       }
     }
-  }, [ctx.regional]);
+  }, [ctx.regional, ctx.bandeira]);
+
+  useEffect(() => {
+    if (ctx.bandeira) return;
+    setCtx({ bandeira: "COMPER" });
+  }, [ctx.bandeira, setCtx]);
 
   useEffect(() => {
     void carregarPermissao();
@@ -429,7 +440,7 @@ export function RupturaImportacaoDrivePage() {
           (ex.: Inventário Lojas, Rede, grupos de ruptura). Não é limitado a uma loja específica.
         </p>
         <p style={{ ...helpTextStyle, marginBottom: 0 }}>
-          A pasta ativa é localizada por <strong>Regional + tipo originais</strong>. A competência informada abaixo é atributo
+          A pasta ativa é localizada por <strong>Regional + Bandeira + tipo originais</strong>. A competência informada abaixo é atributo
           do pacote e <strong>não</strong> define a pasta física no Drive. A data referência registra o contexto operacional do pacote.
         </p>
         {pasta ? (
@@ -437,12 +448,24 @@ export function RupturaImportacaoDrivePage() {
             Pasta cadastrada: <code>{pasta.caminho_exibicao ?? pasta.drive_folder_id}</code>
             {pasta.ultima_verificacao ? ` · última verificação ${new Date(pasta.ultima_verificacao).toLocaleString("pt-BR")}` : ""}
           </p>
+        ) : ctx.bandeira ? (
+          <p style={{ ...helpTextStyle, color: theme.colors.danger, marginBottom: 0 }}>
+            Pasta ativa ainda não cadastrada para {ctx.regional} / {ctx.bandeira}.
+          </p>
         ) : (
-          <p style={{ ...helpTextStyle, color: theme.colors.danger, marginBottom: 0 }}>Nenhuma pasta originais ativa cadastrada para {ctx.regional}.</p>
+          <p style={{ ...helpTextStyle, color: theme.colors.danger, marginBottom: 0 }}>
+            Selecione uma bandeira para localizar a pasta no Drive.
+          </p>
         )}
       </div>
 
-      <RupturaContextoBar ctx={ctx} onChange={setCtx} ocultarLoja />
+      <RupturaContextoBar
+        ctx={ctx}
+        onChange={setCtx}
+        ocultarLoja
+        permitirTodasBandeira={false}
+        readonlyFields={readonly}
+      />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end" }}>
         <label style={{ fontSize: 11, color: theme.colors.textMuted }}>

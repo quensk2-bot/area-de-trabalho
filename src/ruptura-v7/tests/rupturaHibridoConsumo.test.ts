@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mapStorageError } from "../../hibrido-v7/hybridErrors.ts";
 import { assertEscopoHibrido } from "../services/hibrido/hibridoScope.ts";
+import { toPermissionContext } from "../../auth-v7/authProfileUtils.ts";
 import { filtrarProdutos } from "../services/hibrido/gestaoFilters.ts";
 import {
   ordenarProdutosGestaoDefault,
@@ -16,6 +17,16 @@ import type { HibridoProdutoGestao } from "../../motor/export/hibrido/hibridoTyp
 import type { ResumoLojaJson } from "../../hibrido-v7/manifest/manifestTypes.ts";
 
 const root = dirname(fileURLToPath(new URL("../..", import.meta.url)));
+
+function ctxBase(partial: Partial<{ regional: string; bandeira: string | null; loja: number; dataReferencia: string }> = {}) {
+  return {
+    regional: "MT",
+    bandeira: "COMPER" as string | null,
+    loja: 73,
+    dataReferencia: "2026-07-13",
+    ...partial,
+  };
+}
 
 function produto(partial: Partial<HibridoProdutoGestao> & Pick<HibridoProdutoGestao, "seqproduto">): HibridoProdutoGestao {
   return {
@@ -86,9 +97,7 @@ describe("ruptura-v7 hibrido — filtros (ETAPA 1)", () => {
 
   it("filtra classificacao", () => {
     const out = filtrarProdutos(base, {
-      regional: "MT",
-      loja: 73,
-      dataReferencia: "2026-07-13",
+      ...ctxBase(),
       classificacao: "curto_prazo",
     });
     assert.equal(out.length, 1);
@@ -97,17 +106,13 @@ describe("ruptura-v7 hibrido — filtros (ETAPA 1)", () => {
 
   it("filtra estoque CD e centralizado", () => {
     const comCd = filtrarProdutos(base, {
-      regional: "MT",
-      loja: 73,
-      dataReferencia: "2026-07-13",
+      ...ctxBase(),
       possuiEstoqueCd: true,
     });
     assert.equal(comCd.length, 1);
 
     const central = filtrarProdutos(base, {
-      regional: "MT",
-      loja: 73,
-      dataReferencia: "2026-07-13",
+      ...ctxBase(),
       centralizado: true,
     });
     assert.equal(central[0].seqproduto, 3);
@@ -116,7 +121,7 @@ describe("ruptura-v7 hibrido — filtros (ETAPA 1)", () => {
   it("filtra busca por seqproduto ou descricao", () => {
     const out = filtrarProdutos(
       [produto({ seqproduto: 555, descricao: "Arroz integral" })],
-      { regional: "MT", loja: 73, dataReferencia: "2026-07-13", busca: "555" },
+      { ...ctxBase(), busca: "555" },
     );
     assert.equal(out.length, 1);
   });
@@ -128,8 +133,56 @@ describe("ruptura-v7 hibrido — escopo e erros (ETAPA 1/403/404)", () => {
   });
 
   it("anonimo retorna forbidden", () => {
-    const err = assertEscopoHibrido(null, { regional: "MT", loja: 73, dataReferencia: "2026-07-13" });
+    const err = assertEscopoHibrido(null, ctxBase());
     assert.equal(err?.code, "forbidden");
+  });
+
+  it("N1 MT aceita loja Todas (0) no escopo hibrido", () => {
+    const n1 = toPermissionContext({
+      perfil: {
+        user_id: "n1",
+        nome: "N1",
+        email: "n1@test",
+        nivel: "N1",
+        ativo: true,
+      },
+      regionais: [{ id: "r1", user_id: "n1", regional: "MT", ativo: true }],
+      bandeiras: [{ id: "b1", user_id: "n1", regional: "MT", bandeira: "COMPER", ativo: true }],
+      lojas: [],
+      permissoes: ["ruptura.ver"],
+    });
+    const err = assertEscopoHibrido(n1, { ...ctxBase(), loja: 0 });
+    assert.equal(err, null);
+  });
+
+  it("N1 MT/COMPER bloqueado em FORT — sem fallback de bandeira", () => {
+    const n1 = toPermissionContext({
+      perfil: {
+        user_id: "n1",
+        nome: "N1",
+        email: "n1@test",
+        nivel: "N1",
+        ativo: true,
+      },
+      regionais: [{ id: "r1", user_id: "n1", regional: "MT", ativo: true }],
+      bandeiras: [{ id: "b1", user_id: "n1", regional: "MT", bandeira: "COMPER", ativo: true }],
+      lojas: [],
+      permissoes: ["ruptura.ver"],
+    });
+    const err = assertEscopoHibrido(n1, { ...ctxBase(), bandeira: "FORT", loja: 90 });
+    assert.equal(err?.code, "forbidden");
+  });
+
+  it("ADM aceita MT FORT explicitamente", () => {
+    const adm = toPermissionContext({
+      perfil: { user_id: "adm", nome: "ADM", email: "adm@test", nivel: "ADM", ativo: true },
+      regionais: [],
+      bandeiras: [],
+      lojas: [],
+      permissoes: [],
+    });
+    const err = assertEscopoHibrido(adm, { ...ctxBase(), bandeira: "FORT", loja: 90 });
+    assert.equal(err, null);
   });
 
   it("mapStorageError 403/404", () => {
