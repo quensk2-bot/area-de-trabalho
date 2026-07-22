@@ -27,6 +27,9 @@ import {
   mapearBaseRupturaHibrido,
   montarCdsDinamicos,
   chaveLinhaBase,
+  enriquecerStatusEstoqueCdsExport,
+  inventarioUnidExport,
+  statusEstoqueCdsPrecisaEnriquecer,
 } from "../services/hibrido/mapearBaseRupturaHibrido.ts";
 import { carregarChavesOficiaisConferencia } from "../services/hibrido/chavesOficiaisConferencia.ts";
 import { gerarCsvBaseRuptura } from "../utils/baseRupturaBrowserExport.ts";
@@ -405,6 +408,106 @@ describe("ruptura export base — perfis", () => {
   });
 });
 
+describe("ruptura export base — status estoque CDs enriquecimento", () => {
+  const cds753 = [
+    { posicaoLogica: 3, codigoFisico: 753, estoque: 1, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: 1 },
+  ];
+
+  it("detecta status incompleto sem códigos", () => {
+    assert.equal(statusEstoqueCdsPrecisaEnriquecer("Estoque no CD:"), true);
+    assert.equal(statusEstoqueCdsPrecisaEnriquecer("Estoque no CD: (753)"), false);
+    assert.equal(statusEstoqueCdsPrecisaEnriquecer("Ruptura CD"), false);
+  });
+
+  it("enriquece Estoque no CD: com codigoFisico e flagCentralizacao (LOJA=73 SEQ=1252)", () => {
+    const texto = enriquecerStatusEstoqueCdsExport(
+      "Estoque no CD:",
+      { produtoCentralizado: 753, somaEstoqueCd: 1 },
+      cds753,
+    );
+    assert.equal(texto, "Estoque no CD: (753)");
+  });
+
+  it("enriquece com codigoFisico ausente via ordem Comper MT (LOJA=73 SEQ=1252)", () => {
+    const cds = [
+      { posicaoLogica: 3, codigoFisico: null, estoque: 1, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: 753 },
+    ];
+    const texto = enriquecerStatusEstoqueCdsExport(
+      "Estoque no CD:",
+      { produtoCentralizado: 753, codigoCdSelecionado: 753, somaEstoqueCd: 1 },
+      cds,
+      "MT",
+      "COMPER",
+    );
+    assert.equal(texto, "Estoque no CD: (753)");
+  });
+
+  it("enriquece multiplos CDs com codigoFisico ausente (SEQ=1495208)", () => {
+    const cds = [
+      { posicaoLogica: 1, codigoFisico: null, estoque: 1, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: 753 },
+      { posicaoLogica: 3, codigoFisico: null, estoque: 1, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: 753 },
+    ];
+    const texto = enriquecerStatusEstoqueCdsExport(
+      "Estoque no CD:",
+      { produtoCentralizado: 753, codigoCdSelecionado: 753, somaEstoqueCd: 2 },
+      cds,
+      "MT",
+      "COMPER",
+    );
+    assert.equal(texto, "Estoque no CD: (464) (753)");
+  });
+
+  it("enriquece via produtoCentralizado quando flag legado traz codigo", () => {
+    const cds = [
+      { posicaoLogica: 5, codigoFisico: 753, estoque: 1, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: 753 },
+    ];
+    const texto = enriquecerStatusEstoqueCdsExport(
+      "Estoque no CD:",
+      { produtoCentralizado: 753, somaEstoqueCd: 1 },
+      cds,
+    );
+    assert.equal(texto, "Estoque no CD: (753)");
+  });
+
+  it("mapeamento export preenche Status Estoque CDs enriquecido", () => {
+    const { linhas } = mapearBaseRupturaHibrido({
+      produtos: [{ ...produtoBase, statusEstoqueCds: "Estoque no CD:", produtoCentralizado: 753 }],
+      cdsPorProduto: new Map([[1001, cds753]]),
+      bandeira: "COMPER",
+    });
+    assert.equal(linhas[0]!["Status Estoque CDs"], "Estoque no CD: (753)");
+  });
+
+  it("status completo permanece inalterado", () => {
+    const texto = enriquecerStatusEstoqueCdsExport(
+      "Estoque no CD: (753)",
+      { produtoCentralizado: 753, somaEstoqueCd: 1 },
+      cds753,
+    );
+    assert.equal(texto, "Estoque no CD: (753)");
+  });
+});
+
+describe("ruptura export base — inventario unid sentinel", () => {
+  it("inventarioUnidExport retorna 0 para null", () => {
+    assert.equal(inventarioUnidExport(null), 0);
+    assert.equal(inventarioUnidExport(undefined), 0);
+    assert.equal(inventarioUnidExport(5), 5);
+  });
+
+  it("mapeamento export emite 0 quando inventarioUnid ausente no gestao", () => {
+    const cds = [
+      { posicaoLogica: 1, codigoFisico: 464, estoque: 10, pendencia: 0, statusCompra: "OK", diasCompra: 1, diasRecebimento: 2, flagCentralizacao: 1 },
+    ];
+    const { linhas } = mapearBaseRupturaHibrido({
+      produtos: [{ ...produtoBase, inventarioUnid: null }],
+      cdsPorProduto: new Map([[1001, cds]]),
+      bandeira: "COMPER",
+    });
+    assert.equal(linhas[0]!["Inventário (Unid)"], 0);
+  });
+});
+
 describe("ruptura export base — CDs dinamicos", () => {
   it("monta linhas por posicao logica", () => {
     const rows = montarCdsDinamicos(73, 1001, [
@@ -428,6 +531,12 @@ describe("ruptura export base — roteamento tamanho", () => {
     assert.doesNotMatch(src, /Configure baseXlsxDriveFileId no manifest ou reduza o escopo/);
     assert.match(src, /escopoEquivaleBandeiraCompleta/);
     assert.match(src, /gerarViaWorker/);
+  });
+
+  it("auto default universo e oficial_compativel", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("../services/rupturaExportBaseService.ts", import.meta.url), "utf8");
+    assert.match(src, /estrategia === "integral_worker".*"integral"\s*:\s*"oficial_compativel"/s);
   });
 });
 

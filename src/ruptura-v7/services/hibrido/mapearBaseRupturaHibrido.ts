@@ -26,6 +26,101 @@ export type MapeamentoHibridoResultado = {
 
 export type ModoUniversoExport = "integral" | "oficial_compativel";
 
+type CdGestaoExport = CdsLojaJson["produtos"][0]["cds"][0];
+
+/** Ordem física Comper MT (piloto) — fallback quando cds.codigoFisico ausente no TXT. */
+const ORDEM_CD_POSICAO_COMPER_MT: Readonly<Record<number, number>> = {
+  1: 464,
+  2: 468,
+  3: 753,
+  4: 904,
+  5: 905,
+};
+
+function extrairCodigosStatusEstoque(texto: string): number[] {
+  return [...texto.matchAll(/\((\d+)\)/g)].map((m) => parseInt(m[1]!, 10));
+}
+
+/** Status sem códigos físicos entre parênteses — ex.: "Estoque no CD:" */
+export function statusEstoqueCdsPrecisaEnriquecer(texto: string | null | undefined): boolean {
+  if (texto == null || texto.trim() === "") return true;
+  const t = texto.trim();
+  if (t === "Ruptura CD") return false;
+  if (t.startsWith("Estoque no CD:")) return extrairCodigosStatusEstoque(t).length === 0;
+  return false;
+}
+
+function ordemCdPorPosicao(regional: string, bandeira: string, posicao: number): number | null {
+  if (regional === "MT" && bandeira === "COMPER" && posicao >= 1 && posicao <= 5) {
+    return ORDEM_CD_POSICAO_COMPER_MT[posicao] ?? null;
+  }
+  return null;
+}
+
+function resolverCodigoFisicoCdExport(
+  cd: CdGestaoExport,
+  produto: Pick<HibridoProdutoGestao, "produtoCentralizado" | "codigoCdSelecionado">,
+  regional: string,
+  bandeira: string,
+): number | null {
+  if (cd.codigoFisico != null) return cd.codigoFisico;
+  const ordem = ordemCdPorPosicao(regional, bandeira, cd.posicaoLogica);
+  if (ordem != null) return ordem;
+  const flag = cd.flagCentralizacao;
+  if (flag != null && flag > 1) return flag;
+  return produto.produtoCentralizado;
+}
+
+function modoFlagLegadoCentralizado(cds: CdGestaoExport[], produtoCentralizado: number | null): boolean {
+  if (produtoCentralizado == null) return false;
+  const flags = cds.map((c) => c.flagCentralizacao).filter((f): f is number => f != null && f > 0);
+  return flags.length > 0 && flags.every((f) => f === produtoCentralizado);
+}
+
+function cdIncluirStatusEstoqueExport(
+  cd: CdGestaoExport,
+  codigo: number,
+  produto: Pick<HibridoProdutoGestao, "produtoCentralizado" | "codigoCdSelecionado">,
+  cds: CdGestaoExport[],
+): boolean {
+  if (cd.estoque !== 1) return false;
+  if (modoFlagLegadoCentralizado(cds, produto.produtoCentralizado)) return true;
+  const flag = cd.flagCentralizacao;
+  if (flag === 1) return true;
+  if (flag != null && flag > 1 && flag === codigo) return true;
+  if (produto.produtoCentralizado != null && codigo === produto.produtoCentralizado) return true;
+  if (produto.codigoCdSelecionado != null && codigo === produto.codigoCdSelecionado) return true;
+  return false;
+}
+
+/** Completa "Estoque no CD:" com códigos físicos a partir de cds.json (export-only, sem recalcular BRE). */
+export function enriquecerStatusEstoqueCdsExport(
+  statusEstoqueCds: string | null,
+  produto: Pick<HibridoProdutoGestao, "produtoCentralizado" | "codigoCdSelecionado" | "somaEstoqueCd">,
+  cds: CdGestaoExport[],
+  regional = "MT",
+  bandeira = "COMPER",
+): string | null {
+  if (!statusEstoqueCdsPrecisaEnriquecer(statusEstoqueCds)) return statusEstoqueCds;
+
+  const soma = produto.somaEstoqueCd ?? cds.reduce((acc, cd) => acc + (cd.estoque ?? 0), 0);
+  if (soma === 0) return "Ruptura CD";
+
+  const trechos: string[] = [];
+  for (const cd of [...cds].sort((a, b) => a.posicaoLogica - b.posicaoLogica)) {
+    const codigo = resolverCodigoFisicoCdExport(cd, produto, regional, bandeira);
+    if (codigo == null || !cdIncluirStatusEstoqueExport(cd, codigo, produto, cds)) continue;
+    trechos.push(` (${codigo})`);
+  }
+
+  if (trechos.length === 0) return statusEstoqueCds?.trim() || "Estoque no CD:";
+  return `Estoque no CD:${trechos.join("")}`;
+}
+
+export function inventarioUnidExport(valor: number | null | undefined): number {
+  return valor ?? 0;
+}
+
 function flagPrazo(classificacao: ClassificacaoPrazoConsumo | null, alvo: ClassificacaoPrazoConsumo): number | null {
   if (classificacao == null) return null;
   return classificacao === alvo ? 1 : 0;
@@ -127,7 +222,7 @@ function valorColunaHibrido(
     case "menorQueTres":
       return formatMenorQueTres(produto.ruptura104c);
     case "inventarioUnid":
-      return produto.inventarioUnid;
+      return inventarioUnidExport(produto.inventarioUnid);
     case "rupturaComInventario":
       return produto.rupturaComInventario;
     case "modCurtoPrazo":
@@ -161,7 +256,7 @@ function valorColunaHibrido(
     case "diasRuptura":
       return produto.diasRuptura;
     case "statusEstoqueCds":
-      return produto.statusEstoqueCds;
+      return enriquecerStatusEstoqueCdsExport(produto.statusEstoqueCds, produto, cds, regional, bandeiraCatalogo);
     case "acaoCurtoPrazo":
       return produto.acaoCurtoPrazo ?? (produto.classificacaoPrazo === "curto_prazo" ? produto.acaoRecomendada : null);
     case "acaoMedioPrazo":
