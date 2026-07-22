@@ -19,28 +19,38 @@ import {
 } from "../utils/baseRupturaBrowserExport.ts";
 import { carregarManifest } from "./hibrido/manifestService.ts";
 import { carregarDadosExportBaseHibrido } from "./hibrido/rupturaGestaoHibridoService.ts";
-import { mapearBaseRupturaHibrido } from "./hibrido/mapearBaseRupturaHibrido.ts";
+import {
+  filtrarLinhasUniversoOficial,
+  mapearBaseRupturaHibrido,
+} from "./hibrido/mapearBaseRupturaHibrido.ts";
 import {
   baixarBaseRupturaDrive,
   baixarBaseRupturaStorage,
   dispararDownloadBlob,
 } from "./hibrido/rupturaExportDriveService.ts";
 import { assertEscopoHibrido, HIBRIDO_BANDEIRA_DEFAULT } from "./hibrido/hibridoScope.ts";
+import { carregarChavesOficiaisConferencia } from "./hibrido/chavesOficiaisConferencia.ts";
 
-import type { ModoExportBaseRuptura, ExportBaseRupturaInput, ExportBaseRupturaResultado } from "./rupturaExportBaseUtils.ts";
+import type { ModoExportBaseRuptura, ExportBaseRupturaInput, ExportBaseRupturaResultado, EstrategiaExportGrande } from "./rupturaExportBaseUtils.ts";
 import {
   canExportBandeiraCompleta,
   escopoArquivoExport,
+  escopoEquivaleBandeiraCompleta,
   inferirModoExport,
+  LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL,
+  maxLojasExportBrowser,
   nomeArquivoExportRuptura,
   resumirEscopoExport,
 } from "./rupturaExportBaseUtils.ts";
 
-export type { ModoExportBaseRuptura, ExportBaseRupturaInput, ExportBaseRupturaResultado };
+export type { ModoExportBaseRuptura, ExportBaseRupturaInput, ExportBaseRupturaResultado, EstrategiaExportGrande };
 export {
   canExportBandeiraCompleta,
   escopoArquivoExport,
+  escopoEquivaleBandeiraCompleta,
   inferirModoExport,
+  LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL,
+  maxLojasExportBrowser,
   nomeArquivoExportRuptura,
   resumirEscopoExport,
 };
@@ -49,9 +59,11 @@ function montarResumoExport(input: {
   ctx: RupturaFiltrosContexto;
   bandeira: string;
   linhas: number;
+  linhasIntegral: number;
   camposAusentes: string[];
   manifestVersao?: number;
   hashConteudo?: string | null;
+  modoUniverso?: "integral" | "oficial_compativel";
 }): ResumoProcessamentoBase {
   const competencia = competenciaFromDataReferencia(input.ctx.dataReferencia);
   const agora = new Date().toISOString();
@@ -76,6 +88,9 @@ function montarResumoExport(input: {
     avisos: input.camposAusentes.length ? [`${input.camposAusentes.length} colunas ausentes ou sem fonte JSON`] : [],
     erros: [],
     camposAusentes: input.camposAusentes,
+    modoUniverso: input.modoUniverso ?? "integral",
+    linhasUniversoIntegral: input.linhasIntegral,
+    linhasUniversoOficial: input.modoUniverso === "oficial_compativel" ? input.linhas : null,
   };
 }
 
@@ -85,6 +100,7 @@ async function tentarDownloadPreGerado(input: {
   dataReferencia: string;
   formato: "xlsx" | "csv";
   filename: string;
+  filenamesAlternativos?: string[];
 }): Promise<ExportBaseRupturaResultado | null> {
   const { manifest } = await carregarManifest({
     regional: input.regional,
@@ -103,14 +119,60 @@ async function tentarDownloadPreGerado(input: {
     }
   }
 
-  const storagePath = `${input.regional}/${input.bandeira}/${competenciaFromDataReferencia(input.dataReferencia)}/export/${input.filename}`;
-  const st = await baixarBaseRupturaStorage({ path: storagePath, filename: input.filename });
-  if (st.ok) {
-    dispararDownloadBlob(st.blob, input.filename);
-    return { ok: true, filename: input.filename, estrategia: "storage" };
+  const competencia = competenciaFromDataReferencia(input.dataReferencia);
+  const filenames = [input.filename, ...(input.filenamesAlternativos ?? [])];
+  for (const fn of filenames) {
+    const storagePath = `${input.regional}/${input.bandeira}/${competencia}/export/${fn}`;
+    const st = await baixarBaseRupturaStorage({ path: storagePath, filename: fn });
+    if (st.ok) {
+      dispararDownloadBlob(st.blob, fn);
+      return { ok: true, filename: fn, estrategia: "storage" };
+    }
   }
 
   return null;
+}
+
+export type OpcoesExportDrive = {
+  driveDisponivel: boolean;
+  driveFileId: string | null;
+  manifestVersao: number | null;
+};
+
+export async function consultarOpcoesExportDrive(input: {
+  ctx: RupturaFiltrosContexto;
+  formato: "xlsx" | "csv";
+}): Promise<OpcoesExportDrive> {
+  const bandeira = input.ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
+  const { manifest } = await carregarManifest({
+    regional: input.ctx.regional,
+    bandeira,
+    dataReferencia: input.ctx.dataReferencia,
+  });
+  const driveFileId =
+    input.formato === "xlsx" ? manifest?.baseXlsxDriveFileId ?? null : manifest?.baseCsvDriveFileId ?? null;
+  return {
+    driveDisponivel: Boolean(driveFileId),
+    driveFileId,
+    manifestVersao: manifest?.versao ?? null,
+  };
+}
+
+function mensagemExportGrandeSemDrive(input: {
+  linhas: number;
+  totalEscopo: number;
+  formato: "xlsx" | "csv";
+}): string {
+  const maxLojas = maxLojasExportBrowser(input.totalEscopo);
+  const campoDrive = input.formato === "xlsx" ? "baseXlsxDriveFileId" : "baseCsvDriveFileId";
+  return [
+    `Arquivo com ${input.linhas.toLocaleString("pt-BR")} linhas excede limite do navegador (${RUPTURA_EXPORT_BROWSER_MAX_ROWS.toLocaleString("pt-BR")}).`,
+    `Opções:`,
+    `• Baixar do Drive — configure ${campoDrive} no manifest`,
+    `• Modo oficial compatível (~${LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL.toLocaleString("pt-BR")} linhas)`,
+    `• Selecione até ${maxLojas} lojas`,
+    `• CLI: node scripts/gerar-ruptura-ajuste-export.mjs`,
+  ].join("\n");
 }
 
 async function gerarExportBrowser(input: {
@@ -227,6 +289,9 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
   }
 
   const bandeira = input.ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
+  const estrategia = input.estrategia ?? "auto";
+  const universo =
+    input.universo ?? (estrategia === "oficial_compativel" ? "oficial_compativel" : "integral");
   const escopoSlug = escopoArquivoExport({ modo: input.modo, lojas: lojasAlvo, totalEscopo });
   const filename = nomeArquivoExportRuptura({
     regional: input.ctx.regional,
@@ -234,16 +299,63 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
     escopo: escopoSlug,
     dataReferencia: input.ctx.dataReferencia,
     extensao: input.formato,
+    universo,
   });
+  const filenameBandeira = nomeArquivoExportRuptura({
+    regional: input.ctx.regional,
+    bandeira,
+    escopo: "BANDEIRA_COMPLETA",
+    dataReferencia: input.ctx.dataReferencia,
+    extensao: input.formato,
+    universo,
+  });
+  const equivaleBandeiraCompleta = escopoEquivaleBandeiraCompleta({
+    modo: input.modo,
+    lojas: lojasAlvo,
+    totalEscopo,
+  });
+  const filenamesAlternativos =
+    equivaleBandeiraCompleta && filename !== filenameBandeira ? [filenameBandeira] : undefined;
 
-  input.onProgress?.("Verificando arquivo pré-gerado…");
-  if (input.modo === "bandeira_completa" && !input.somenteCamposAusentes) {
+  if (estrategia === "drive") {
+    input.onProgress?.("Baixando do Drive…");
     const pre = await tentarDownloadPreGerado({
       regional: input.ctx.regional,
       bandeira,
       dataReferencia: input.ctx.dataReferencia,
       formato: input.formato,
       filename,
+      filenamesAlternativos,
+    });
+    if (pre?.ok) return pre;
+    const opcoes = await consultarOpcoesExportDrive({ ctx: input.ctx, formato: input.formato });
+    const campoDrive = input.formato === "xlsx" ? "baseXlsxDriveFileId" : "baseCsvDriveFileId";
+    if (!opcoes.driveDisponivel) {
+      return {
+        ok: false,
+        erro: mensagemExportGrandeSemDrive({ linhas: 0, totalEscopo, formato: input.formato }).replace(
+          /^Arquivo com 0 linhas.*?\n/,
+          `Drive indisponível — ${campoDrive} ausente no manifest.\n`,
+        ),
+      };
+    }
+    return { ok: false, erro: "Falha ao baixar arquivo do Drive. Tente novamente ou use exportação via Worker." };
+  }
+
+  input.onProgress?.("Verificando arquivo pré-gerado…");
+  if (
+    equivaleBandeiraCompleta &&
+    !input.somenteCamposAusentes &&
+    estrategia !== "integral_worker" &&
+    estrategia !== "oficial_compativel"
+  ) {
+    const pre = await tentarDownloadPreGerado({
+      regional: input.ctx.regional,
+      bandeira,
+      dataReferencia: input.ctx.dataReferencia,
+      formato: input.formato,
+      filename,
+      filenamesAlternativos,
     });
     if (pre?.ok) return pre;
   }
@@ -272,6 +384,8 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
       produtos: bloco.produtos,
       cdsPorProduto: bloco.cdsPorProduto,
       bandeira: bloco.bandeira,
+      regional: input.ctx.regional,
+      modoUniverso: universo,
     });
     linhas.push(...mapped.linhas);
     cdsDinamicos.push(...mapped.cdsDinamicos);
@@ -279,6 +393,17 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
   }
 
   const camposAusentes = [...camposAusentesSet];
+  const linhasIntegral = linhas.length;
+
+  if (universo === "oficial_compativel") {
+    const chavesOficiais = carregarChavesOficiaisConferencia();
+    if (chavesOficiais.size > 0) {
+      const filtradas = filtrarLinhasUniversoOficial(linhas, chavesOficiais);
+      linhas.length = 0;
+      linhas.push(...filtradas);
+    }
+  }
+
   const { manifest } = await carregarManifest({
     regional: input.ctx.regional,
     bandeira,
@@ -289,29 +414,34 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
     ctx: input.ctx,
     bandeira,
     linhas: linhas.length,
+    linhasIntegral,
     camposAusentes,
     manifestVersao: manifest?.versao,
     hashConteudo: manifest?.hashConteudo,
+    modoUniverso: universo,
   });
 
-  if (input.modo === "bandeira_completa" && linhas.length > RUPTURA_EXPORT_BROWSER_MAX_ROWS) {
+  if (equivaleBandeiraCompleta && linhas.length > RUPTURA_EXPORT_BROWSER_MAX_ROWS && estrategia !== "integral_worker") {
     const pre = await tentarDownloadPreGerado({
       regional: input.ctx.regional,
       bandeira,
       dataReferencia: input.ctx.dataReferencia,
       formato: input.formato,
       filename,
+      filenamesAlternativos,
     });
     if (pre?.ok) return pre;
-    return {
-      ok: false,
-      erro: `Arquivo com ${linhas.length} linhas excede limite do navegador (${RUPTURA_EXPORT_BROWSER_MAX_ROWS}). Configure baseXlsxDriveFileId no manifest ou reduza o escopo.`,
-    };
   }
 
-  const incluirCdsDinamicos = input.modo === "bandeira_completa";
+  const incluirCdsDinamicos = equivaleBandeiraCompleta;
 
   if (linhas.length > RUPTURA_EXPORT_BROWSER_MAX_ROWS) {
+    if (typeof Worker === "undefined") {
+      return {
+        ok: false,
+        erro: mensagemExportGrandeSemDrive({ linhas: linhas.length, totalEscopo, formato: input.formato }),
+      };
+    }
     input.onProgress?.("Gerando via Worker…");
     return gerarViaWorker({
       linhas,

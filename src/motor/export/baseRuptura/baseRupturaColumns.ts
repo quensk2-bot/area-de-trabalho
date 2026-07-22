@@ -8,7 +8,76 @@ export type BaseRupturaColunaDef = {
   ausenteV7?: boolean;
 };
 
-/** Colunas oficiais BASE_RUPTURA_V7 — referência usuário + mapeamento DM/Consolidado. */
+/**
+ * Ordem exata — ARQUIVO CONFERENCIA RESULTADO.xlsx / Plan1 linha 1 (SHA-256 congelado em EXPORT-CONFERENCIA-REFERENCIA.md).
+ * ESTQ_CD5 fica após "% < 3", não junto de ESTQ_CD1..4.
+ */
+export const CABECALHOS_OFICIAL_CONFERENCIA: readonly string[] = [
+  "LOJA",
+  "SEQPRODUTO",
+  "DESCCOMPLETA",
+  "CODFORN",
+  "RAZAO",
+  "ESTOQUE",
+  "PARMAX",
+  "PENDCPA",
+  "EMBCPA",
+  "SETOR",
+  "SETOR2",
+  "CATEGORIA",
+  "ESTQ_CD1",
+  "ESTQ_CD2",
+  "ESTQ_CD3",
+  "ESTQ_CD4",
+  "Ruptura 104C",
+  "Inventário (Unid)",
+  "Ruptura Inventário",
+  "% Rup Inventário",
+  "% Ruptura Sem Inventário",
+  "Flag Ruptura 104c",
+  "Menor que três Unidades",
+  "% < 3",
+  "ESTQ_CD5",
+  "Mod_CurtoPrazo",
+  "NCurtoPrazo",
+  "Curto Prazo",
+  "Cross Docking",
+  "Sku´s Curto Prazo",
+  "% Curto Prazo",
+  "Rup (X) Dias Recebto Maior data",
+  "Curto Prazo Rebto Próximo",
+  "Curto Prazo Não Rebto Próximo",
+  "Médio Prazo",
+  "Sku´s Médio Prazo",
+  "Longo Prazo",
+  "% Longo Prazo",
+  "Sku´s Longo Prazo",
+  "PRODUTO",
+  "Dias Pedido",
+  "Avaliar Pedido",
+  "Pendência Indevida",
+  "% Médio Prazo",
+  "Último Pedido Loja",
+  "Ativação e Ruptura > 30 Dias Sem Pedido",
+  "Último Pedido Loja e CD´s (Com ou sem Compra)",
+  "Rede",
+  "BANDEIRA",
+  "Status Solicitação Ativação CD",
+  "Sku´s",
+  "Dias Ruptura (revisado)",
+  "Último Pedido (revisado)",
+  "Dias Ativação",
+  "Status Estoque CDs",
+  "Ação Curto Prazo",
+  "Ação Médio Prazo",
+  "Estrura Real",
+  "COMPRADOR",
+  "Itens Vda Pendência",
+  "% Rup Sem Pendência Vda",
+  "Dias Pedido (Análise Geral)",
+] as const;
+
+/** Colunas oficiais BASE_RUPTURA_V7 — referência usuário + mapeamento DM/Consolidado/JSON. */
 export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
   { cabecalho: "LOJA", fonte: "loja" },
   { cabecalho: "SEQPRODUTO", fonte: "seqproduto" },
@@ -26,15 +95,15 @@ export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
   { cabecalho: "ESTQ_CD2", fonte: "estoqueCd2" },
   { cabecalho: "ESTQ_CD3", fonte: "estoqueCd3" },
   { cabecalho: "ESTQ_CD4", fonte: "estoqueCd4" },
-  { cabecalho: "ESTQ_CD5", fonte: "estoqueCd5" },
-  { cabecalho: "Ruptura 104C", fonte: "ruptura104c" },
+  { cabecalho: "Ruptura 104C", fonte: "ruptura104cTexto" },
   { cabecalho: "Inventário (Unid)", fonte: "inventarioUnid" },
   { cabecalho: "Ruptura Inventário", fonte: "rupturaComInventario" },
   { cabecalho: "% Rup Inventário", ausenteV7: true },
   { cabecalho: "% Ruptura Sem Inventário", ausenteV7: true },
-  { cabecalho: "Flag Ruptura 104c", fonte: "ruptura104c" },
-  { cabecalho: "Menor que três Unidades", fonte: "ruptura104c" },
+  { cabecalho: "Flag Ruptura 104c", fonte: "flagRuptura104c" },
+  { cabecalho: "Menor que três Unidades", fonte: "menorQueTres" },
   { cabecalho: "% < 3", ausenteV7: true },
+  { cabecalho: "ESTQ_CD5", fonte: "estoqueCd5" },
   { cabecalho: "Mod_CurtoPrazo", fonte: "modCurtoPrazo" },
   { cabecalho: "NCurtoPrazo", fonte: "ncurtoPrazo" },
   { cabecalho: "Curto Prazo", fonte: "curtoPrazo" },
@@ -49,7 +118,7 @@ export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
   { cabecalho: "Longo Prazo", fonte: "longoPrazo" },
   { cabecalho: "% Longo Prazo", ausenteV7: true },
   { cabecalho: "Sku´s Longo Prazo", ausenteV7: true },
-  { cabecalho: "PRODUTO", fonte: "textoProdutoCentralizado" },
+  { cabecalho: "PRODUTO", fonte: "textoProduto" },
   { cabecalho: "Dias Pedido", fonte: "diasPedido" },
   { cabecalho: "Avaliar Pedido", ausenteV7: true },
   { cabecalho: "Pendência Indevida", ausenteV7: true },
@@ -58,7 +127,7 @@ export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
   { cabecalho: "Ativação e Ruptura > 30 Dias Sem Pedido", ausenteV7: true },
   { cabecalho: "Último Pedido Loja e CD´s (Com ou sem Compra)", ausenteV7: true },
   { cabecalho: "Rede", fonte: "rede" },
-  { cabecalho: "BANDEIRA", fonte: "bandeira" },
+  { cabecalho: "BANDEIRA", fonte: "bandeiraExport" },
   { cabecalho: "Status Solicitação Ativação CD", fonte: "statusSolicitacaoAtivacaoCd" },
   { cabecalho: "Sku´s", ausenteV7: true },
   { cabecalho: "Dias Ruptura (revisado)", fonte: "diasRuptura" },
@@ -77,3 +146,8 @@ export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
 export const CABECALHOS_BASE_RUPTURA = COLUNAS_BASE_RUPTURA_V7.map((c) => c.cabecalho);
 
 export const CAMPOS_AUSENTES_V7 = COLUNAS_BASE_RUPTURA_V7.filter((c) => c.ausenteV7).map((c) => c.cabecalho);
+
+/** Colunas com fonte mapeável (exclui chaves e ausentes PQ). */
+export const COLUNAS_MAPEAVEIS_BASE = COLUNAS_BASE_RUPTURA_V7.filter(
+  (c) => !c.ausenteV7 && c.fonte && !["loja", "seqproduto"].includes(c.fonte),
+).map((c) => c.cabecalho);

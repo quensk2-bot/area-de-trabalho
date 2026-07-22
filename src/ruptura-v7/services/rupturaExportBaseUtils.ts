@@ -1,15 +1,24 @@
 import type { PermissionContext } from "../../auth-v7/permissionService.ts";
 import { slugBandeiraArquivo } from "../../motor/export/baseRuptura/baseRupturaTypes.ts";
+import type { ModoUniversoExport } from "../hibrido/mapearBaseRupturaHibrido.ts";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
+import { RUPTURA_EXPORT_BROWSER_MAX_ROWS } from "../types/rupturaFiltrosTypes.ts";
 import { todasLojasSelecionadas } from "../services/lojasFiltroUtils.ts";
 
 export type ModoExportBaseRuptura = "selecao" | "loja_unica" | "bandeira_completa";
+
+export type EstrategiaExportGrande = "auto" | "drive" | "integral_worker" | "oficial_compativel";
+
+/** Linhas típicas do universo oficial COMPER MT (interseção PQ). */
+export const LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL = 129_828;
 
 export type ExportBaseRupturaInput = {
   ctx: RupturaFiltrosContexto;
   authCtx: PermissionContext | null;
   modo: ModoExportBaseRuptura;
   formato: "xlsx" | "csv";
+  universo?: ModoUniversoExport;
+  estrategia?: EstrategiaExportGrande;
   somenteCamposAusentes?: boolean;
   onProgress?: (msg: string) => void;
 };
@@ -34,6 +43,23 @@ export function inferirModoExport(ctx: RupturaFiltrosContexto, totalEscopo: numb
   return "selecao";
 }
 
+/** Seleção com todas as lojas equivale a bandeira completa para roteamento Drive/Worker. */
+export function escopoEquivaleBandeiraCompleta(input: {
+  modo: ModoExportBaseRuptura;
+  lojas: number[];
+  totalEscopo: number;
+}): boolean {
+  if (input.modo === "bandeira_completa") return true;
+  return input.lojas.length === 0 || todasLojasSelecionadas(input.lojas, input.totalEscopo);
+}
+
+/** Máximo de lojas exportáveis direto no navegador (~12k linhas/loja COMPER MT). */
+export function maxLojasExportBrowser(totalEscopo: number, linhasPorLoja = 12_000): number {
+  if (totalEscopo <= 0) return 2;
+  const max = Math.floor(RUPTURA_EXPORT_BROWSER_MAX_ROWS / linhasPorLoja);
+  return Math.max(1, Math.min(max, totalEscopo));
+}
+
 export function escopoArquivoExport(input: {
   modo: ModoExportBaseRuptura;
   lojas: number[];
@@ -53,6 +79,8 @@ export function nomeArquivoExportRuptura(input: {
   escopo: string;
   dataReferencia: string;
   extensao: "xlsx" | "csv";
+  universo?: ModoUniversoExport;
+  sufixo?: string;
 }): string {
   const data = input.dataReferencia.slice(0, 10);
   const band = slugBandeiraArquivo(input.bandeira);
@@ -62,7 +90,14 @@ export function nomeArquivoExportRuptura(input: {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
-  return `BASE_RUPTURA_V7_${input.regional}_${band}_${escopo}_${data}.${input.extensao}`;
+  const universo =
+    input.universo === "oficial_compativel"
+      ? "OFICIAL_COMPATIVEL"
+      : input.universo === "integral"
+        ? "V7_INTEGRAL"
+        : "";
+  const partes = ["BASE_RUPTURA_V7", input.regional, band, escopo, universo, input.sufixo, data].filter(Boolean);
+  return `${partes.join("_")}.${input.extensao}`;
 }
 
 export function resumirEscopoExport(input: {

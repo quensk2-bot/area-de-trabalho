@@ -3,6 +3,13 @@ import {
   CAMPOS_AUSENTES_V7,
   COLUNAS_BASE_RUPTURA_V7,
 } from "../../../motor/export/baseRuptura/baseRupturaColumns.ts";
+import {
+  formatBandeiraExportModo,
+  formatFlagRuptura104c,
+  formatMenorQueTres,
+  formatRuptura104cTexto,
+  formatTextoProduto,
+} from "../../../motor/export/baseRuptura/rupturaExportFormat.ts";
 import type { BaseRupturaLinha } from "../../../motor/export/baseRuptura/baseRupturaTypes.ts";
 import type { CdsLojaJson } from "../../../hibrido-v7/manifest/manifestTypes.ts";
 import type { HibridoProdutoGestao } from "../../../motor/export/hibrido/hibridoTypes.ts";
@@ -17,18 +24,37 @@ export type MapeamentoHibridoResultado = {
   colunasSemFonte: string[];
 };
 
+export type ModoUniversoExport = "integral" | "oficial_compativel";
+
 function flagPrazo(classificacao: ClassificacaoPrazoConsumo | null, alvo: ClassificacaoPrazoConsumo): number | null {
-  if (!classificacao) return null;
+  if (classificacao == null) return null;
   return classificacao === alvo ? 1 : 0;
 }
 
-/** ESTQ_CD1..5 a partir de cds[] — sem flat legado inventado. */
+function flagPrazoOuConsolidado(
+  produto: HibridoProdutoGestao,
+  alvo: ClassificacaoPrazoConsumo,
+  consolidado: number | null | undefined,
+): number | null {
+  if (consolidado != null) return consolidado;
+  return flagPrazo(produto.classificacaoPrazo, alvo);
+}
+
+/** ESTQ_CD1..5 por posicaoLogica do CD (não índice do array). */
 export function estoquesCdOficiais(cds: CdsLojaJson["produtos"][0]["cds"]): Record<string, number | null> {
-  const sorted = [...cds].sort((a, b) => a.posicaoLogica - b.posicaoLogica);
-  const out: Record<string, number | null> = {};
-  for (let i = 0; i < 5; i++) {
-    const estoque = sorted[i]?.estoque;
-    out[`ESTQ_CD${i + 1}`] = estoque === undefined || estoque === null ? null : estoque;
+  const out: Record<string, number | null> = {
+    ESTQ_CD1: null,
+    ESTQ_CD2: null,
+    ESTQ_CD3: null,
+    ESTQ_CD4: null,
+    ESTQ_CD5: null,
+  };
+  for (const cd of cds) {
+    const pos = cd.posicaoLogica;
+    if (pos >= 1 && pos <= 5) {
+      const estoque = cd.estoque;
+      out[`ESTQ_CD${pos}`] = estoque === undefined || estoque === null ? null : estoque;
+    }
   }
   return out;
 }
@@ -58,7 +84,9 @@ function valorColunaHibrido(
   cabecalho: string,
   fonte: string | undefined,
   produto: HibridoProdutoGestao,
-  bandeira: string,
+  bandeiraCatalogo: string,
+  regional: string,
+  modoUniverso: ModoUniversoExport,
   cds: CdsLojaJson["produtos"][0]["cds"],
 ): string | number | null {
   if (cabecalho.startsWith("ESTQ_CD")) {
@@ -84,54 +112,62 @@ function valorColunaHibrido(
       return produto.parMax;
     case "pendenciaCpaCd":
       return produto.pendenciaCpaCd;
+    case "embalagemCompra":
+      return produto.embalagemCompra;
     case "setorNome":
       return produto.divisao;
     case "setorN2":
       return produto.setorN2;
     case "categoriaN1":
-      return null;
-    case "ruptura104c":
-      return null;
+      return produto.categoriaN1;
+    case "ruptura104cTexto":
+      return formatRuptura104cTexto(produto.ruptura104c);
+    case "flagRuptura104c":
+      return formatFlagRuptura104c(produto.geraRuptura);
+    case "menorQueTres":
+      return formatMenorQueTres(produto.ruptura104c);
     case "inventarioUnid":
-      return null;
+      return produto.inventarioUnid;
     case "rupturaComInventario":
-      return null;
+      return produto.rupturaComInventario;
     case "modCurtoPrazo":
-      return null;
+      return produto.modCurtoPrazo;
     case "ncurtoPrazo":
-      return null;
+      return produto.ncurtoPrazo;
     case "curtoPrazo":
-      return flagPrazo(produto.classificacaoPrazo, "curto_prazo");
+      return flagPrazoOuConsolidado(produto, "curto_prazo", produto.curtoPrazo);
     case "crossDocking":
-      return null;
+      return produto.crossDocking;
     case "medioPrazo":
-      return flagPrazo(produto.classificacaoPrazo, "medio_prazo");
+      return flagPrazoOuConsolidado(produto, "medio_prazo", produto.medioPrazo);
     case "longoPrazo":
-      return flagPrazo(produto.classificacaoPrazo, "longo_prazo");
-    case "textoProdutoCentralizado":
-      return null;
+      return flagPrazoOuConsolidado(produto, "longo_prazo", produto.longoPrazo);
+    case "textoProduto":
+      return formatTextoProduto(produto.descricao, produto.seqproduto);
     case "diasPedido":
       return produto.diasPedido;
     case "ultimaEntradaLoja":
-      return null;
+      return produto.ultimaEntradaLoja;
     case "rede":
       return produto.rede;
-    case "bandeira":
-      return bandeira;
+    case "bandeiraExport":
+      return formatBandeiraExportModo(
+        regional,
+        bandeiraCatalogo,
+        modoUniverso === "oficial_compativel" ? "oficial_compativel" : "v7_integral",
+      );
     case "statusSolicitacaoAtivacaoCd":
-      return null;
+      return produto.statusSolicitacaoAtivacaoCd;
     case "diasRuptura":
-      return null;
+      return produto.diasRuptura;
     case "statusEstoqueCds":
       return produto.statusEstoqueCds;
     case "acaoCurtoPrazo":
-      return produto.classificacaoPrazo === "curto_prazo" ? produto.acaoRecomendada : null;
+      return produto.acaoCurtoPrazo ?? (produto.classificacaoPrazo === "curto_prazo" ? produto.acaoRecomendada : null);
     case "acaoMedioPrazo":
-      return produto.classificacaoPrazo === "medio_prazo" ? produto.acaoRecomendada : null;
+      return produto.acaoMedioPrazo ?? (produto.classificacaoPrazo === "medio_prazo" ? produto.acaoRecomendada : null);
     case "comprador":
       return produto.comprador;
-    case "embalagemCompra":
-      return null;
     default:
       return null;
   }
@@ -142,7 +178,11 @@ export function mapearBaseRupturaHibrido(input: {
   produtos: HibridoProdutoGestao[];
   cdsPorProduto: CdsPorProduto;
   bandeira: string;
+  regional?: string;
+  modoUniverso?: ModoUniversoExport;
 }): MapeamentoHibridoResultado {
+  const modoUniverso = input.modoUniverso ?? "integral";
+  const regional = input.regional ?? "MT";
   const linhas: BaseRupturaLinha[] = [];
   const cdsDinamicos: Record<string, string | number | null>[] = [];
   const colunasSemFonte = new Set<string>();
@@ -156,7 +196,7 @@ export function mapearBaseRupturaHibrido(input: {
         row[col.cabecalho] = null;
         continue;
       }
-      const valor = valorColunaHibrido(col.cabecalho, col.fonte, produto, input.bandeira, cds);
+      const valor = valorColunaHibrido(col.cabecalho, col.fonte, produto, input.bandeira, regional, modoUniverso, cds);
       row[col.cabecalho] = valor;
       if (valor === null && col.fonte && !col.ausenteV7) {
         colunasSemFonte.add(col.cabecalho);
@@ -179,4 +219,27 @@ export function mapearBaseRupturaHibrido(input: {
   }
 
   return { linhas, camposAusentes, cdsDinamicos, colunasSemFonte: [...colunasSemFonte] };
+}
+
+export function filtrarLinhasUniversoOficial(
+  linhas: BaseRupturaLinha[],
+  chavesOficiais: ReadonlySet<string>,
+): BaseRupturaLinha[] {
+  return linhas.filter((linha) => {
+    const loja = linha.LOJA;
+    const seq = linha.SEQPRODUTO;
+    if (loja == null || seq == null) return false;
+    return chavesOficiais.has(`${loja}\u0001${seq}`);
+  });
+}
+
+export function chaveLinhaBase(loja: unknown, seqproduto: unknown): string {
+  const norm = (v: unknown) => {
+    if (v == null || v === "") return "";
+    if (typeof v === "number" && Number.isInteger(v)) return String(v);
+    const s = String(v).trim();
+    if (/^-?\d+\.0+$/.test(s)) return String(parseInt(s, 10));
+    return s;
+  };
+  return `${norm(loja)}\u0001${norm(seqproduto)}`;
 }

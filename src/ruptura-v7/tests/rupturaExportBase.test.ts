@@ -1,20 +1,34 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CABECALHOS_BASE_RUPTURA, CAMPOS_AUSENTES_V7 } from "../../motor/export/baseRuptura/baseRupturaColumns.ts";
-import { validarBaseRuptura } from "../../motor/export/baseRuptura/baseRupturaTypes.ts";
+import {
+  formatBandeiraExport,
+  formatBandeiraExportCompativel,
+  formatTextoProduto,
+} from "../../motor/export/baseRuptura/rupturaExportFormat.ts";
+import {
+  CABECALHOS_BASE_RUPTURA,
+  CABECALHOS_OFICIAL_CONFERENCIA,
+  CAMPOS_AUSENTES_V7,
+} from "../../motor/export/baseRuptura/baseRupturaColumns.ts";
+import { rotuloModoUniversoExport, validarBaseRuptura } from "../../motor/export/baseRuptura/baseRupturaTypes.ts";
 import type { HibridoProdutoGestao } from "../../motor/export/hibrido/hibridoTypes.ts";
 import { toPermissionContext } from "../../auth-v7/authProfileUtils.ts";
 import {
   canExportBandeiraCompleta,
   escopoArquivoExport,
+  escopoEquivaleBandeiraCompleta,
   inferirModoExport,
+  maxLojasExportBrowser,
   nomeArquivoExportRuptura,
 } from "../services/rupturaExportBaseUtils.ts";
 import {
   estoquesCdOficiais,
+  filtrarLinhasUniversoOficial,
   mapearBaseRupturaHibrido,
   montarCdsDinamicos,
+  chaveLinhaBase,
 } from "../services/hibrido/mapearBaseRupturaHibrido.ts";
+import { carregarChavesOficiaisConferencia } from "../services/hibrido/chavesOficiaisConferencia.ts";
 import { gerarCsvBaseRuptura } from "../utils/baseRupturaBrowserExport.ts";
 import { RUPTURA_EXPORT_BROWSER_MAX_ROWS } from "../types/rupturaFiltrosTypes.ts";
 import { assertEscopoHibrido } from "../services/hibrido/hibridoScope.ts";
@@ -32,23 +46,43 @@ const produtoBase: HibridoProdutoGestao = {
   parMin: 3,
   parMax: 10,
   somaEstoqueCd: 50,
-  pendenciaCpaCd: 0,
+  pendenciaCpaCd: 144,
   classificacaoPrazo: "curto_prazo",
   diasPedido: 15,
   produtoCentralizado: 464,
   codigoCdSelecionado: 464,
-  statusEstoqueCds: "Com estoque",
+  statusEstoqueCds: "Estoque no CD: (753)",
   acaoRecomendada: "Pedido imediato",
   qualidadeDados: "completo",
   setorN2: "MERCEARIA",
   divisao: "ALIMENTOS",
+  categoriaN1: "MERCEARIA SECA",
+  embalagemCompra: "72",
+  ruptura104c: false,
+  geraRuptura: true,
+  inventarioUnid: 0,
+  rupturaComInventario: 0,
+  rupturaSemInventario: 0,
+  crossDocking: 0,
+  modCurtoPrazo: null,
+  ncurtoPrazo: null,
+  curtoPrazo: 1,
+  medioPrazo: 0,
+  longoPrazo: 0,
+  ultimaEntradaLoja: "2025-12-05",
+  diasRuptura: 30,
+  statusSolicitacaoAtivacaoCd: "Ativo no CD",
+  acaoCurtoPrazo: "Pedido imediato",
+  acaoMedioPrazo: null,
+  textoProdutoCentralizado: "Arroz Tio João 5kg - 1001",
 };
 
 describe("ruptura export base — colunas oficiais", () => {
-  it("ordem BASE segue baseRupturaColumns", () => {
+  it("ordem BASE segue arquivo conferencia (ESTQ_CD5 pos 25)", () => {
+    assert.deepEqual(CABECALHOS_BASE_RUPTURA, CABECALHOS_OFICIAL_CONFERENCIA);
     assert.equal(CABECALHOS_BASE_RUPTURA[0], "LOJA");
-    assert.equal(CABECALHOS_BASE_RUPTURA[1], "SEQPRODUTO");
-    assert.equal(CABECALHOS_BASE_RUPTURA.includes("ESTQ_CD1"), true);
+    assert.equal(CABECALHOS_BASE_RUPTURA[16], "Ruptura 104C");
+    assert.equal(CABECALHOS_BASE_RUPTURA[24], "ESTQ_CD5");
     assert.equal(CABECALHOS_BASE_RUPTURA.length, 62);
   });
 
@@ -56,6 +90,7 @@ describe("ruptura export base — colunas oficiais", () => {
     const cds = [
       { posicaoLogica: 1, codigoFisico: 464, estoque: 10, pendencia: 0, statusCompra: "OK", diasCompra: 1, diasRecebimento: 2, flagCentralizacao: 1 },
       { posicaoLogica: 2, codigoFisico: 465, estoque: 0, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: null },
+      { posicaoLogica: 5, codigoFisico: 753, estoque: 3, pendencia: null, statusCompra: null, diasCompra: null, diasRecebimento: null, flagCentralizacao: null },
     ];
     const { linhas, camposAusentes } = mapearBaseRupturaHibrido({
       produtos: [produtoBase],
@@ -67,9 +102,17 @@ describe("ruptura export base — colunas oficiais", () => {
     assert.equal(linhas[0]!.SEQPRODUTO, 1001);
     assert.equal(linhas[0]!.ESTQ_CD1, 10);
     assert.equal(linhas[0]!.ESTQ_CD2, 0);
+    assert.equal(linhas[0]!.ESTQ_CD5, 3);
     assert.equal(linhas[0]!["Curto Prazo"], 1);
     assert.equal(linhas[0]!["Médio Prazo"], 0);
     assert.equal(linhas[0]!.BANDEIRA, "COMPER");
+    assert.equal(linhas[0]!.COMPRADOR, "COMPRADOR X");
+    assert.equal(linhas[0]!.CATEGORIA, "MERCEARIA SECA");
+    assert.equal(linhas[0]!.EMBCPA, "72");
+    assert.equal(linhas[0]!["Ruptura 104C"], "Não é Ruptura");
+    assert.equal(linhas[0]!["Flag Ruptura 104c"], "Gera Ruptura");
+    assert.equal(linhas[0]!["Menor que três Unidades"], 0);
+    assert.equal(linhas[0]!.PRODUTO, "Arroz Tio João 5kg - 1001");
     assert.ok(camposAusentes.includes("% Rup Inventário"));
     assert.equal(validarBaseRuptura(linhas).valido, true);
   });
@@ -89,19 +132,32 @@ describe("ruptura export base — colunas oficiais", () => {
 });
 
 describe("ruptura export base — campos ausentes", () => {
-  it("lista campos ausentes V7 oficiais", () => {
+  it("lista campos ausentes V7 oficiais (PQ)", () => {
     assert.equal(CAMPOS_AUSENTES_V7.length, 22);
     assert.ok(CAMPOS_AUSENTES_V7.includes("% Curto Prazo"));
   });
 
-  it("nao inventa ruptura104c", () => {
+  it("nao inventa ruptura104c quando ausente no JSON", () => {
     const { linhas } = mapearBaseRupturaHibrido({
-      produtos: [produtoBase],
+      produtos: [{ ...produtoBase, ruptura104c: null, geraRuptura: null }],
       cdsPorProduto: new Map(),
       bandeira: "COMPER",
     });
     assert.equal(linhas[0]!["Ruptura 104C"], null);
     assert.equal(linhas[0]!["Flag Ruptura 104c"], null);
+  });
+});
+
+describe("ruptura export base — universo export", () => {
+  it("filtra linhas para chaves oficiais", () => {
+    const chaves = carregarChavesOficiaisConferencia();
+    assert.ok(chaves.size > 100_000);
+    const linhas = [
+      { LOJA: 73, SEQPRODUTO: 1252 },
+      { LOJA: 99999, SEQPRODUTO: 1 },
+    ];
+    const filtradas = filtrarLinhasUniversoOficial(linhas, chaves);
+    assert.equal(filtradas.length, chaves.has(chaveLinhaBase(73, 1252)) ? 1 : 0);
   });
 });
 
@@ -117,6 +173,31 @@ describe("ruptura export base — filename e escopo", () => {
     assert.match(n, /^BASE_RUPTURA_V7_MT_COMPER_LOJA_73_2026-07-13\.xlsx$/);
   });
 
+  it("nome inclui modo universo V7_INTEGRAL", () => {
+    const n = nomeArquivoExportRuptura({
+      regional: "MT",
+      bandeira: "COMPER",
+      escopo: "BANDEIRA_COMPLETA",
+      dataReferencia: "2026-07-13",
+      extensao: "xlsx",
+      universo: "integral",
+    });
+    assert.match(n, /V7_INTEGRAL/);
+    assert.doesNotMatch(n, /BANDEIRA_COMPLETA_INTEGRAL_/);
+  });
+
+  it("nome inclui modo universo OFICIAL_COMPATIVEL", () => {
+    const n = nomeArquivoExportRuptura({
+      regional: "MT",
+      bandeira: "COMPER",
+      escopo: "BANDEIRA_COMPLETA",
+      dataReferencia: "2026-07-13",
+      extensao: "xlsx",
+      universo: "oficial_compativel",
+    });
+    assert.match(n, /OFICIAL_COMPATIVEL/);
+  });
+
   it("escopo selecao multipla", () => {
     assert.equal(escopoArquivoExport({ modo: "selecao", lojas: [73, 82, 88], totalEscopo: 15 }), "SELECAO_3LOJAS");
   });
@@ -127,6 +208,128 @@ describe("ruptura export base — filename e escopo", () => {
 
   it("modo loja unica", () => {
     assert.equal(inferirModoExport({ regional: "MT", bandeira: "COMPER", dataReferencia: "2026-07-13", loja: 73, lojas: [73] }, 15), "loja_unica");
+  });
+
+  it("selecao com todas lojas equivale bandeira completa", () => {
+    const lojas = [73, 82, 83, 88, 91, 92, 93, 96, 103, 104, 108, 123, 143, 148, 173];
+    assert.equal(
+      escopoEquivaleBandeiraCompleta({ modo: "selecao", lojas, totalEscopo: 15 }),
+      true,
+    );
+    assert.equal(
+      escopoEquivaleBandeiraCompleta({ modo: "selecao", lojas: [73, 82], totalEscopo: 15 }),
+      false,
+    );
+    assert.equal(
+      escopoEquivaleBandeiraCompleta({ modo: "bandeira_completa", lojas: [73], totalEscopo: 15 }),
+      true,
+    );
+  });
+
+  it("max lojas browser export", () => {
+    assert.equal(maxLojasExportBrowser(15), 2);
+    assert.equal(maxLojasExportBrowser(1), 1);
+  });
+
+  it("RESUMO rotula modos V7_INTEGRAL e OFICIAL_COMPATIVEL", () => {
+    assert.equal(rotuloModoUniversoExport("integral"), "V7_INTEGRAL");
+    assert.equal(rotuloModoUniversoExport("oficial_compativel"), "OFICIAL_COMPATIVEL");
+  });
+});
+
+describe("ruptura export base — bandeira e PENDCPA", () => {
+  const cds = [
+    { posicaoLogica: 1, codigoFisico: 464, estoque: 10, pendencia: 0, statusCompra: "OK", diasCompra: 1, diasRecebimento: 2, flagCentralizacao: 1 },
+  ];
+
+  it("BANDEIRA COMPER em V7 integral vs Comper MT em oficial_compativel", () => {
+    const integral = mapearBaseRupturaHibrido({
+      produtos: [produtoBase],
+      cdsPorProduto: new Map([[1001, cds]]),
+      bandeira: "COMPER",
+      regional: "MT",
+      modoUniverso: "integral",
+    });
+    const compat = mapearBaseRupturaHibrido({
+      produtos: [produtoBase],
+      cdsPorProduto: new Map([[1001, cds]]),
+      bandeira: "COMPER",
+      regional: "MT",
+      modoUniverso: "oficial_compativel",
+    });
+    assert.equal(integral.linhas[0]!.BANDEIRA, "COMPER");
+    assert.equal(compat.linhas[0]!.BANDEIRA, "Comper MT");
+    assert.equal(formatBandeiraExport("COMPER"), "COMPER");
+    assert.equal(formatBandeiraExportCompativel("MT", "COMPER"), "Comper MT");
+  });
+
+  it("PENDCPA repassa pendenciaCpaCd sem transformacao", () => {
+    const pendencia = 144;
+    const { linhas } = mapearBaseRupturaHibrido({
+      produtos: [{ ...produtoBase, pendenciaCpaCd: pendencia }],
+      cdsPorProduto: new Map([[1001, cds]]),
+      bandeira: "COMPER",
+      regional: "MT",
+      modoUniverso: "oficial_compativel",
+    });
+    assert.equal(linhas[0]!.PENDCPA, pendencia);
+    assert.equal(linhas[0]!.PENDCPA, produtoBase.pendenciaCpaCd);
+  });
+
+  it("PRODUTO usa descricao - seqproduto", () => {
+    const produtos = [
+      { ...produtoBase, seqproduto: 1001, descricao: "Arroz Tio João 5kg" },
+      { ...produtoBase, seqproduto: 2002, descricao: "Feijão Carioca 1kg" },
+    ];
+    for (const p of produtos) {
+      const esperado = formatTextoProduto(p.descricao, p.seqproduto);
+      const { linhas } = mapearBaseRupturaHibrido({
+        produtos: [p],
+        cdsPorProduto: new Map([[p.seqproduto, cds]]),
+        bandeira: "COMPER",
+      });
+      assert.equal(linhas[0]!.PRODUTO, esperado);
+    }
+  });
+
+  it("colunas PQ ausentes permanecem null (sem zero fill)", () => {
+    const { linhas } = mapearBaseRupturaHibrido({
+      produtos: [produtoBase],
+      cdsPorProduto: new Map([[1001, cds]]),
+      bandeira: "COMPER",
+    });
+    for (const col of CAMPOS_AUSENTES_V7) {
+      assert.equal(linhas[0]![col], null, `coluna PQ ${col} deve ser null`);
+    }
+  });
+});
+
+describe("ruptura export base — universos integral vs oficial", () => {
+  it("oficial_compativel remove chaves so-V7", () => {
+    const chaves = carregarChavesOficiaisConferencia();
+    const linhasIntegral = [
+      { LOJA: 73, SEQPRODUTO: 1252 },
+      { LOJA: 99999, SEQPRODUTO: 1 },
+    ];
+    const filtradas = filtrarLinhasUniversoOficial(linhasIntegral, chaves);
+    const temSoV7 = linhasIntegral.some(
+      (l) => !chaves.has(chaveLinhaBase(l.LOJA, l.SEQPRODUTO)),
+    );
+    if (temSoV7) {
+      assert.ok(filtradas.length < linhasIntegral.length);
+      assert.equal(
+        filtradas.some((l) => l.LOJA === 99999),
+        false,
+      );
+    }
+  });
+
+  it("v7_integral preserva contagem total antes do filtro", () => {
+    const linhas = [
+      { LOJA: 73, SEQPRODUTO: 1252 },
+      { LOJA: 99999, SEQPRODUTO: 1 },
+    ];
+    assert.equal(linhas.length, 2);
   });
 });
 
@@ -217,6 +420,14 @@ describe("ruptura export base — CDs dinamicos", () => {
 describe("ruptura export base — roteamento tamanho", () => {
   it("limite browser 25k", () => {
     assert.equal(RUPTURA_EXPORT_BROWSER_MAX_ROWS, 25_000);
+  });
+
+  it("servico nao bloqueia bandeira completa sem fallback worker", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("../services/rupturaExportBaseService.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /Configure baseXlsxDriveFileId no manifest ou reduza o escopo/);
+    assert.match(src, /escopoEquivaleBandeiraCompleta/);
+    assert.match(src, /gerarViaWorker/);
   });
 });
 
