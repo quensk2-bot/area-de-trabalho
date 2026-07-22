@@ -98,7 +98,7 @@ describe("catalogoLojas — exibição e cascata", () => {
     assert.equal(next.regional, "SP");
     assert.equal(next.bandeira, FILTRO_BANDEIRA_TODAS);
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
-    assert.deepEqual(next.lojas, []);
+    assert.deepEqual(next.lojas, [10]);
   });
 
   it("cascata reseta loja ao trocar bandeira", () => {
@@ -109,7 +109,7 @@ describe("catalogoLojas — exibição e cascata", () => {
     );
     assert.equal(next.bandeira, "FORT");
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
-    assert.deepEqual(next.lojas, []);
+    assert.deepEqual(next.lojas, [90]);
   });
 });
 
@@ -146,8 +146,11 @@ describe("catalogoLojas — MT COMPER e FORT", () => {
     );
     assert.equal(next.bandeira, "FORT");
     assert.equal(next.loja, FILTRO_LOJA_TODAS);
-    assert.deepEqual(next.lojas, []);
-    assert.ok(!listarLojasDoCatalogo(CATALOGO_MT_COMPLETO, "MT", "FORT").some((l) => l.loja === 73));
+    assert.deepEqual(
+      next.lojas.sort((a, b) => a - b),
+      [...LOJAS_FORT_MT],
+    );
+    assert.ok(!next.lojas.includes(73));
   });
 
   it("regional sem bandeiras conhecidas zera escopo de lojas", () => {

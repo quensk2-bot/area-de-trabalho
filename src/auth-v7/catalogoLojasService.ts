@@ -142,12 +142,22 @@ export function normalizarFiltroCascade(
   const lojasEscopo = listarLojasDoCatalogo(catalogo, next.regional, next.bandeira);
   const codigosEscopo = new Set(lojasEscopo.map((l) => l.loja));
 
+  const escopoMudou =
+    (patch.regional !== undefined && patch.regional !== valores.regional) ||
+    (patch.bandeira !== undefined && patch.bandeira !== valores.bandeira);
+
   if (patch.regional !== undefined && patch.regional !== valores.regional) {
     next.bandeira = FILTRO_BANDEIRA_TODAS;
     next.lojas = [];
+    next.loja = FILTRO_LOJA_TODAS;
   }
   if (patch.bandeira !== undefined && patch.bandeira !== valores.bandeira) {
     next.lojas = [];
+    next.loja = FILTRO_LOJA_TODAS;
+  }
+
+  if (escopoMudou) {
+    next.lojas = lojasEscopo.map((l) => l.loja);
   }
 
   if (next.lojas.length > 0) {

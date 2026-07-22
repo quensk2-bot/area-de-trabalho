@@ -8,7 +8,7 @@ import {
   resolverLojasEfetivas,
   todasLojasSelecionadas,
 } from "../services/lojasFiltroUtils.ts";
-import { listarLojasPublicadasManifest } from "../services/hibrido/manifestService.ts";
+import { listarLojasPublicadasManifest } from "../../hibrido-v7/manifest/manifestLojas.ts";
 import { aggregateResumos, mapResumosAgregadosToDashboard } from "../services/hibrido/mapResumoDashboard.ts";
 import { assertEscopoHibrido, assertLojasSelecionadas } from "../services/hibrido/hibridoScope.ts";
 import { toPermissionContext } from "../../auth-v7/authProfileUtils.ts";
@@ -208,7 +208,7 @@ describe("FiltroLojasMultiplo — contrato UI", () => {
     assert.match(src, /lojas selecionadas/);
     assert.match(src, /Limpar/);
     assert.match(src, /Aplicar/);
-    assert.match(src, /Todas as lojas/);
+    assert.match(src, /formatLojasSelecionadasLabel/);
     assert.match(src, /role="listbox"/);
   });
 });

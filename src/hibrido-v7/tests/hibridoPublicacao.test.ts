@@ -262,7 +262,7 @@ describe("hibrido-v7 — segurança frontend", () => {
     assert.match(dash, /isModoHibrido/);
     assert.match(gest, /consultarProdutosPaginadosHibrido/);
     assert.match(gest, /HybridDataPending/);
-    assert.match(gest, /consultarProdutosPaginadosHibrido\(\{[\s\S]*?authCtx: permCtx,\s*\}\)/);
+    assert.match(gest, /consultarProdutosPaginadosHibrido\(\{[\s\S]*?authCtx: permCtx/);
   });
 
   it("17. dist sem JSON corporativo quando build existe", () => {

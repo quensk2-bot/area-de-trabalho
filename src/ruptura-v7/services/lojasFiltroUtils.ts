@@ -27,12 +27,20 @@ export function resolverLojasEfetivas(
   const escopo = lojasNoEscopoCatalogo(catalogo, ctx.regional, ctx.bandeira);
   const codigosEscopo = escopo.map((l) => l.loja);
 
-  if (ctx.lojas.length === 0 || ctx.loja === FILTRO_LOJA_TODAS) {
+  if (ctx.lojas.length > 0) {
+    const set = new Set(codigosEscopo);
+    return ctx.lojas.filter((l) => set.has(l)).sort((a, b) => a - b);
+  }
+
+  if (ctx.loja === FILTRO_LOJA_TODAS) {
     return codigosEscopo;
   }
 
-  const set = new Set(codigosEscopo);
-  return ctx.lojas.filter((l) => set.has(l)).sort((a, b) => a - b);
+  if (ctx.loja > 0 && codigosEscopo.includes(ctx.loja)) {
+    return [ctx.loja];
+  }
+
+  return codigosEscopo;
 }
 
 /** Sincroniza sentinela legada `loja` a partir de `lojas`. */
@@ -73,7 +81,12 @@ export function migrarContextoLojas(
     merged.lojas = base.lojas;
   }
 
-  merged.loja = sincronizarSentinelaLoja(merged.lojas, merged.lojas.length || 1);
+  merged.loja =
+    merged.lojas.length === 0
+      ? FILTRO_LOJA_TODAS
+      : merged.lojas.length === 1
+        ? merged.lojas[0]!
+        : FILTRO_LOJA_TODAS;
   return merged;
 }
 

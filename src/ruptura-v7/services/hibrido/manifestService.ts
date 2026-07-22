@@ -3,7 +3,10 @@ import { validarManifest } from "../../../hibrido-v7/manifest/manifestValidator.
 import type { RupturaManifest } from "../../../hibrido-v7/manifest/manifestTypes.ts";
 import type { HybridServiceError } from "../../../hibrido-v7/hybridErrors.ts";
 import { isRlsTestFixture } from "../../../hibrido-v7/manifest/manifestGuards.ts";
+import { listarLojasPublicadasManifest, lojaPublicadaNoManifest } from "../../../hibrido-v7/manifest/manifestLojas.ts";
 import { downloadStorageJson, invalidateStorageCache } from "./storageJsonService.ts";
+
+export { listarLojasPublicadasManifest, lojaPublicadaNoManifest } from "../../../hibrido-v7/manifest/manifestLojas.ts";
 
 const manifestInflight = new Map<string, Promise<{ manifest: RupturaManifest | null; erro: HybridServiceError | null }>>();
 
@@ -72,13 +75,3 @@ export function lojaPathsFromManifest(manifest: RupturaManifest, loja: number) {
 }
 
 /** Lojas com artefatos publicados no manifest (não usa sentinel "Todas"). */
-export function listarLojasPublicadasManifest(manifest: RupturaManifest): number[] {
-  return Object.keys(manifest.lojas)
-    .map((k) => Number(k))
-    .filter((n) => Number.isFinite(n) && n > 0)
-    .sort((a, b) => a - b);
-}
-
-export function lojaPublicadaNoManifest(manifest: RupturaManifest, loja: number): boolean {
-  return loja > 0 && manifest.lojas[String(loja)] != null;
-}
