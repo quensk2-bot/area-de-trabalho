@@ -12,6 +12,7 @@ export type GerarBaseRupturaXlsxInput = {
   resumo: ResumoProcessamentoBase;
   errosValidacao?: ErroValidacaoExport[];
   cdsDinamicos?: BaseRupturaLinha[];
+  lojasSelecionadas?: Array<{ loja: number; bandeira: string; publicada?: boolean }>;
 };
 
 export type GerarBaseRupturaXlsxResultado = {
@@ -41,6 +42,26 @@ export function gerarBaseRupturaXlsx(input: GerarBaseRupturaXlsxInput): GerarBas
   XLSX.utils.book_append_sheet(wb, wsResumo, "RESUMO_PROCESSAMENTO");
 
   const abas = ["BASE", "RESUMO_PROCESSAMENTO"];
+
+  if (input.lojasSelecionadas?.length) {
+    const wsLojas = XLSX.utils.json_to_sheet(
+      input.lojasSelecionadas.map((l) => ({
+        loja: l.loja,
+        bandeira: l.bandeira,
+        publicada: l.publicada === false ? "nao" : "sim",
+      })),
+    );
+    XLSX.utils.book_append_sheet(wb, wsLojas, "LOJAS_SELECIONADAS");
+    abas.push("LOJAS_SELECIONADAS");
+  }
+
+  if (input.resumo.camposAusentes.length > 0) {
+    const wsCampos = XLSX.utils.json_to_sheet(
+      input.resumo.camposAusentes.map((coluna) => ({ coluna, tipo: "ausente_v7_ou_sem_fonte" })),
+    );
+    XLSX.utils.book_append_sheet(wb, wsCampos, "CAMPOS_AUSENTES");
+    abas.push("CAMPOS_AUSENTES");
+  }
 
   if (input.cdsDinamicos && input.cdsDinamicos.length > 0) {
     const wsCds = XLSX.utils.json_to_sheet(input.cdsDinamicos);
@@ -90,6 +111,6 @@ export function gerarBaseRupturaCsv(input: {
     CABECALHOS_BASE_RUPTURA.join(";"),
     ...input.linhas.map((row) => CABECALHOS_BASE_RUPTURA.map((h) => escape(row[h])).join(";")),
   ];
-  fs.writeFileSync(caminho, "\ufeff" + linhasCsv.join("\n"), "utf8");
+  fs.writeFileSync(caminho, "\ufeff" + linhasCsv.join("\r\n"), "utf8");
   return caminho;
 }

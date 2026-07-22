@@ -19,6 +19,7 @@ import { downloadStorageJson } from "./storageJsonService.ts";
 import { assertEscopoHibrido, assertLojasSelecionadas, HIBRIDO_BANDEIRA_DEFAULT } from "./hibridoScope.ts";
 import { isOrdenacaoGestaoDefault, ordenarProdutosGestaoDefault } from "./gestaoOrdering.ts";
 import { filtrarProdutos } from "./gestaoFilters.ts";
+import type { CdsPorProduto } from "./mapearBaseRupturaHibrido.ts";
 
 export { ordenarProdutosGestaoDefault, prioridadeClassificacaoGestao, isOrdenacaoGestaoDefault } from "./gestaoOrdering.ts";
 export { filtrarProdutos } from "./gestaoFilters.ts";
@@ -317,5 +318,89 @@ export async function consultarProdutosPaginadosHibrido(input: {
   };
 }
 
-export const EXPORT_HIBRIDO_DISABLED =
-  "Download privado via Drive será liberado na próxima etapa. Exportação CSV/XLSX indisponível no modo híbrido.";
+export type ExportGestaoCdsLoja = {
+  loja: number;
+  bandeira: string;
+  produtos: HibridoProdutoGestao[];
+  cdsPorProduto: CdsPorProduto;
+  publicada: boolean;
+};
+
+/** Carrega gestao + cds por loja para exportação oficial (Storage JSON). */
+export async function carregarDadosExportBaseHibrido(input: {
+  ctx: RupturaFiltrosProdutos;
+  authCtx: PermissionContext | null;
+  lojasAlvo?: number[];
+  onProgress?: (p: GestaoLoadProgress) => void;
+}): Promise<{ lojas: ExportGestaoCdsLoja[]; erro: HybridServiceError | null }> {
+  const scopeErr = assertEscopoHibrido(input.authCtx, input.ctx);
+  if (scopeErr) return { lojas: [], erro: scopeErr };
+
+  const catalogo = await fetchCatalogoLojas();
+  const lojasEfetivas = input.lojasAlvo ?? resolverLojasEfetivas(catalogo, input.ctx);
+  const selErr = assertLojasSelecionadas(lojasEfetivas);
+  if (selErr) return { lojas: [], erro: selErr };
+
+  const bandeiraCtx = input.ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
+  const resultados: ExportGestaoCdsLoja[] = [];
+  let concluidas = 0;
+
+  for (const loja of lojasEfetivas) {
+    const bandeira =
+      catalogo.find((c) => c.loja === loja && c.regional === input.ctx.regional)?.bandeira ?? bandeiraCtx;
+
+    const { manifest, erro: mErr } = await carregarManifest({
+      regional: input.ctx.regional,
+      bandeira,
+      dataReferencia: input.ctx.dataReferencia,
+    });
+    if (mErr) {
+      concluidas += 1;
+      input.onProgress?.({ atual: concluidas, total: lojasEfetivas.length, loja });
+      continue;
+    }
+
+    const publicada = listarLojasPublicadasManifest(manifest!).includes(loja);
+    if (!publicada) {
+      resultados.push({ loja, bandeira, produtos: [], cdsPorProduto: new Map(), publicada: false });
+      concluidas += 1;
+      input.onProgress?.({ atual: concluidas, total: lojasEfetivas.length, loja });
+      continue;
+    }
+
+    const gestao = await ensureGestaoLoja(manifest!, loja);
+    if (gestao.erro) {
+      return { lojas: [], erro: gestao.erro };
+    }
+
+    const paths = lojaPathsFromManifest(manifest!, loja)!;
+    const { data: cdsJson, erro: cdsErr } = await downloadStorageJson<
+      import("../../../hibrido-v7/manifest/manifestTypes.ts").CdsLojaJson
+    >(paths.cds);
+    if (cdsErr) return { lojas: [], erro: cdsErr };
+
+    const cdsPorProduto: CdsPorProduto = new Map();
+    for (const p of cdsJson?.produtos ?? []) {
+      cdsPorProduto.set(p.seqproduto, p.cds);
+    }
+
+    resultados.push({
+      loja,
+      bandeira,
+      produtos: gestao.produtos,
+      cdsPorProduto,
+      publicada: true,
+    });
+    concluidas += 1;
+    input.onProgress?.({ atual: concluidas, total: lojasEfetivas.length, loja });
+  }
+
+  if (!resultados.some((r) => r.publicada && r.produtos.length)) {
+    return {
+      lojas: resultados,
+      erro: { code: "loja_not_published", message: HYBRID_LOJA_NAO_PUBLICADA_MESSAGE },
+    };
+  }
+
+  return { lojas: resultados, erro: null };
+}

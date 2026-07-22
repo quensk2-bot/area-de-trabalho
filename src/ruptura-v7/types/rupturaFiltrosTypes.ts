@@ -45,6 +45,8 @@ export const RUPTURA_BUSCA_MIN_CHARS = 2;
 export const RUPTURA_BUSCA_DEBOUNCE_MS = 400;
 export const RUPTURA_EXPORT_BATCH = 500;
 export const RUPTURA_EXPORT_MAX_ROWS = 50_000;
+/** Acima deste limite: Worker ou arquivo pré-gerado no Drive. */
+export const RUPTURA_EXPORT_BROWSER_MAX_ROWS = 25_000;
 
 export const RUPTURA_CONTEXTO_DEFAULT: RupturaFiltrosContexto = {
   regional: "MT",

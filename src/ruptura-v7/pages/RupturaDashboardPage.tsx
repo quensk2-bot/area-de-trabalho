@@ -28,6 +28,7 @@ import {
 } from "../services/hibrido/rupturaResumoHibridoService.ts";
 import type { HybridServiceError } from "../../hibrido-v7/hybridErrors.ts";
 import type { RupturaDashboardLoja } from "../types/rupturaDashboardTypes.ts";
+import { RupturaExportMenu } from "../components/RupturaExportMenu.tsx";
 
 type Props = { onAbrirGestao?: () => void };
 
@@ -166,6 +167,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
         multiSelectLoja={multiSelectLoja}
         extra={
           <>
+            <RupturaExportMenu ctx={ctx} authCtx={permCtx} compact />
             {onAbrirGestao && (
               <button type="button" style={buttonStyle} onClick={onAbrirGestao}>Abrir Gestão Operacional</button>
             )}

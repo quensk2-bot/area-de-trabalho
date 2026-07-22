@@ -22,7 +22,6 @@ import { useRupturaContextoScoped } from "../hooks/useRupturaContextoScoped.ts";
 import { consultarProdutosPaginados } from "../services/rupturaProdutosService.ts";
 import {
   consultarProdutosPaginadosHibrido,
-  EXPORT_HIBRIDO_DISABLED,
   invalidateGestaoCache,
 } from "../services/hibrido/rupturaGestaoHibridoService.ts";
 import type { HybridServiceError } from "../../hibrido-v7/hybridErrors.ts";
@@ -34,7 +33,7 @@ import {
   RUPTURA_PAGE_SIZES,
 } from "../types/rupturaFiltrosTypes.ts";
 import type { RupturaProdutoLoja } from "../types/rupturaTypes.ts";
-import { exportarProdutosCsvXlsx } from "../utils/rupturaExport.ts";
+import { RupturaExportMenu } from "../components/RupturaExportMenu.tsx";
 
 type ColunaId =
   | "loja"
@@ -110,7 +109,6 @@ export function RupturaGestaoPage() {
   const [colunasVisiveis, setColunasVisiveis] = useState<Set<ColunaId>>(
     () => new Set(COLUNAS.filter((c) => c.default).map((c) => c.id)),
   );
-  const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [configColunasAberto, setConfigColunasAberto] = useState(false);
   const [hybridState, setHybridState] = useState<HybridServiceError | null>(null);
 
@@ -169,20 +167,6 @@ export function RupturaGestaoPage() {
   }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, ctx.lojas]);
 
   const totalPaginas = Math.max(1, Math.ceil(total / tamanho));
-
-  async function handleExport(formato: "csv" | "xlsx") {
-    if (isModoHibrido()) {
-      setExportProgress(EXPORT_HIBRIDO_DISABLED);
-      return;
-    }
-    setExportProgress("Preparando exportação…");
-    const r = await exportarProdutosCsvXlsx({
-      filtros: filtrosCompletos,
-      formato,
-      onProgress: (atual, tot) => setExportProgress(`Exportando ${atual}/${tot}…`),
-    });
-    setExportProgress(r.ok ? `Arquivo ${r.filename} gerado.` : r.erro ?? "Falha na exportação");
-  }
 
   function renderCelula(row: RupturaProdutoLoja, col: ColunaId) {
     const v = row[col];
@@ -256,8 +240,7 @@ export function RupturaGestaoPage() {
         <button type="button" style={buttonGhostStyle} onClick={() => setConfigColunasAberto((v) => !v)}>
           Configurar colunas
         </button>
-        <button type="button" style={buttonGhostStyle} disabled={isModoHibrido()} title={isModoHibrido() ? EXPORT_HIBRIDO_DISABLED : undefined} onClick={() => void handleExport("csv")}>Exportar CSV</button>
-        <button type="button" style={buttonStyle} disabled={isModoHibrido()} title={isModoHibrido() ? EXPORT_HIBRIDO_DISABLED : undefined} onClick={() => void handleExport("xlsx")}>Exportar XLSX</button>
+        <RupturaExportMenu ctx={ctx} authCtx={permCtx} filtrosProdutos={filtrosCompletos} />
       </div>
 
       {configColunasAberto && (
@@ -282,7 +265,6 @@ export function RupturaGestaoPage() {
         </div>
       )}
 
-      {exportProgress && <div style={{ fontSize: 12, color: theme.colors.textMuted }}>{exportProgress}</div>}
       {erro && <div style={{ color: theme.colors.danger }}>{erro}</div>}
 
       <div style={{ overflowX: "auto" }}>

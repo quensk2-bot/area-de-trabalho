@@ -242,6 +242,8 @@ describe("ruptura-v7 hibrido — isolamento consumo_v7 (ETAPA 1)", () => {
       "hibridoScope.ts",
       "gestaoFilters.ts",
       "gestaoOrdering.ts",
+      "mapearBaseRupturaHibrido.ts",
+      "rupturaExportDriveService.ts",
     ];
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
