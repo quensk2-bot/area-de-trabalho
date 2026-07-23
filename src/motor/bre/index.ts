@@ -4,8 +4,8 @@ import { chaveLojaProduto } from "./breContext.ts";
 import { consolidarMetricasBre, criarBreResultadoVazio, mergeRegraResults } from "./breResult.ts";
 import { aplicarRuleAtivacaoRecente } from "./rules/ruleAtivacaoRecente.ts";
 import { aplicarRuleBaseLimpa } from "./rules/ruleBaseLimpa.ts";
-import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
 import { aplicarRuleDiasPedido } from "./rules/calcularDiasPedido.ts";
+import { montarEstSelecInvDoProduto } from "./rules/resolverCrossProduto.ts";
 import { aplicarAcoesOperacionais } from "./rules/calcularAcoesOperacionais.ts";
 import {
   calcularCentralizacao,
@@ -26,6 +26,7 @@ function montarItemInput(entrada: MotorBreEntrada, produto: MotorBreEntrada["pro
     cd5: entrada.cds5.get(produto.seqproduto) ?? null,
     validacao: entrada.validacao.get(chave) ?? null,
     inventario: entrada.inventario.get(chave) ?? null,
+    estSelecInv: montarEstSelecInvDoProduto(produto),
   };
 }
 
@@ -56,13 +57,6 @@ export function processarItemBre(
     ncurtoPrazo,
   });
 
-  const crossDockingRegra = aplicarRuleCrossDocking(
-    classificacao.crossSum,
-    somaEstoqueCd,
-    classificacao.curtoPrazo,
-    modCurtoPrazo,
-  );
-
   const diasPedido = aplicarRuleDiasPedido(input);
 
   const centralizacaoEntrada = montarCentralizacaoEntrada(input, catalogos);
@@ -86,7 +80,6 @@ export function processarItemBre(
     inventarioRegras,
     [somaCd],
     classificacao.regras,
-    [crossDockingRegra],
   );
 
   const inventarioUnid = inventarioRegras.find((r) => r.regra === "inventario_unid")?.resultado as number ?? 0;
@@ -108,7 +101,9 @@ export function processarItemBre(
     somaEstoqueCd,
     pendenciaCpaCd: classificacao.pendenciaCpaCd,
     crossSum: classificacao.crossSum,
-    crossDocking: crossDockingRegra.resultado as 0 | 1,
+    crossDocking: classificacao.crossDocking,
+    origemCross: classificacao.origemCross,
+    valoresCrossPorCd: classificacao.valoresCrossPorCd,
     modCurtoPrazo,
     ncurtoPrazo,
     classificacaoPrazo: classificacao.classificacaoPrazo,
@@ -207,6 +202,12 @@ export { aplicarRuleRuptura104c, aplicarRuleMenorQueTresCentralizados } from "./
 export { aplicarRuleInventario } from "./rules/ruleInventario.ts";
 export { aplicarRuleSomaEstoqueCd, calcularSomaEstoqueCd } from "./rules/ruleSomaEstoqueCd.ts";
 export { aplicarRuleCrossDocking, calcularCrossSumFromValues } from "./rules/ruleCrossDocking.ts";
+export {
+  calcularCrossSum,
+  montarEstSelecInvDoProduto,
+  resolverCrossProduto,
+  resolverValoresCrossPorCd,
+} from "./rules/resolverCrossProduto.ts";
 export { calcularPendenciaCpaCd } from "./rules/rulePendenciaCpaCd.ts";
 export { aplicarRuleCurtoPrazo } from "./rules/ruleCurtoPrazo.ts";
 export { aplicarRuleMedioPrazo } from "./rules/ruleMedioPrazo.ts";

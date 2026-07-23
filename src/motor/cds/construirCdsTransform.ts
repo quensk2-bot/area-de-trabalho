@@ -2,6 +2,7 @@ import type { MotorLinhaGrupoCds, MotorLinhaGrupoRuptura } from "../types/motorL
 import type { MapearBlocoCdsOpcoes, MotorBlocoCdsEntrada } from "./blocoCdsTypes.ts";
 import type { MotorProdutoCdNormalizado } from "./cdTypes.ts";
 import { mapearCdsDoBloco, type ValoresCdParseados } from "./mapearCdsDoBloco.ts";
+import { parseNumeroFlexivel } from "../transform/parseNumbers.ts";
 
 function parseDataIsoOrBr(value: string | null): Date | null {
   if (value == null) return null;
@@ -39,7 +40,7 @@ function posicaoRuptura(
     diasRecebimento: parsed.diasRecebimento,
     ultimaCompra: parseDataIsoOrBr(linha[ultimaCompraKey] as string | null),
     ultimaEntrada: parseDataIsoOrBr(linha[ultimaEntradaKey] as string | null),
-    estoqueSelecionadoInventario: null,
+    estoqueSelecionadoInventario: parseNumeroFlexivel(linha[estSelecKey] as string | null),
   };
 }
 

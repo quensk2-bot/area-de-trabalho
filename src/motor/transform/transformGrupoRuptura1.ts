@@ -115,6 +115,15 @@ export function transformGrupoRuptura1(
     const familia = parseInteiro(linha.familia, "FAMILIA", linha.numeroLinha);
     if (familia.erro) erros.push(familia.erro);
 
+    const estSelecInvCd1 = parseDecimalBr(linha.estSelecInvCd1, "EST_SELECINV_CD1", linha.numeroLinha);
+    if (estSelecInvCd1.erro) erros.push(estSelecInvCd1.erro);
+    const estSelecInvCd2 = parseDecimalBr(linha.estSelecInvCd2, "EST_SELECINV_CD2", linha.numeroLinha);
+    if (estSelecInvCd2.erro) erros.push(estSelecInvCd2.erro);
+    const estSelecInvCd3 = parseDecimalBr(linha.estSelecInvCd3, "EST_SELECINV_CD3", linha.numeroLinha);
+    if (estSelecInvCd3.erro) erros.push(estSelecInvCd3.erro);
+    const estSelecInvCd4 = parseDecimalBr(linha.estSelecInvCd4, "EST_SELECINV_CD4", linha.numeroLinha);
+    if (estSelecInvCd4.erro) erros.push(estSelecInvCd4.erro);
+
     const hierarquia = linha.hierarquia ?? parseCategoriaHierarquia(linha.categoriaOriginal);
     if (hierarquia.ambiguidade) {
       alertas.push(`Linha ${linha.numeroLinha}: ${hierarquia.ambiguidade}`);
@@ -183,6 +192,10 @@ export function transformGrupoRuptura1(
       ultimaEntradaLoja: ultEntrada.valor,
       ultimaSaidaLoja: ultSaida.valor,
       custoLiquido: custo.valor,
+      estSelecInvCd1: estSelecInvCd1.valor,
+      estSelecInvCd2: estSelecInvCd2.valor,
+      estSelecInvCd3: estSelecInvCd3.valor,
+      estSelecInvCd4: estSelecInvCd4.valor,
       cds,
       alertas: itemAlertas,
     });

@@ -173,6 +173,13 @@ export type MotorClassificacaoFinalResultado = {
   pendenciaCpaCd: number | null;
   crossSum: number;
   crossDocking: 0 | 1;
+  origemCross: "EST_SELECINV_CD1..4";
+  valoresCrossPorCd: {
+    estSelecInvCd1: number | null;
+    estSelecInvCd2: number | null;
+    estSelecInvCd3: number | null;
+    estSelecInvCd4: number | null;
+  };
   pendencia: MotorPendenciaAgregadaResultado;
   curtoPrazoRegra: MotorCurtoPrazoResultado;
   medioPrazoRegra: MotorMedioPrazoResultado;
@@ -198,6 +205,13 @@ export type MotorBreItemResultado = {
   pendenciaCpaCd: number | null;
   crossSum: number | null;
   crossDocking: 0 | 1 | null;
+  origemCross: "EST_SELECINV_CD1..4" | null;
+  valoresCrossPorCd: {
+    estSelecInvCd1: number | null;
+    estSelecInvCd2: number | null;
+    estSelecInvCd3: number | null;
+    estSelecInvCd4: number | null;
+  } | null;
   modCurtoPrazo: "LJ_Exclusiva" | null;
   ncurtoPrazo: "G" | "NG" | null;
   classificacaoPrazo: MotorClassificacaoPrazo;

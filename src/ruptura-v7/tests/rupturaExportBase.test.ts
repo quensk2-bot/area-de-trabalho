@@ -23,15 +23,12 @@ import {
 } from "../services/rupturaExportBaseUtils.ts";
 import {
   estoquesCdOficiais,
-  filtrarLinhasUniversoOficial,
   mapearBaseRupturaHibrido,
   montarCdsDinamicos,
-  chaveLinhaBase,
   enriquecerStatusEstoqueCdsExport,
   inventarioUnidExport,
   statusEstoqueCdsPrecisaEnriquecer,
 } from "../services/hibrido/mapearBaseRupturaHibrido.ts";
-import { carregarChavesOficiaisConferencia } from "../services/hibrido/chavesOficiaisConferencia.ts";
 import { gerarCsvBaseRuptura } from "../utils/baseRupturaBrowserExport.ts";
 import { RUPTURA_EXPORT_BROWSER_MAX_ROWS } from "../types/rupturaFiltrosTypes.ts";
 import { assertEscopoHibrido } from "../services/hibrido/hibridoScope.ts";
@@ -49,7 +46,9 @@ const produtoBase: HibridoProdutoGestao = {
   parMin: 3,
   parMax: 10,
   somaEstoqueCd: 50,
-  pendenciaCpaCd: 144,
+  pendenciaLoja: 144,
+  pendenciaCpaCd: 146,
+  baseLimpa: "Base Limpa",
   classificacaoPrazo: "curto_prazo",
   diasPedido: 15,
   produtoCentralizado: 464,
@@ -66,6 +65,11 @@ const produtoBase: HibridoProdutoGestao = {
   inventarioUnid: 0,
   rupturaComInventario: 0,
   rupturaSemInventario: 0,
+  crossSum: 0,
+  estSelecInvCd1: null,
+  estSelecInvCd2: null,
+  estSelecInvCd3: null,
+  estSelecInvCd4: null,
   crossDocking: 0,
   modCurtoPrazo: null,
   ncurtoPrazo: null,
@@ -152,15 +156,19 @@ describe("ruptura export base — campos ausentes", () => {
 });
 
 describe("ruptura export base — universo export", () => {
-  it("filtra linhas para chaves oficiais", () => {
-    const chaves = carregarChavesOficiaisConferencia();
-    assert.ok(chaves.size > 100_000);
-    const linhas = [
-      { LOJA: 73, SEQPRODUTO: 1252 },
-      { LOJA: 99999, SEQPRODUTO: 1 },
+  it("filtra produtos por baseLimpa Base Limpa", () => {
+    const produtos = [
+      { ...produtoBase, seqproduto: 1, baseLimpa: "Base Limpa" as const },
+      { ...produtoBase, seqproduto: 2, baseLimpa: "Não considera Ruptura" as const },
     ];
-    const filtradas = filtrarLinhasUniversoOficial(linhas, chaves);
-    assert.equal(filtradas.length, chaves.has(chaveLinhaBase(73, 1252)) ? 1 : 0);
+    const { linhas } = mapearBaseRupturaHibrido({
+      produtos: produtos.filter((p) => p.baseLimpa === "Base Limpa"),
+      cdsPorProduto: new Map(),
+      bandeira: "COMPER",
+      modoUniverso: "oficial_compativel",
+    });
+    assert.equal(linhas.length, 1);
+    assert.equal(linhas[0]!.SEQPRODUTO, 1);
   });
 });
 
@@ -266,17 +274,18 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
     assert.equal(formatBandeiraExportCompativel("MT", "COMPER"), "Comper MT");
   });
 
-  it("PENDCPA repassa pendenciaCpaCd sem transformacao", () => {
-    const pendencia = 144;
+  it("PENDCPA repassa pendenciaLoja (TXT), nao pendenciaCpaCd agregada", () => {
+    const pendenciaLoja = 144;
+    const pendenciaAgregada = 146;
     const { linhas } = mapearBaseRupturaHibrido({
-      produtos: [{ ...produtoBase, pendenciaCpaCd: pendencia }],
+      produtos: [{ ...produtoBase, pendenciaLoja, pendenciaCpaCd: pendenciaAgregada }],
       cdsPorProduto: new Map([[1001, cds]]),
       bandeira: "COMPER",
       regional: "MT",
       modoUniverso: "oficial_compativel",
     });
-    assert.equal(linhas[0]!.PENDCPA, pendencia);
-    assert.equal(linhas[0]!.PENDCPA, produtoBase.pendenciaCpaCd);
+    assert.equal(linhas[0]!.PENDCPA, pendenciaLoja);
+    assert.notEqual(linhas[0]!.PENDCPA, pendenciaAgregada);
   });
 
   it("PRODUTO usa descricao - seqproduto", () => {
@@ -308,23 +317,14 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
 });
 
 describe("ruptura export base — universos integral vs oficial", () => {
-  it("oficial_compativel remove chaves so-V7", () => {
-    const chaves = carregarChavesOficiaisConferencia();
-    const linhasIntegral = [
-      { LOJA: 73, SEQPRODUTO: 1252 },
-      { LOJA: 99999, SEQPRODUTO: 1 },
+  it("oficial_compativel exclui produtos fora Base Limpa", () => {
+    const produtos = [
+      { ...produtoBase, seqproduto: 1252, baseLimpa: "Base Limpa" as const },
+      { ...produtoBase, seqproduto: 99999, baseLimpa: "Não considera Ruptura" as const },
     ];
-    const filtradas = filtrarLinhasUniversoOficial(linhasIntegral, chaves);
-    const temSoV7 = linhasIntegral.some(
-      (l) => !chaves.has(chaveLinhaBase(l.LOJA, l.SEQPRODUTO)),
-    );
-    if (temSoV7) {
-      assert.ok(filtradas.length < linhasIntegral.length);
-      assert.equal(
-        filtradas.some((l) => l.LOJA === 99999),
-        false,
-      );
-    }
+    const filtrados = produtos.filter((p) => p.baseLimpa === "Base Limpa");
+    assert.ok(filtrados.length < produtos.length);
+    assert.equal(filtrados.some((p) => p.seqproduto === 99999), false);
   });
 
   it("v7_integral preserva contagem total antes do filtro", () => {

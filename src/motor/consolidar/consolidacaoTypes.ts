@@ -182,6 +182,11 @@ export type MotorProdutoLojaConsolidado = {
   somaEstoqueCd: number | null;
   crossSum: number | null;
   crossDocking: number | null;
+  estSelecInvCd1: number | null;
+  estSelecInvCd2: number | null;
+  estSelecInvCd3: number | null;
+  estSelecInvCd4: number | null;
+  origemCross: "EST_SELECINV_CD1..4" | null;
   geraRuptura: boolean | null;
   ruptura104c: boolean | null;
   inventarioUnid: number | null;

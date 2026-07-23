@@ -3,15 +3,13 @@ import type {
   MotorClassificacaoFinalResultado,
   MotorClassificacaoPrazo,
 } from "./breTypes.ts";
-import { calcularCrossSumFromValues } from "./rules/ruleCrossDocking.ts";
-import { somarEstoqueSelecionado } from "../cds/rules/somarEstoqueSelecionado.ts";
+import { aplicarRuleCrossDocking } from "./rules/ruleCrossDocking.ts";
+import { resolverCrossProduto } from "./rules/resolverCrossProduto.ts";
 import { unificarCdsBre } from "../cds/unificarCdsBre.ts";
 import { aplicarRuleCurtoPrazo } from "./rules/ruleCurtoPrazo.ts";
 import { aplicarRuleLongoPrazo } from "./rules/ruleLongoPrazo.ts";
 import { aplicarRuleMedioPrazo } from "./rules/ruleMedioPrazo.ts";
 import { calcularPendenciaCpaCdFromCds } from "./rules/rulePendenciaCpaCd.ts";
-import { unificarCdsBre } from "../cds/unificarCdsBre.ts";
-import { listSumIgnoreNull } from "./utils/listSum.ts";
 
 export type ClassificarPrazoInput = {
   item: MotorBreItemInput;
@@ -22,29 +20,9 @@ export type ClassificarPrazoInput = {
   ncurtoPrazo: "G" | "NG" | null;
 };
 
-function resolverCrossSum(item: MotorBreItemInput): number {
-  const inv = item.estSelecInv;
-  const cds = unificarCdsBre(item);
-  const crossDin = somarEstoqueSelecionado(cds);
-  if (crossDin > 0 || cds.some((c) => c.estoqueSelecionadoInventario != null)) {
-    return crossDin;
-  }
-  return calcularCrossSumFromValues(
-    inv?.estSelecInvCd1 ?? null,
-    inv?.estSelecInvCd2 ?? null,
-    inv?.estSelecInvCd3 ?? null,
-    inv?.estSelecInvCd4 ?? null,
-  );
-}
-
 export function classificarPrazo(input: ClassificarPrazoInput): MotorClassificacaoFinalResultado {
-  const crossSum = resolverCrossSum(input.item);
-  const crossSumComNullZero = listSumIgnoreNull([
-    input.item.estSelecInv?.estSelecInvCd1,
-    input.item.estSelecInv?.estSelecInvCd2,
-    input.item.estSelecInv?.estSelecInvCd3,
-    input.item.estSelecInv?.estSelecInvCd4,
-  ]);
+  const cross = resolverCrossProduto(input.item);
+  const { crossSum, origemCross, valoresCrossPorCd } = cross;
 
   const pendencia = calcularPendenciaCpaCdFromCds(
     input.item.produto.pendenciaLoja,
@@ -55,7 +33,7 @@ export function classificarPrazo(input: ClassificarPrazoInput): MotorClassificac
     statusBaseLimpa: input.statusBaseLimpa,
     menorQueTres: input.menorQueTres,
     somaEstoqueCd: input.somaEstoqueCd,
-    crossSum: crossSumComNullZero,
+    crossSum,
     modCurtoPrazo: input.modCurtoPrazo,
     ncurtoPrazo: input.ncurtoPrazo,
   });
@@ -85,6 +63,13 @@ export function classificarPrazo(input: ClassificarPrazoInput): MotorClassificac
   const exclusiva =
     [curtoPrazo.curtoPrazo, medioPrazo.medioPrazo, longoPrazo.longoPrazo].filter((f) => f === 1).length <= 1;
 
+  const crossDockingRegra = aplicarRuleCrossDocking(
+    crossSum,
+    input.somaEstoqueCd,
+    curtoPrazo.curtoPrazo,
+    input.modCurtoPrazo,
+  );
+
   return {
     classificacaoPrazo: classificacao,
     curtoPrazo: curtoPrazo.curtoPrazo,
@@ -92,19 +77,15 @@ export function classificarPrazo(input: ClassificarPrazoInput): MotorClassificac
     longoPrazo: longoPrazo.longoPrazo,
     pendenciaCpaCd: pendencia.soma,
     crossSum,
-    crossDocking:
-      crossSumComNullZero >= 1 &&
-      curtoPrazo.curtoPrazo === 1 &&
-      input.somaEstoqueCd <= 0 &&
-      input.modCurtoPrazo !== "LJ_Exclusiva"
-        ? 1
-        : 0,
+    crossDocking: crossDockingRegra.resultado as 0 | 1,
+    origemCross,
+    valoresCrossPorCd,
     pendencia,
     curtoPrazoRegra: curtoPrazo,
     medioPrazoRegra: medioPrazo,
     longoPrazoRegra: longoPrazo,
     exclusividadeGarantida: exclusiva,
     alertas: [...pendencia.alertas, ...curtoPrazo.alertas, ...medioPrazo.alertas, ...longoPrazo.alertas],
-    regras: [pendencia, curtoPrazo, medioPrazo, longoPrazo],
+    regras: [pendencia, curtoPrazo, medioPrazo, longoPrazo, crossDockingRegra],
   };
 }

@@ -54,6 +54,11 @@ export type MotorProdutoLojaNormalizado = {
   ultimaEntradaLoja: string | null;
   ultimaSaidaLoja: string | null;
   custoLiquido: number | null;
+  /** Cross por CD — origem TXT EST_SELECINV_CD1..4 (não confundir com ESTQ_CD). */
+  estSelecInvCd1: number | null;
+  estSelecInvCd2: number | null;
+  estSelecInvCd3: number | null;
+  estSelecInvCd4: number | null;
   /** Coleção dinâmica de CDs — fonte de verdade (Etapa A). Campos CD1..5 são compatibilidade. */
   cds: MotorProdutoCdNormalizado[];
   alertas: string[];
