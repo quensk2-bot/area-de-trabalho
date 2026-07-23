@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { describe, it } from "node:test";
 import type { MotorProdutoLojaConsolidado } from "../../motor/consolidar/consolidacaoTypes.ts";
-import { gerarResumoLoja } from "../../motor/export/hibrido/gerarResumoLoja.ts";
+import { gerarResumoLoja, gerarResumoLojaOficialCompativel } from "../../motor/export/hibrido/gerarResumoLoja.ts";
 import { mapResumoToDashboard } from "../../ruptura-v7/services/hibrido/mapResumoDashboard.ts";
 
 const INPUT = { regional: "MT", bandeira: "COMPER", loja: 73, dataReferencia: "2026-03-26" };
@@ -71,6 +71,19 @@ describe("gerarResumoLoja — indicadores H6/H9", () => {
     assert.equal(resumo.totalBaseLimpaElegivel, 2);
     assert.equal(resumo.percentualRupturaGeral, 100);
     assert.equal(resumo.percentualRupturaClassificada, 50);
+  });
+
+  it("gerarResumoLojaOficialCompativel filtra universo e rotula modo", () => {
+    const itens = [
+      item({ seqproduto: 1, classificacaoPrazo: "curto_prazo", baseLimpa: "Base Limpa" }),
+      item({ seqproduto: 2, classificacaoPrazo: "sem_ruptura", baseLimpa: "Não considera Ruptura" }),
+    ];
+    const integral = gerarResumoLoja(itens, { ...INPUT, modoUniverso: "V7_INTEGRAL" });
+    const oficial = gerarResumoLojaOficialCompativel(itens, INPUT);
+    assert.equal(integral.totalProdutos, 2);
+    assert.equal(oficial.totalProdutos, 1);
+    assert.equal(oficial.modoUniverso, "OFICIAL_COMPATIVEL");
+    assert.equal(oficial.totalBaseLimpaElegivel, 1);
   });
 
   it("comEstoqueCd + semEstoqueCd = universo de ruptura geral", () => {
@@ -170,7 +183,7 @@ describe("gerarResumoLoja — indicadores H6/H9", () => {
 
 describe("gerarResumoLoja — piloto loja 73", () => {
   it("métricas esperadas do consolidado MT", async () => {
-    const path = "src/motor/.tmp/piloto/MT/2026-03-26/loja-73/consolidado_loja_73.jsonl";
+    const path = "src/motor/.tmp/piloto/MT/2026-07-13/loja-73/consolidado_loja_73.jsonl";
     const itens: MotorProdutoLojaConsolidado[] = [];
     const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
     for await (const line of rl) {
@@ -181,18 +194,18 @@ describe("gerarResumoLoja — piloto loja 73", () => {
 
     const resumo = gerarResumoLoja(itens, INPUT);
     assert.equal(resumo.totalProdutos, 10873);
-    assert.equal(resumo.totalRupturaGeral, 2133);
+    assert.equal(resumo.totalRupturaGeral, 3398);
     assert.equal(resumo.totalRupturaClassificada, 799);
     assert.equal(resumo.curtoPrazo, 103);
     assert.equal(resumo.medioPrazo, 624);
     assert.equal(resumo.longoPrazo, 72);
-    assert.equal(resumo.bloqueados, 1334);
-    assert.equal(resumo.totalBaseLimpaElegivel, 9539);
-    assert.equal(resumo.comEstoqueCd, 184);
-    assert.equal(resumo.semEstoqueCd, 1949);
-    assert.equal(resumo.totalCentralizados, 1035);
-    assert.equal(resumo.totalNaoCentralizados, 1098);
-    assert.equal(resumo.percentualRupturaGeral, 22.36);
-    assert.equal(resumo.percentualRupturaClassificada, 8.38);
+    assert.equal(resumo.bloqueados, 2599);
+    assert.equal(resumo.totalBaseLimpaElegivel, 8274);
+    assert.equal(resumo.comEstoqueCd, 359);
+    assert.equal(resumo.semEstoqueCd, 3039);
+    assert.equal(resumo.totalCentralizados, 1841);
+    assert.equal(resumo.totalNaoCentralizados, 1557);
+    assert.equal(resumo.percentualRupturaGeral, 41.07);
+    assert.equal(resumo.percentualRupturaClassificada, 9.66);
   });
 });
