@@ -274,7 +274,7 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
     assert.equal(formatBandeiraExportCompativel("MT", "COMPER"), "Comper MT");
   });
 
-  it("PENDCPA repassa pendenciaLoja (TXT), nao pendenciaCpaCd agregada", () => {
+  it("PENDCPA repassa pendenciaCpaCd agregada (contrato export atual)", () => {
     const pendenciaLoja = 144;
     const pendenciaAgregada = 146;
     const { linhas } = mapearBaseRupturaHibrido({
@@ -284,8 +284,8 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
       regional: "MT",
       modoUniverso: "oficial_compativel",
     });
-    assert.equal(linhas[0]!.PENDCPA, pendenciaLoja);
-    assert.notEqual(linhas[0]!.PENDCPA, pendenciaAgregada);
+    assert.equal(linhas[0]!.PENDCPA, pendenciaAgregada);
+    assert.notEqual(linhas[0]!.PENDCPA, pendenciaLoja);
   });
 
   it("PRODUTO usa descricao - seqproduto", () => {
@@ -533,10 +533,10 @@ describe("ruptura export base — roteamento tamanho", () => {
     assert.match(src, /gerarViaWorker/);
   });
 
-  it("auto default universo e oficial_compativel", async () => {
+  it("auto default universo integral salvo estrategia oficial_compativel", async () => {
     const fs = await import("node:fs/promises");
     const src = await fs.readFile(new URL("../services/rupturaExportBaseService.ts", import.meta.url), "utf8");
-    assert.match(src, /estrategia === "integral_worker".*"integral"\s*:\s*"oficial_compativel"/s);
+    assert.match(src, /estrategia === "oficial_compativel"\s*\?\s*"oficial_compativel"\s*:\s*"integral"/);
   });
 });
 
