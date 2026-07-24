@@ -94,8 +94,10 @@ export function construirIndexes(entrada: MotorConsolidacaoEntrada): MotorConsol
   const validacaoPorLojaProduto = new Map<string, MotorLinhaValidacao>(validacao);
 
   const redePorFornecedor = new Map<number, string[]>();
+  const razaoPorFornecedor = new Map<number, string[]>();
   for (const r of contexto.catalogos.rede) {
     if (r.nomeRede) appendMultiMap(redePorFornecedor, r.seqPessoa, r.nomeRede);
+    if (r.razao) appendMultiMap(razaoPorFornecedor, r.seqPessoa, r.razao);
   }
 
   const bandeiraPorLoja = new Map<number, string>();
@@ -142,6 +144,7 @@ export function construirIndexes(entrada: MotorConsolidacaoEntrada): MotorConsol
     inventarioPorLojaProduto,
     validacaoPorLojaProduto,
     redePorFornecedor,
+    razaoPorFornecedor,
     bandeiraPorLoja,
     ordemPorBandeira,
     compradorPorHierarquia,

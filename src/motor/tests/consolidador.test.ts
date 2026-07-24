@@ -183,14 +183,24 @@ describe("consolidador rede e comprador", () => {
     assert.equal(r.itens[0].rede, "REDE ALPHA");
   });
 
-  it("15. rede ausente sem NOME_REC — não usa RAZAO", () => {
+  it("15. rede usa RAZAO quando NOME_REC está ausente", () => {
     const catalogos = loadFixturesCatalogos();
+    catalogos.compradores.push({
+      rede: "FORN B",
+      secao: "OUTRA SECAO",
+      nivel2: "OUTRO NIVEL",
+      nivel3: "OUTRA CATEGORIA",
+      comprador: "LUCIMARY",
+      origem: "principal",
+    });
     const entrada = entradaConsolidadorBase(catalogos, {
       produtosLoja: [produtoConsolidadorBase({ codFornecedor: 1002, fornecedor: "FORN B" })],
     });
     const r = consolidarLote(entrada);
-    assert.equal(r.itens[0].rede, null);
-    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "rede_ausente"));
+    assert.equal(r.itens[0].rede, "FORN B");
+    assert.equal(r.itens[0].comprador, "LUCIMARY");
+    assert.equal(r.itens[0].origemComprador, "rede_unica");
+    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "rede_fallback_razao"));
   });
 
   it("16. comprador via hierarquia", () => {

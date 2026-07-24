@@ -288,6 +288,37 @@ export function joinRede(
     return { rede: nomes[0], alertas, diagnostico };
   }
 
+  const razoes = [...new Set(indexes.razaoPorFornecedor.get(codFornecedor) ?? [])];
+  if (razoes.length === 1) {
+    const diagnostico = criarJoinDiagnostico(
+      "rede",
+      chave,
+      1,
+      true,
+      "rede_razao",
+      "info",
+      `Rede resolvida via RAZAO: ${razoes[0]}`,
+    );
+    diagnosticos.push(diagnostico);
+    alertas.push(alerta("rede_fallback_razao", diagnostico.mensagem));
+    return { rede: razoes[0], alertas, diagnostico };
+  }
+
+  if (razoes.length > 1) {
+    const diagnostico = criarJoinDiagnostico(
+      "rede",
+      chave,
+      razoes.length,
+      true,
+      "rede_razao_ambigua",
+      "erro",
+      `Fornecedor ${codFornecedor} com ${razoes.length} RAZAO distintas`,
+    );
+    diagnosticos.push(diagnostico);
+    alertas.push(alerta("catalogo_duplicado", diagnostico.mensagem, "erro"));
+    return { rede: null, alertas, diagnostico };
+  }
+
   const diagnostico = criarJoinDiagnostico(
     "rede",
     chave,
@@ -295,7 +326,7 @@ export function joinRede(
     false,
     "rede_null",
     "aviso",
-    `Fornecedor ${codFornecedor} sem NOME_REC em Rede.txt`,
+    `Fornecedor ${codFornecedor} sem NOME_REC nem RAZAO em Rede.txt`,
   );
   diagnosticos.push(diagnostico);
   alertas.push(alerta("rede_ausente", diagnostico.mensagem));

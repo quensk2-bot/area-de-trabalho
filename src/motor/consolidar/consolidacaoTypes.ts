@@ -256,6 +256,7 @@ export type MotorConsolidacaoIndexes = {
   inventarioPorLojaProduto: Map<string, MotorInventarioAgrupado>;
   validacaoPorLojaProduto: Map<string, MotorLinhaValidacao>;
   redePorFornecedor: Map<number, string[]>;
+  razaoPorFornecedor: Map<number, string[]>;
   bandeiraPorLoja: Map<number, string>;
   ordemPorBandeira: Map<string, { cd1: number; cd2: number; cd3: number; cd4: number; cd5: number }[]>;
   compradorPorHierarquia: Map<string, string[]>;
