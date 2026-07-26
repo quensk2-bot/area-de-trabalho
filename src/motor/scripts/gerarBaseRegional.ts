@@ -110,7 +110,9 @@ async function main(): Promise<void> {
   );
 
   if (faltantes.length > 0) {
-    console.error(`❌ Lojas sem dados: ${faltantes.join(", ")}`);
+    console.error(`❌ ${faltantes.length} loja(s) esperada(s) sem dados: ${faltantes.join(", ")}`);
+    console.error(`   Encontradas ${lojasEncontradas.length}/${lojasEsperadas.length}.`);
+    console.error(`   Abortando — não gerar pacote parcial.`);
     process.exit(1);
   }
 

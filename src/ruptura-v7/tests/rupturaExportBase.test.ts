@@ -141,7 +141,7 @@ describe("ruptura export base — colunas oficiais", () => {
 
 describe("ruptura export base — campos ausentes", () => {
   it("lista campos ausentes V7 oficiais (PQ)", () => {
-    assert.equal(CAMPOS_AUSENTES_V7.length, 22);
+    assert.equal(CAMPOS_AUSENTES_V7.length, 19);
     assert.ok(CAMPOS_AUSENTES_V7.includes("% Curto Prazo"));
   });
 

@@ -53,6 +53,15 @@ export type MotorProdutoLojaNormalizado = {
   diasRuptura: number | null;
   ultimaEntradaLoja: string | null;
   ultimaSaidaLoja: string | null;
+  /** ULTIMACPALOJA — dias desde o último pedido de compra na loja (numérico). */
+  ultimaCpaLoja: number | null;
+  /** ULTIMACPACD1..4 — dias desde último pedido no CD (numérico). */
+  ultimaCpaCd1: number | null;
+  ultimaCpaCd2: number | null;
+  ultimaCpaCd3: number | null;
+  ultimaCpaCd4: number | null;
+  /** DTA_ULTATIVACAO — timestamp de última ativação (ex: 2015-10-22-00.00.00.000000). */
+  dtaUltAtivacao: string | null;
   custoLiquido: number | null;
   /** Cross por CD — origem TXT EST_SELECINV_CD1..4 (não confundir com ESTQ_CD). */
   estSelecInvCd1: number | null;

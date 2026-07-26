@@ -1,9 +1,16 @@
 import type { MotorProdutoLojaConsolidado } from "../../consolidar/consolidacaoTypes.ts";
 import type { GestaoJson, HibridoProdutoGestao } from "./hibridoTypes.ts";
 import { HIBRIDO_GESTAO_CHUNK_MAX_BYTES } from "../../../hibrido-v7/constants.ts";
-import { calcItensVdaPendencia } from "./calcCapaCamposPq.ts";
+import {
+  calcCamposRecebimentoRebote,
+  calcItensVdaPendencia,
+  calcUltimoPedidoLojaPq,
+  calcAtivacaoRuptura30SemPedido,
+  calcDiasUltimoPedidoLojaDashboard,
+} from "./calcCapaCamposPq.ts";
 
 function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
+  const ultPedido = calcUltimoPedidoLojaPq(item, item.dataReferencia);
   return {
     loja: item.loja,
     seqproduto: item.seqproduto,
@@ -57,9 +64,26 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     acaoCurtoPrazo: item.acaoCurtoPrazo,
     acaoMedioPrazo: item.acaoMedioPrazo,
     textoProdutoCentralizado: item.textoProdutoCentralizado,
-    rupDiasRecebtoMaiorData: null,
-    ultimoPedidoLoja: null,
-    ativacaoRuptura30SemPedido: null,
+    // Campos de recebimento e rebote calculados
+    ...(() => {
+      const r = calcCamposRecebimentoRebote(item);
+      return {
+        rupDiasRecebtoCd1: r.rupDiasRecebtoCd1,
+        rupDiasRecebtoCd2: r.rupDiasRecebtoCd2,
+        rupDiasRecebtoCd3: r.rupDiasRecebtoCd3,
+        rupDiasRecebtoCd4: r.rupDiasRecebtoCd4,
+        rupDiasRecebtoCd5: r.rupDiasRecebtoCd5,
+        rupDiasRecebtoMaiorData: r.rupDiasRecebtoMaiorData,
+        curtoPrazoRebtoProximo: r.curtoPrazoRebtoProximo,
+        curtoPrazoNaoRebtoProximo: r.curtoPrazoNaoRebtoProximo,
+      };
+    })(),
+    // Campos PQ calculados
+    // ultimoPedidoLoja: fórmula PQ oficial (min loja + CDs) — usado nas regras de LP/Ativação >30
+    // diasUltimoPedidoLojaDashboard: raw ULTIMACPALOJA — usado APENAS na métrica visual do Dashboard Loja
+    ultimoPedidoLojaPq: ultPedido,
+    diasUltimoPedidoLojaDashboard: calcDiasUltimoPedidoLojaDashboard(item),
+    ativacaoRuptura30SemPedido: calcAtivacaoRuptura30SemPedido(item, ultPedido),
     itensVdaPendencia: calcItensVdaPendencia(item),
     rupSemPendenciaVda: null,
     rupInventarioPct: null,

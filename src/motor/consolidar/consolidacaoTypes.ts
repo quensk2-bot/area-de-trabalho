@@ -154,6 +154,20 @@ export type MotorProdutoLojaConsolidado = {
   diasRuptura: number | null;
   ultimaEntradaLoja: string | null;
   ultimaSaidaLoja: string | null;
+  /** ULTIMACPALOJA — dias desde o último pedido de compra na loja (numérico). */
+  ultimaCpaLoja: number | null;
+  /** ULTIMACPACD1..5 — dias desde último pedido nos CDs (numérico, CD5 do Grupo2). */
+  ultimaCpaCd1: number | null;
+  ultimaCpaCd2: number | null;
+  ultimaCpaCd3: number | null;
+  ultimaCpaCd4: number | null;
+  ultimaCpaCd5: number | null;
+  /** DTA_ULTATIVACAO — timestamp de última ativação (pass-through). */
+  dtaUltAtivacao: string | null;
+  /** DIAS_DA_COMPRALJ — dias desde o último pedido de compra na loja (usado em Dias Pedido). */
+  ultimoPedidoLoja: number | null;
+  /** Dias desde a última ativação — calculado pelo BRE. */
+  diasAtivacaoRevisado: number | null;
   /** Fonte oficial dos dados por CD — ordenada por posicaoLogica. */
   cds: MotorProdutoCdNormalizado[];
   /** Campos flat CD1..5 — derivados via ConsolidadoCdsLegadoAdapter (compatibilidade). */

@@ -63,10 +63,26 @@ export type HibridoProdutoGestao = {
   acaoCurtoPrazo: string | null;
   acaoMedioPrazo: string | null;
   textoProdutoCentralizado: string | null;
+  /** CD 1 — Rup (X) Dias Recebto (0 se sem estoque). */
+  rupDiasRecebtoCd1: number;
+  /** CD 2 — Rup (X) Dias Recebto (0 se sem estoque). */
+  rupDiasRecebtoCd2: number;
+  /** CD 3 — Rup (X) Dias Recebto (0 se sem estoque). */
+  rupDiasRecebtoCd3: number;
+  /** CD 4 — Rup (X) Dias Recebto (0 se sem estoque). */
+  rupDiasRecebtoCd4: number;
+  /** CD 5 — Rup (X) Dias Recebto (0 se sem estoque). */
+  rupDiasRecebtoCd5: number;
   /** Excel `Rup (X) Dias Recebto Maior data` — média na CAPA Curto Prazo. */
-  rupDiasRecebtoMaiorData: number | null;
-  /** Excel `Último Pedido Loja` — média na CAPA Longo Prazo. */
-  ultimoPedidoLoja: number | null;
+  rupDiasRecebtoMaiorData: number;
+  /** Excel `Curto Prazo Rebto Próximo` — flag 0/1. */
+  curtoPrazoRebtoProximo: 0 | 1;
+  /** Excel `Curto Prazo Não Rebto Próximo` — flag 0/1. */
+  curtoPrazoNaoRebtoProximo: 0 | 1;
+  /** Excel `Último Pedido Loja` — fórmula PQ (min loja + CDs), usado nas regras de LP/Ativação. */
+  ultimoPedidoLojaPq: number | null;
+  /** Raw ULTIMACPALOJA — usado APENAS na métrica visual do Dashboard Loja (média ≈ 183). */
+  diasUltimoPedidoLojaDashboard: number | null;
   /** Excel `Ativação e Ruptura > 30 Dias Sem Pedido` — soma na CAPA. */
   ativacaoRuptura30SemPedido: number | null;
   /** Excel `Itens Vda Pendência` — soma na CAPA. */

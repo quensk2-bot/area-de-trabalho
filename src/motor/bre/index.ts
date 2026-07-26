@@ -26,6 +26,7 @@ function montarItemInput(entrada: MotorBreEntrada, produto: MotorBreEntrada["pro
     cd5: entrada.cds5.get(produto.seqproduto) ?? null,
     validacao: entrada.validacao.get(chave) ?? null,
     inventario: entrada.inventario.get(chave) ?? null,
+    dtaUltAtivacao: produto.dtaUltAtivacao ?? null,
     estSelecInv: montarEstSelecInvDoProduto(produto),
   };
 }

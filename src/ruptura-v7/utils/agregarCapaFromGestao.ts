@@ -44,12 +44,17 @@ type AggCapa = {
   rebto_proximo: number;
   soma_dias_recebimento: number;
   total_medio_prazo: number;
+  /** Soma de diasPedido apenas dos produtos MP (denominador = total_medio_prazo). */
+  soma_dias_pedido_mp: number;
   pedido_maior_30: number;
   pedido_maior_60: number;
   soma_dias_pedido: number;
   total_longo_prazo: number;
   ruptura_30_dias_sem_pedido: number;
-  soma_dias_ultimo_pedido: number;
+  /** Soma de diasUltimoPedidoLojaDashboard (> 0 apenas). */
+  soma_dias_ultimo_pedido_dashboard: number;
+  /** Count de diasUltimoPedidoLojaDashboard (> 0 apenas). */
+  count_dias_ultimo_pedido_dashboard: number;
   itens_ruptura_via_inventario: number;
   soma_rup_inventario_pct: number;
   soma_rup_sem_inventario_pct: number;
@@ -83,12 +88,14 @@ function emptyAgg(): AggCapa {
     rebto_proximo: 0,
     soma_dias_recebimento: 0,
     total_medio_prazo: 0,
+    soma_dias_pedido_mp: 0,
     pedido_maior_30: 0,
     pedido_maior_60: 0,
     soma_dias_pedido: 0,
     total_longo_prazo: 0,
     ruptura_30_dias_sem_pedido: 0,
-    soma_dias_ultimo_pedido: 0,
+    soma_dias_ultimo_pedido_dashboard: 0,
+    count_dias_ultimo_pedido_dashboard: 0,
     itens_ruptura_via_inventario: 0,
     soma_rup_inventario_pct: 0,
     soma_rup_sem_inventario_pct: 0,
@@ -177,7 +184,16 @@ function acumularProduto(agg: AggCapa, p: HibridoProdutoGestao): void {
     agg.total_skus += 1;
     agg.soma_dias_recebimento += p.rupDiasRecebtoMaiorData ?? 0;
     agg.soma_dias_pedido += p.diasPedido ?? 0;
-    agg.soma_dias_ultimo_pedido += p.ultimoPedidoLoja ?? 0;
+    if (isMedioPrazo(p)) {
+      agg.soma_dias_pedido_mp += p.diasPedido ?? 0;
+    }
+    // Média do Dashboard Loja: usa diasUltimoPedidoLojaDashboard (raw ULTIMACPALOJA)
+    // Apenas valores > 0 entram na soma e contagem
+    const dashVal = p.diasUltimoPedidoLojaDashboard;
+    if (dashVal != null && dashVal > 0 && dashVal < 999) {
+      agg.soma_dias_ultimo_pedido_dashboard += dashVal;
+      agg.count_dias_ultimo_pedido_dashboard += 1;
+    }
     agg.soma_rup_inventario_pct += p.rupInventarioPct ?? (isRupturaViaInventario(p) ? 1 : 0);
     agg.soma_rup_sem_inventario_pct += flagRupSemInventarioPct(p);
     agg.soma_rup_sem_pendencia_vda += flagRupSemPendencia(p);
@@ -232,11 +248,18 @@ function aggParaLinha(
     total_medio_prazo: v.total_medio_prazo,
     pedido_maior_30: v.pedido_maior_30,
     pedido_maior_60: v.pedido_maior_60,
-    media_dias_pedido: mediaPivot(v.soma_dias_pedido, skus),
+    media_dias_pedido:
+      v.total_medio_prazo > 0
+        ? Math.round((v.soma_dias_pedido_mp / v.total_medio_prazo) * 100) / 100
+        : null,
     pct_medio_prazo: pct(v.total_medio_prazo, v.total_ruptura),
     total_longo_prazo: v.total_longo_prazo,
     ruptura_30_dias_sem_pedido: v.ruptura_30_dias_sem_pedido,
-    media_dias_ultimo_pedido: mediaPivot(v.soma_dias_ultimo_pedido, skus),
+    // Média do Dashboard Loja: soma / count (excluindo 0, null, 999)
+    media_dias_ultimo_pedido:
+      v.count_dias_ultimo_pedido_dashboard > 0
+        ? Math.round((v.soma_dias_ultimo_pedido_dashboard / v.count_dias_ultimo_pedido_dashboard) * 100) / 100
+        : null,
     pct_longo_prazo: pct(v.total_longo_prazo, v.total_ruptura),
     itens_ruptura_via_inventario: v.itens_ruptura_via_inventario,
     pct_impacto_inventario: mediaFlagPct(v.soma_rup_inventario_pct, skus),

@@ -111,6 +111,18 @@ export function transformGrupoRuptura1(
     if (ultEntrada.erro) erros.push(ultEntrada.erro);
     const ultSaida = parseDataFlex(linha.ultimaSaidaLoja, "ULTIMA_SAIDALOJA", linha.numeroLinha);
     if (ultSaida.erro) erros.push(ultSaida.erro);
+    // ULTIMACPALOJA é numérico (dias), não data — usar parseDecimalBr
+    const ultCpaLoja = parseDecimalBr(linha.ultimaCpaLoja, "ULTIMACPALOJA", linha.numeroLinha);
+    if (ultCpaLoja.erro) erros.push(ultCpaLoja.erro);
+    // ULTIMACPACD1..4 também são numéricos (dias)
+    const ultCpaCd1 = parseDecimalBr(linha.ultimaCpaCd1, "ULTIMACPACD1", linha.numeroLinha);
+    if (ultCpaCd1.erro) erros.push(ultCpaCd1.erro);
+    const ultCpaCd2 = parseDecimalBr(linha.ultimaCpaCd2, "ULTIMACPACD2", linha.numeroLinha);
+    if (ultCpaCd2.erro) erros.push(ultCpaCd2.erro);
+    const ultCpaCd3 = parseDecimalBr(linha.ultimaCpaCd3, "ULTIMACPACD3", linha.numeroLinha);
+    if (ultCpaCd3.erro) erros.push(ultCpaCd3.erro);
+    const ultCpaCd4 = parseDecimalBr(linha.ultimaCpaCd4, "ULTIMACPACD4", linha.numeroLinha);
+    if (ultCpaCd4.erro) erros.push(ultCpaCd4.erro);
 
     const familia = parseInteiro(linha.familia, "FAMILIA", linha.numeroLinha);
     if (familia.erro) erros.push(familia.erro);
@@ -191,6 +203,12 @@ export function transformGrupoRuptura1(
       diasRuptura: diasRuptura.valor,
       ultimaEntradaLoja: ultEntrada.valor,
       ultimaSaidaLoja: ultSaida.valor,
+      ultimaCpaLoja: ultCpaLoja.valor,
+      dtaUltAtivacao: emptyToNull(linha.dtaUltAtivacao),
+      ultimaCpaCd1: ultCpaCd1.valor,
+      ultimaCpaCd2: ultCpaCd2.valor,
+      ultimaCpaCd3: ultCpaCd3.valor,
+      ultimaCpaCd4: ultCpaCd4.valor,
       custoLiquido: custo.valor,
       estSelecInvCd1: estSelecInvCd1.valor,
       estSelecInvCd2: estSelecInvCd2.valor,
