@@ -5,6 +5,7 @@ import {
   dashboardLojasPath,
   dashboardRegionalOficialPath,
   dashboardRegionalPath,
+  dashboardTopPrazosPath,
   lojaCdsPath,
   lojaGestaoPath,
   lojaResumoOficialPath,
@@ -68,6 +69,7 @@ export function buildManifest(input: ManifestBuilderInput): RupturaManifest {
     dashboardLojas: dashboardLojasPath(scope),
     dashboardRegionalOficial: dashboardRegionalOficialPath(scope),
     dashboardLojasOficial: dashboardLojasOficialPath(scope),
+    dashboardTopPrazos: dashboardTopPrazosPath(scope),
     lojas,
   };
 

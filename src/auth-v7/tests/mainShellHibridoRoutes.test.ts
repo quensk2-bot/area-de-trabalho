@@ -14,6 +14,8 @@ describe("MainShellHibrido — rotas independentes", () => {
       "ruptura-loja",
       "ruptura-comprador",
       "ruptura-base-comprador",
+      "ruptura-promover-compra",
+      "ruptura-promover-recebimento",
       "ruptura-gestao",
       "ruptura-importacao",
     ] as const;
@@ -25,6 +27,8 @@ describe("MainShellHibrido — rotas independentes", () => {
       "/loja/ruptura/dashboard-loja",
       "/loja/ruptura/dashboard-comprador",
       "/loja/ruptura/base-comprador",
+      "/loja/ruptura/promover-compra",
+      "/loja/ruptura/promover-recebimento",
       "/loja/ruptura/gestao",
       "/loja/ruptura/importacao-drive",
     ]);
@@ -53,6 +57,8 @@ describe("MainShellHibrido — rotas independentes", () => {
     assert.match(source, /\["ruptura-loja", "Dashboard Loja", showRuptura\]/);
     assert.match(source, /\["ruptura-comprador", "Dashboard Comprador", showRuptura\]/);
     assert.match(source, /\["ruptura-base-comprador", "Base Comprador", showRuptura\]/);
+    assert.match(source, /\["ruptura-promover-compra", "Promover Compra", showRuptura\]/);
+    assert.match(source, /\["ruptura-promover-recebimento", "Promover Recebimento", showRuptura\]/);
     assert.match(source, /\["ruptura-gestao", "Gestão", showGestao\]/);
     assert.match(source, /\["ruptura-importacao", "Importação Drive", showDrive\]/);
   });

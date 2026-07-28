@@ -61,6 +61,15 @@ export function dashboardLojasOficialPath(input: {
   return `${manifestRootPath(input)}/dashboard/lojas-oficial.json`;
 }
 
+export function dashboardTopPrazosPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+  versao?: number;
+}): string {
+  return `${manifestRootPath(input)}/dashboard/top-prazos.json`;
+}
+
 export function lojaResumoPath(input: {
   regional: string;
   bandeira: string;

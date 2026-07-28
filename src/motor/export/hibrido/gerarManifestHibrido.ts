@@ -5,6 +5,7 @@ import {
   dashboardLojasPath,
   dashboardRegionalOficialPath,
   dashboardRegionalPath,
+  dashboardTopPrazosPath,
   lojaCdsPath,
   lojaGestaoChunkPath,
   lojaGestaoPath,
@@ -14,6 +15,7 @@ import {
 import type { RupturaManifest } from "../../../hibrido-v7/manifest/manifestTypes.ts";
 import { gerarCdsLoja } from "./gerarCdsLoja.ts";
 import { gerarGestaoLoja } from "./gerarGestaoLoja.ts";
+import { gerarTopPrazos } from "./gerarTopPrazos.ts";
 import { gerarResumoLoja, gerarResumoLojaOficialCompativel, gerarResumoLojas, gerarResumoRegional } from "./gerarResumoLoja.ts";
 import type { PublicacaoHibridaArtefato, PublicacaoHibridaResultado } from "./hibridoTypes.ts";
 
@@ -138,6 +140,10 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     versao: input.versao,
   });
   const dashboardLojasOficial = gerarResumoLojas(resumosOficial, scope);
+  const dashboardTopPrazos = gerarTopPrazos(input.itensPorLoja, {
+    ...scope,
+    dataReferencia: input.dataReferencia,
+  });
 
   artefatos.push({
     path: dashboardRegionalPath(scope),
@@ -158,6 +164,11 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     path: dashboardLojasOficialPath(scope),
     json: dashboardLojasOficial,
     bytes: Buffer.byteLength(JSON.stringify(dashboardLojasOficial)),
+  });
+  artefatos.push({
+    path: dashboardTopPrazosPath(scope),
+    json: dashboardTopPrazos,
+    bytes: Buffer.byteLength(JSON.stringify(dashboardTopPrazos)),
   });
 
   const hashConteudo = computeHashConteudo(artefatos.map((a) => JSON.stringify(a.json)));

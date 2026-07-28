@@ -10,3 +10,5 @@ export { RupturaCentralAcoesPage } from "./pages/RupturaCentralAcoesPage.tsx";
 export { RupturaExecucoesPage } from "./pages/RupturaExecucoesPage.tsx";
 export { RupturaVisao360Page } from "./pages/RupturaVisao360Page.tsx";
 export { RupturaImportacaoDrivePage } from "./pages/RupturaImportacaoDrivePage.tsx";
+export { RupturaPromoverCompraPage } from "./pages/RupturaPromoverCompraPage.tsx";
+export { RupturaPromoverRecebimentoPage } from "./pages/RupturaPromoverRecebimentoPage.tsx";

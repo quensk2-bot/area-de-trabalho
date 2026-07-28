@@ -4,3 +4,4 @@ export * from "./hibridoScope.ts";
 export * from "./rupturaResumoHibridoService.ts";
 export * from "./rupturaGestaoHibridoService.ts";
 export * from "./rupturaCdsHibridoService.ts";
+export * from "./rupturaTopPrazosHibridoService.ts";

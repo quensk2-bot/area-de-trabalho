@@ -75,6 +75,15 @@ export function validarManifest(raw: unknown): ManifestValidationResult {
     if (p && !isRelativeStoragePath(p)) erros.push(`path dashboard inválido: ${p}`);
   }
 
+  const dashboardTopPrazos = raw.dashboardTopPrazos;
+  if (
+    dashboardTopPrazos !== undefined &&
+    (typeof dashboardTopPrazos !== "string" ||
+      !isRelativeStoragePath(dashboardTopPrazos))
+  ) {
+    erros.push("dashboardTopPrazos path inválido");
+  }
+
   validateLojaPaths(raw.lojas, erros);
 
   if (erros.length) return { ok: false, erros };

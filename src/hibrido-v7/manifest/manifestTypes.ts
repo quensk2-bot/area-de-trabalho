@@ -25,6 +25,8 @@ export type RupturaManifest = {
   /** Dashboard agregado modo OFICIAL_COMPATIVEL (opcional — manifests legados). */
   dashboardRegionalOficial?: string;
   dashboardLojasOficial?: string;
+  /** Agregação regional Top Prazos (opcional para manifestos antigos). */
+  dashboardTopPrazos?: string;
   lojas: Record<string, ManifestLojaPaths>;
 };
 

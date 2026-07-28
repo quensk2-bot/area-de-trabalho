@@ -20,6 +20,8 @@ import {
   RupturaLojaPage,
   RupturaLongoPrazoPage,
   RupturaMedioPrazoPage,
+  RupturaPromoverCompraPage,
+  RupturaPromoverRecebimentoPage,
 } from "../ruptura-v7/RupturaPages";
 import { MeuPerfilHibridoPage } from "./MeuPerfilHibridoPage";
 import { AdminUsuariosHibridoPlaceholder } from "./AdminUsuariosHibridoPlaceholder";
@@ -250,6 +252,8 @@ export function MainShellHibrido() {
         ["ruptura-curto-prazo", "Curto Prazo", showRuptura],
         ["ruptura-medio-prazo", "Médio Prazo", showRuptura],
         ["ruptura-longo-prazo", "Longo Prazo", showRuptura],
+        ["ruptura-promover-compra", "Promover Compra", showRuptura],
+        ["ruptura-promover-recebimento", "Promover Recebimento", showRuptura],
         ["ruptura-gestao", "Gestão", showGestao],
         ["ruptura-importacao", "Importação Drive", showDrive],
       ] as const,
@@ -339,6 +343,14 @@ export function MainShellHibrido() {
 
     if (menu === "ruptura-longo-prazo" && showRuptura) {
       return <RupturaLongoPrazoPage />;
+    }
+
+    if (menu === "ruptura-promover-compra" && showRuptura) {
+      return <RupturaPromoverCompraPage />;
+    }
+
+    if (menu === "ruptura-promover-recebimento" && showRuptura) {
+      return <RupturaPromoverRecebimentoPage />;
     }
 
     if (menu === "ruptura-gestao" && showGestao) {

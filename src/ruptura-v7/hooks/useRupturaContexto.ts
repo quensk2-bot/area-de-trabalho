@@ -13,7 +13,9 @@ export type RupturaContextoTela =
   | "gestao"
   | "central-acoes"
   | "visao360"
-  | "importacao";
+  | "importacao"
+  | "promover-compra"
+  | "promover-recebimento";
 
 function storageKey(userId: string | undefined, tela: RupturaContextoTela): string {
   return `${STORAGE_PREFIX}:${userId ?? "anon"}:${tela}`;

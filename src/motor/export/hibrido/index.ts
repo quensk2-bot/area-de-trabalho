@@ -8,3 +8,4 @@ export * from "./publicarStoragePrivado.ts";
 export * from "./registrarPacoteLeve.ts";
 export * from "./gerarResumoRegional.ts";
 export * from "./filtrarUniversoOficialCompativel.ts";
+export * from "./gerarTopPrazos.ts";
