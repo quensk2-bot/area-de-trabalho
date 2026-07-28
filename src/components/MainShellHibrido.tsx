@@ -18,6 +18,7 @@ import {
   RupturaGestaoPage,
   RupturaImportacaoDrivePage,
   RupturaLojaPage,
+  RupturaLongoPrazoPage,
   RupturaMedioPrazoPage,
 } from "../ruptura-v7/RupturaPages";
 import { MeuPerfilHibridoPage } from "./MeuPerfilHibridoPage";
@@ -248,6 +249,7 @@ export function MainShellHibrido() {
         ["ruptura-base-comprador", "Base Comprador", showRuptura],
         ["ruptura-curto-prazo", "Curto Prazo", showRuptura],
         ["ruptura-medio-prazo", "Médio Prazo", showRuptura],
+        ["ruptura-longo-prazo", "Longo Prazo", showRuptura],
         ["ruptura-gestao", "Gestão", showGestao],
         ["ruptura-importacao", "Importação Drive", showDrive],
       ] as const,
@@ -333,6 +335,10 @@ export function MainShellHibrido() {
 
     if (menu === "ruptura-medio-prazo" && showRuptura) {
       return <RupturaMedioPrazoPage />;
+    }
+
+    if (menu === "ruptura-longo-prazo" && showRuptura) {
+      return <RupturaLongoPrazoPage />;
     }
 
     if (menu === "ruptura-gestao" && showGestao) {

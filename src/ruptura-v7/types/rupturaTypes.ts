@@ -83,6 +83,12 @@ export type RupturaProdutoLoja = {
   cd_fisicos_ativos: number[] | null;
   /** Códigos físicos dos CDs com recebimento (sem estoque), ordenados por código. Ex: [468]. */
   cd_fisicos_com_recebimento: number[] | null;
+  /** Último pedido Loja (fórmula PQ) — usado nas regras de LP. */
+  ultimo_pedido_loja_pq: number | null;
+  /** Dias Último Pedido Loja (Dashboard, raw ULTIMACPALOJA). */
+  dias_ultimo_pedido_loja_dashboard: number | null;
+  /** Ativação e Ruptura >30 Dias Sem Pedido (0/1). */
+  ativacao_ruptura_30_sem_pedido: number | null;
 };
 
 export const LEGENDA_CLASSIFICACAO: Record<string, string> = {

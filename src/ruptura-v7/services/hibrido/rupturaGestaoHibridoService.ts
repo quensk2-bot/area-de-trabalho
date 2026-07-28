@@ -123,6 +123,9 @@ function mapProduto(p: HibridoProdutoGestao, ctx: RupturaFiltrosProdutos): Ruptu
     modalidade_cd: p.modalidadeCd ?? null,
     cd_fisicos_ativos: p.cdFisicosAtivos ?? null,
     cd_fisicos_com_recebimento: p.cdFisicosComRecebimento ?? null,
+    ultimo_pedido_loja_pq: p.ultimoPedidoLojaPq ?? null,
+    dias_ultimo_pedido_loja_dashboard: p.diasUltimoPedidoLojaDashboard ?? null,
+    ativacao_ruptura_30_sem_pedido: p.ativacaoRuptura30SemPedido ?? null,
   };
 }
 

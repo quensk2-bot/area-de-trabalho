@@ -4,6 +4,7 @@ export { RupturaBaseCompradorPage } from "./pages/RupturaBaseCompradorPage.tsx";
 export { RupturaCompradorPage } from "./pages/RupturaCompradorPage.tsx";
 export { RupturaCurtoPrazoPage } from "./pages/RupturaCurtoPrazoPage.tsx";
 export { RupturaMedioPrazoPage } from "./pages/RupturaMedioPrazoPage.tsx";
+export { RupturaLongoPrazoPage } from "./pages/RupturaLongoPrazoPage.tsx";
 export { RupturaGestaoPage } from "./pages/RupturaGestaoPage.tsx";
 export { RupturaCentralAcoesPage } from "./pages/RupturaCentralAcoesPage.tsx";
 export { RupturaExecucoesPage } from "./pages/RupturaExecucoesPage.tsx";
