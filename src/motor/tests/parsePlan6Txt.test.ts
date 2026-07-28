@@ -1,10 +1,59 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { parsePlan6Txt, buscarModalidadePlan6 } from "../catalog/parsePlan6Txt.ts";
+import { parsePlan6Produtos } from "../catalog/parseProdutosExclusivos.ts";
 
 const PLAN_6_PATH = "C:/area-de-trabalho-v7/importar/RUPTURA/Plan 6 CD.txt";
 
-describe("parsePlan6Txt — parser independente do Plan 6 CD.txt", () => {
+describe("parsePlan6Produtos — parser de produção (Motor pipeline)", () => {
+  it("Carrega o arquivo real sem erros", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    assert.equal(result.erros.length, 0, `Erros: ${result.erros.join("; ")}`);
+    assert.ok(result.quantidadeCarregada > 0, "Deveria ter produtos carregados");
+    assert.ok(result.itens.length > 0, "Deveria ter itens");
+  });
+
+  it("Produto conhecido 2640619 → CD Armazenagem", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const p = result.itens.find((i) => i.codigo === 2640619);
+    assert.ok(p, "Produto 2640619 deveria existir");
+    assert.equal(p!.modalidadeCd, "CD Armazenagem");
+  });
+
+  it("Produto conhecido 1720490 → ED Direto Loja", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const p = result.itens.find((i) => i.codigo === 1720490);
+    assert.ok(p, "Produto 1720490 deveria existir");
+    assert.equal(p!.modalidadeCd, "ED Direto Loja");
+  });
+
+  it("Produto conhecido 1471694 → CD Suprimentos (Armazenagem)", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const p = result.itens.find((i) => i.codigo === 1471694);
+    assert.ok(p, "Produto 1471694 deveria existir");
+    assert.equal(p!.modalidadeCd, "CD Suprimentos (Armazenagem)");
+  });
+
+  it("Código não encontrado → não está na lista (fallback no consumidor)", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const p = result.itens.find((i) => i.codigo === 99999999);
+    assert.equal(p, undefined, "Código inexistente não deve estar na lista");
+  });
+
+  it("Produtos com MODALIDADECD vazia entram como ED Direto Loja", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const edCount = result.itens.filter((i) => i.modalidadeCd === "ED Direto Loja").length;
+    assert.ok(edCount > 20000, `ED Direto Loja deveria ter >20000, tem ${edCount}`);
+  });
+
+  it("Modalidade CD Cross Docking existe com mais de 10.000 produtos", () => {
+    const result = parsePlan6Produtos(PLAN_6_PATH);
+    const cdCount = result.itens.filter((i) => i.modalidadeCd.startsWith("CD Cross Docking")).length;
+    assert.ok(cdCount > 10000, `CD Cross Docking deveria ter >10000, tem ${cdCount}`);
+  });
+});
+
+describe("parsePlan6Txt — parser independente (testes legados)", () => {
   it("Carrega o arquivo real sem erros", () => {
     const result = parsePlan6Txt(PLAN_6_PATH);
     assert.equal(result.erros.length, 0, `Erros ao carregar Plan 6: ${result.erros.join("; ")}`);

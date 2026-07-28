@@ -232,16 +232,17 @@ export function consolidarProdutoLoja(
   });
   alertas.push(...cdsMerge.alertas);
 
-  // Preencher codigoFisico em cada CD usando a ordem resolvida (Ordem CD's.xlsx)
+  // Preencher codigoFisico em cada CD usando a ordem resolvida do catálogo (cd1..cd5)
+  // ATENÇÃO: ordemJoin.ordem tem cd1..cd5 (não primeiroCd..quintoCd — esse é do BRE)
   for (const cd of cdsMerge.cds) {
     if (cd.codigoFisico == null && ordemJoin.ordem) {
       const codigo =
-        cd.posicaoLogica === 1 ? ordemJoin.ordem.primeiroCd :
-        cd.posicaoLogica === 2 ? ordemJoin.ordem.segundoCd :
-        cd.posicaoLogica === 3 ? ordemJoin.ordem.terceiroCd :
-        cd.posicaoLogica === 4 ? ordemJoin.ordem.quartoCd :
-        cd.posicaoLogica === 5 ? ordemJoin.ordem.quintoCd : null;
-      if (codigo != null) {
+        cd.posicaoLogica === 1 ? ordemJoin.ordem.cd1 :
+        cd.posicaoLogica === 2 ? ordemJoin.ordem.cd2 :
+        cd.posicaoLogica === 3 ? ordemJoin.ordem.cd3 :
+        cd.posicaoLogica === 4 ? ordemJoin.ordem.cd4 :
+        cd.posicaoLogica === 5 ? ordemJoin.ordem.cd5 : null;
+      if (codigo != null && codigo > 0) {
         cd.codigoFisico = codigo;
       }
     }

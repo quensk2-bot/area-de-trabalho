@@ -10,6 +10,11 @@ const MODALIDADES_EXCLUSIVAS = new Set([
 /**
  * Lê TODOS os produtos do Plan 6 CD.txt com suas MODALIDADECD oficiais.
  * Usado para propagar a modalidade oficial até o frontend.
+ *
+ * Regra oficial do V7:
+ * - MODALIDADECD preenchida → usa o valor original
+ * - MODALIDADECD vazia/nula → usa "ED Direto Loja"
+ * - Código não encontrado → fallback "ED Direto Loja" (aplicado no consumidor)
  */
 export function parsePlan6Produtos(filePath: string): CatalogoLoadResult<CatalogoPlan6Produto> {
   const { headers, rows } = parseTxtSemicolon(readTxtWin1252(filePath));
@@ -19,8 +24,9 @@ export function parsePlan6Produtos(filePath: string): CatalogoLoadResult<Catalog
     const codigo = parseNumero(pickColumn(row, headers, "CODIGO"));
     if (codigo == null) continue;
     const modalidadeCd = pickColumn(row, headers, "MODALIDADECD");
-    if (modalidadeCd == null) continue;
-    itensBrutos.push({ codigo, modalidadeCd });
+    // Regra V7: MODALIDADECD vazia/nula = "ED Direto Loja"
+    const modalidadeFinal = modalidadeCd ?? "ED Direto Loja";
+    itensBrutos.push({ codigo, modalidadeCd: modalidadeFinal });
   }
 
   const dedup = deduplicar(itensBrutos, (i) => String(i.codigo));
