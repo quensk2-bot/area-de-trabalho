@@ -10,7 +10,6 @@ import {
   formatarCdTexto,
   badgeCrossDocking,
   extrairAcoesUnicas,
-  type CardCounts,
 } from "../utils/curtoPrazoPresentation.ts";
 
 // ---------------------------------------------------------------------------

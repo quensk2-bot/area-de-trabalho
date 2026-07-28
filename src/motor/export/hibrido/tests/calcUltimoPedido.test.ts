@@ -125,6 +125,7 @@ function makeItem(overrides: Partial<MotorProdutoLojaConsolidado> = {}): MotorPr
     coberturaDias: null,
     modCurtoPrazo: null,
     ncurtoPrazo: null,
+    modalidadeCd: "ED Direto Loja",
     statusOperacional: "sem_ruptura",
     qualidadeDados: "completo",
     alertas: [],

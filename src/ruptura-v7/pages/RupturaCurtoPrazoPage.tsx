@@ -339,7 +339,6 @@ export function RupturaCurtoPrazoPage() {
         produtos={paginaAtual}
         loading={loading}
         colunasVisiveis={colunasVisiveis}
-        onConfigColunas={() => setConfigColunasAberto((v) => !v)}
         onVerDetalhe={(p) => setDetalhe(p)}
       />
 

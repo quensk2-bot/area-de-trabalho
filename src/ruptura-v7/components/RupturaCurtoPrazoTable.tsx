@@ -102,7 +102,7 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
             transform: "translateX(-50%)",
             marginBottom: 6,
             padding: "6px 10px",
-            background: theme.colors.surfaceAlt ?? "#1e293b",
+            background: theme.colors.bgElevated,
             border: `1px solid ${theme.colors.border ?? "#334155"}`,
             borderRadius: 6,
             color: theme.colors.text ?? "#e2e8f0",
@@ -125,7 +125,6 @@ export function RupturaCurtoPrazoTable({
   produtos,
   loading,
   colunasVisiveis,
-  onConfigColunas,
   onVerDetalhe,
 }: Props) {
   if (loading) {
