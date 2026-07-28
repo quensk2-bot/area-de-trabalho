@@ -194,6 +194,11 @@ export function consolidarProdutoLoja(
     fontesAusentes.push("bandeira");
   }
 
+  // Modalidade oficial do Plan 6 CD.txt
+  // Fallback: "ED Direto Loja" quando o código não está no Plan 6
+  const modalidadeCd =
+    entrada.contexto.catalogos.plan6Produtos.find((p6) => p6.codigo === produto.seqproduto)?.modalidadeCd ?? "ED Direto Loja";
+
   const ordemJoin = joinOrdemCd(bandeiraJoin.bandeira, indexes, diagnosticosJoin);
   alertas.push(...ordemJoin.alertas);
   if (!ordemJoin.ordem) incrementarMetrica(metricasParciais, "semOrdem");
@@ -226,6 +231,21 @@ export function consolidarProdutoLoja(
     blocosEsperados: blocosEsperadosDefault(ctx),
   });
   alertas.push(...cdsMerge.alertas);
+
+  // Preencher codigoFisico em cada CD usando a ordem resolvida (Ordem CD's.xlsx)
+  for (const cd of cdsMerge.cds) {
+    if (cd.codigoFisico == null && ordemJoin.ordem) {
+      const codigo =
+        cd.posicaoLogica === 1 ? ordemJoin.ordem.primeiroCd :
+        cd.posicaoLogica === 2 ? ordemJoin.ordem.segundoCd :
+        cd.posicaoLogica === 3 ? ordemJoin.ordem.terceiroCd :
+        cd.posicaoLogica === 4 ? ordemJoin.ordem.quartoCd :
+        cd.posicaoLogica === 5 ? ordemJoin.ordem.quintoCd : null;
+      if (codigo != null) {
+        cd.codigoFisico = codigo;
+      }
+    }
+  }
 
   acumularMetricasCdsProduto(metricasCdsParciais, {
     cds: cdsMerge.cds,
@@ -368,6 +388,7 @@ export function consolidarProdutoLoja(
     coberturaDias: null,
     modCurtoPrazo: bre?.modCurtoPrazo ?? null,
     ncurtoPrazo: bre?.ncurtoPrazo ?? null,
+    modalidadeCd,
     statusOperacional,
     qualidadeDados,
     alertas: alertasDedup,

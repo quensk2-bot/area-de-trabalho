@@ -13,6 +13,7 @@ import {
 import {
   RupturaBaseCompradorPage,
   RupturaCompradorPage,
+  RupturaCurtoPrazoPage,
   RupturaDashboardPage,
   RupturaGestaoPage,
   RupturaImportacaoDrivePage,
@@ -244,6 +245,7 @@ export function MainShellHibrido() {
         ["ruptura-loja", "Dashboard Loja", showRuptura],
         ["ruptura-comprador", "Dashboard Comprador", showRuptura],
         ["ruptura-base-comprador", "Base Comprador", showRuptura],
+        ["ruptura-curto-prazo", "Curto Prazo", showRuptura],
         ["ruptura-gestao", "Gestão", showGestao],
         ["ruptura-importacao", "Importação Drive", showDrive],
       ] as const,
@@ -321,6 +323,10 @@ export function MainShellHibrido() {
       return (
         <RupturaBaseCompradorPage onAbrirGestao={() => navegarMenu("ruptura-gestao")} />
       );
+    }
+
+    if (menu === "ruptura-curto-prazo" && showRuptura) {
+      return <RupturaCurtoPrazoPage />;
     }
 
     if (menu === "ruptura-gestao" && showGestao) {

@@ -17,7 +17,6 @@ import { createServiceRoleClient, publicarStoragePrivado } from "../export/hibri
 import { registrarPacoteLeve } from "../export/hibrido/registrarPacoteLeve.ts";
 import { competenciaFromDataReferencia } from "../../hibrido-v7/manifest/manifestPaths.ts";
 import { resolveLojasFromBandeiraCsv, validarListaLojas } from "../catalog/resolverLojas.ts";
-
 function parseArgv(): {
   regional: string;
   bandeira: string;

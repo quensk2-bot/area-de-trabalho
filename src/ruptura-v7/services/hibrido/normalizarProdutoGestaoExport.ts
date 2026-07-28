@@ -79,6 +79,8 @@ export function normalizarProdutoGestaoExport(raw: LegacyGestaoRaw): HibridoProd
     estSelecInvCd3: pick<number>(raw, "estSelecInvCd3", "est_selec_inv_cd3") ?? null,
     estSelecInvCd4: pick<number>(raw, "estSelecInvCd4", "est_selec_inv_cd4") ?? null,
     crossDocking: pick<number>(raw, "crossDocking", "cross_docking") ?? null,
+    modalidadeCd: pick<string>(raw, "modalidadeCd", "modalidade_cd") ?? null,
+    cdFisicosAtivos: (pick<number[]>(raw, "cdFisicosAtivos", "cd_fisicos_ativos") ?? null) as number[] | null,
     modCurtoPrazo: pick<string>(raw, "modCurtoPrazo", "mod_curto_prazo") ?? null,
     ncurtoPrazo: pick<string>(raw, "ncurtoPrazo", "ncurto_prazo") ?? null,
     curtoPrazo,

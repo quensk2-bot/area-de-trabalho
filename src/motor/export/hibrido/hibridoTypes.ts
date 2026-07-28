@@ -23,7 +23,7 @@ export type HibridoProdutoGestao = {
   parMin: number | null;
   parMax: number | null;
   somaEstoqueCd: number | null;
-  /** Pendência loja pura (TXT PENDCPA) — export BASE coluna PENDCPA. */
+  /** Pendencia loja pura (TXT PENDCPA) — export BASE coluna PENDCPA. */
   pendenciaLoja: number | null;
   /** Soma loja + CDs — uso interno MP/BRE; não exportar como PENDCPA. */
   pendenciaCpaCd: number | null;
@@ -37,7 +37,7 @@ export type HibridoProdutoGestao = {
   qualidadeDados: QualidadeDadosConsumo | null;
   setorN2: string | null;
   divisao: string | null;
-  /** Nível 3 da coluna CATEGORIA do TXT (Excel BASE_COMPRADOR / pivô). */
+  /** Nivel 3 da coluna CATEGORIA do TXT (Excel BASE_COMPRADOR / pivo). */
   grupoN3: string | null;
   categoriaN1: string | null;
   embalagemCompra: string | null;
@@ -54,6 +54,10 @@ export type HibridoProdutoGestao = {
   estSelecInvCd4: number | null;
   modCurtoPrazo: string | null;
   ncurtoPrazo: string | null;
+  /** Modalidade oficial do Plan 6 CD.txt (ex: CD Armazenagem, ED Direto Loja). */
+  modalidadeCd: string | null;
+  /** Codigos fisicos dos CDs ativos (com estoque ou status ativo), ordenados por posicao. */
+  cdFisicosAtivos: number[] | null;
   curtoPrazo: number | null;
   medioPrazo: number | null;
   longoPrazo: number | null;
@@ -73,25 +77,25 @@ export type HibridoProdutoGestao = {
   rupDiasRecebtoCd4: number;
   /** CD 5 — Rup (X) Dias Recebto (0 se sem estoque). */
   rupDiasRecebtoCd5: number;
-  /** Excel `Rup (X) Dias Recebto Maior data` — média na CAPA Curto Prazo. */
+  /** Excel `Rup (X) Dias Recebto Maior data` — media na CAPA Curto Prazo. */
   rupDiasRecebtoMaiorData: number;
-  /** Excel `Curto Prazo Rebto Próximo` — flag 0/1. */
+  /** Excel `Curto Prazo Rebto Proximo` — flag 0/1. */
   curtoPrazoRebtoProximo: 0 | 1;
-  /** Excel `Curto Prazo Não Rebto Próximo` — flag 0/1. */
+  /** Excel `Curto Prazo Nao Rebto Proximo` — flag 0/1. */
   curtoPrazoNaoRebtoProximo: 0 | 1;
-  /** Excel `Último Pedido Loja` — fórmula PQ (min loja + CDs), usado nas regras de LP/Ativação. */
+  /** Excel `Ultimo Pedido Loja` — formula PQ (min loja + CDs), usado nas regras de LP/Ativacao. */
   ultimoPedidoLojaPq: number | null;
-  /** Raw ULTIMACPALOJA — usado APENAS na métrica visual do Dashboard Loja (média ≈ 183). */
+  /** Raw ULTIMACPALOJA — usado APENAS na metrica visual do Dashboard Loja (media ~ 183). */
   diasUltimoPedidoLojaDashboard: number | null;
-  /** Excel `Ativação e Ruptura > 30 Dias Sem Pedido` — soma na CAPA. */
+  /** Excel `Ativacao e Ruptura > 30 Dias Sem Pedido` — soma na CAPA. */
   ativacaoRuptura30SemPedido: number | null;
-  /** Excel `Itens Vda Pendência` — soma na CAPA. */
+  /** Excel `Itens Vda Pendencia` — soma na CAPA. */
   itensVdaPendencia: number | null;
-  /** Excel `% Rup Sem Pendência Vda` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  /** Excel `% Rup Sem Pendencia Vda` — flag 0/1 por SKU (MEDIA na CAPA). */
   rupSemPendenciaVda: number | null;
-  /** Excel `% Rup Inventário` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  /** Excel `% Rup Inventario` — flag 0/1 por SKU (MEDIA na CAPA). */
   rupInventarioPct: number | null;
-  /** Excel `% Ruptura Sem Inventário` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  /** Excel `% Ruptura Sem Inventario` — flag 0/1 por SKU (MEDIA na CAPA). */
   rupSemInventarioPct: number | null;
 };
 

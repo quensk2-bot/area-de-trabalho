@@ -50,6 +50,8 @@ export type RupturaProdutoLoja = {
   soma_estoque_cd: number | null;
   pendencia_cpa_cd: number | null;
   dias_pedido: number | null;
+  dias_ruptura: number | null;
+  embalagem_compra: string | null;
   acao_curto_prazo: string | null;
   acao_medio_prazo: string | null;
   acao_recomendada: string | null;
@@ -63,6 +65,22 @@ export type RupturaProdutoLoja = {
   quantidade_cds: number | null;
   qualidade_dados: QualidadeDadosConsumo | null;
   status_operacional: string | null;
+  /** Campo de Curto Prazo: flag 0/1 se recebimento próximo. */
+  curto_prazo_rebto_proximo: number | null;
+  /** Campo de Curto Prazo: flag 0/1 se NÃO recebimento próximo. */
+  curto_prazo_nao_rebto_proximo: number | null;
+  /** Estoque selecionado CD1 (quantidade). */
+  est_selec_inv_cd1: number | null;
+  /** Estoque selecionado CD2 (quantidade). */
+  est_selec_inv_cd2: number | null;
+  /** Estoque selecionado CD3 (quantidade). */
+  est_selec_inv_cd3: number | null;
+  /** Estoque selecionado CD4 (quantidade). */
+  est_selec_inv_cd4: number | null;
+  /** Modalidade oficial do Plan 6 CD.txt (ex: CD Armazenagem, ED Direto Loja). */
+  modalidade_cd: string | null;
+  /** Códigos físicos dos CDs ativos (com estoque), ordenados por código. Ex: [464, 753]. */
+  cd_fisicos_ativos: number[] | null;
 };
 
 export const LEGENDA_CLASSIFICACAO: Record<string, string> = {

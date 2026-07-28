@@ -5,7 +5,7 @@ import { parseBandeiraFromCsv, parseBandeiraFromXlsx, parseModalidade, parseOrde
 import { parseCompradores } from "./parseCompradores.ts";
 import { parseEstruturaFake } from "./parseEstruturaFake.ts";
 import { parseModalidadesExclusivas } from "./parseModalidadesExclusivas.ts";
-import { parseProdutosExclusivos } from "./parseProdutosExclusivos.ts";
+import { parsePlan6Produtos, parseProdutosExclusivos } from "./parseProdutosExclusivos.ts";
 import { parseRede } from "./parseRede.ts";
 import { parseRegrasExclusao } from "./parseRegrasExclusao.ts";
 
@@ -90,6 +90,10 @@ export function loadCatalogos(paths: CatalogPaths): CatalogServiceResult {
   const produtosExclusivos =
     paths.plan6Cd && fileExists(paths.plan6Cd) ? parseProdutosExclusivos(paths.plan6Cd) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
 
+  // Carrega TODOS os produtos do Plan 6 com MODALIDADECD oficial
+  const plan6Produtos =
+    paths.plan6Cd && fileExists(paths.plan6Cd) ? parsePlan6Produtos(paths.plan6Cd) : { itens: [], origem: "", quantidadeCarregada: 0, duplicatasRemovidas: 0, erros: [], alertas: [] };
+
   const excecoesProdutoLoja =
     paths.plan6Cd && fileExists(paths.plan6Cd)
       ? parseModalidadesExclusivas(paths.plan6Cd, modalidade.itens, bandeira.itens)
@@ -127,6 +131,7 @@ export function loadCatalogos(paths: CatalogPaths): CatalogServiceResult {
       excecoesProdutoLoja: excecoesProdutoLoja.itens,
       regrasExclusao: regrasExclusao.itens,
       estruturaFake: estruturaFake.itens,
+      plan6Produtos: plan6Produtos.itens,
     },
     conflitosComprador,
     alertas,

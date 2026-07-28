@@ -5,6 +5,7 @@
  * A lista de lojas é resolvida dinamicamente do bandeira.csv.
  * Nenhuma loja, regional, bandeira ou data fixa no código.
  */
+import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { resolvePilotFilePaths } from "../pilot/pilotFilePaths.ts";

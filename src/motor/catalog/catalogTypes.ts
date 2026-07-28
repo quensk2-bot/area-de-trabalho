@@ -71,6 +71,12 @@ export type CatalogoProdutoExclusivo = {
   modCurtoPrazo: "LJ_Exclusiva";
 };
 
+/** Produto do Plan 6 CD.txt — usado para obter MODALIDADECD oficial. */
+export type CatalogoPlan6Produto = {
+  codigo: number;
+  modalidadeCd: string;
+};
+
 export type CatalogoProdutoLojaExcecao = {
   codigo: number;
   loja: number;
@@ -111,4 +117,6 @@ export type MotorCatalogos = {
   excecoesProdutoLoja: CatalogoProdutoLojaExcecao[];
   regrasExclusao: CatalogoRegraExclusao[];
   estruturaFake: CatalogoEstruturaFake[];
+  /** Mapa de MODALIDADECD por SEQPRODUTO (Plan 6 CD.txt). */
+  plan6Produtos: CatalogoPlan6Produto[];
 };

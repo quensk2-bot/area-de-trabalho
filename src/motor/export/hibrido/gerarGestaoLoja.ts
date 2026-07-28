@@ -55,6 +55,33 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     crossDocking: item.crossDocking,
     modCurtoPrazo: item.modCurtoPrazo,
     ncurtoPrazo: item.ncurtoPrazo,
+    modalidadeCd: item.modalidadeCd,
+    cdFisicosAtivos: (() => {
+      // Usa campos flat primeiroCd..quintoCd + estoqueCd1..5 + diasRecebtoCd1..5,
+      // populados pelo BRE/legadoCentralizacao (diferente de cds[].codigoFisico).
+      // Inclui CDs com estoque > 0 OU recebimento operacional aplicável.
+      const posicoes: Array<{
+        codigo: number | null;
+        estoque: number | null;
+        diasRecebimento: number | null;
+      }> = [
+        { codigo: item.primeiroCd, estoque: item.estoqueCd1, diasRecebimento: item.diasRecebtoCd1 },
+        { codigo: item.segundoCd, estoque: item.estoqueCd2, diasRecebimento: item.diasRecebtoCd2 },
+        { codigo: item.terceiroCd, estoque: item.estoqueCd3, diasRecebimento: item.diasRecebtoCd3 },
+        { codigo: item.quartoCd, estoque: item.estoqueCd4, diasRecebimento: item.diasRecebtoCd4 },
+        { codigo: item.quintoCd, estoque: item.estoqueCd5, diasRecebimento: item.diasRecebtoCd5 },
+      ];
+      const ativos = posicoes
+        .filter(
+          (p) =>
+            p.codigo != null &&
+            ((p.estoque != null && p.estoque > 0) ||
+              (p.diasRecebimento != null && p.diasRecebimento > 0)),
+        )
+        .map((p) => p.codigo!)
+        .sort((a, b) => a - b);
+      return ativos.length > 0 ? ativos : null;
+    })(),
     curtoPrazo: item.curtoPrazo,
     medioPrazo: item.medioPrazo,
     longoPrazo: item.longoPrazo,
@@ -79,8 +106,6 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
       };
     })(),
     // Campos PQ calculados
-    // ultimoPedidoLoja: fórmula PQ oficial (min loja + CDs) — usado nas regras de LP/Ativação >30
-    // diasUltimoPedidoLojaDashboard: raw ULTIMACPALOJA — usado APENAS na métrica visual do Dashboard Loja
     ultimoPedidoLojaPq: ultPedido,
     diasUltimoPedidoLojaDashboard: calcDiasUltimoPedidoLojaDashboard(item),
     ativacaoRuptura30SemPedido: calcAtivacaoRuptura30SemPedido(item, ultPedido),

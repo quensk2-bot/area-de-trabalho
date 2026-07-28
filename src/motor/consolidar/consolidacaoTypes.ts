@@ -245,6 +245,8 @@ export type MotorProdutoLojaConsolidado = {
   coberturaDias: number | null;
   modCurtoPrazo: string | null;
   ncurtoPrazo: string | null;
+  /** Modalidade oficial do Plan 6 CD.txt (ex: CD Armazenagem, ED Direto Loja). */
+  modalidadeCd: string | null;
   statusOperacional: MotorStatusOperacional;
   qualidadeDados: MotorQualidadeDados;
   alertas: MotorAlerta[];

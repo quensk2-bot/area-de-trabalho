@@ -1,4 +1,4 @@
-import type { CatalogoLoadResult, CatalogoProdutoExclusivo } from "./catalogTypes.ts";
+import type { CatalogoLoadResult, CatalogoPlan6Produto, CatalogoProdutoExclusivo } from "./catalogTypes.ts";
 import { deduplicar, parseNumero, parseTxtSemicolon, pickColumn, readTxtWin1252 } from "./catalogUtils.ts";
 
 const MODALIDADES_EXCLUSIVAS = new Set([
@@ -6,6 +6,33 @@ const MODALIDADES_EXCLUSIVAS = new Set([
   "CD Fort Compacto (Armazenagem)",
   "CD Lojas Compactas (Armazenagem)",
 ]);
+
+/**
+ * Lê TODOS os produtos do Plan 6 CD.txt com suas MODALIDADECD oficiais.
+ * Usado para propagar a modalidade oficial até o frontend.
+ */
+export function parsePlan6Produtos(filePath: string): CatalogoLoadResult<CatalogoPlan6Produto> {
+  const { headers, rows } = parseTxtSemicolon(readTxtWin1252(filePath));
+  const itensBrutos: CatalogoPlan6Produto[] = [];
+
+  for (const row of rows) {
+    const codigo = parseNumero(pickColumn(row, headers, "CODIGO"));
+    if (codigo == null) continue;
+    const modalidadeCd = pickColumn(row, headers, "MODALIDADECD");
+    if (modalidadeCd == null) continue;
+    itensBrutos.push({ codigo, modalidadeCd });
+  }
+
+  const dedup = deduplicar(itensBrutos, (i) => String(i.codigo));
+  return {
+    origem: filePath,
+    itens: dedup.itens,
+    quantidadeCarregada: dedup.itens.length,
+    duplicatasRemovidas: dedup.removidas,
+    erros: [],
+    alertas: [],
+  };
+}
 
 export function parseProdutosExclusivos(filePath: string): CatalogoLoadResult<CatalogoProdutoExclusivo> {
   const { headers, rows } = parseTxtSemicolon(readTxtWin1252(filePath));
