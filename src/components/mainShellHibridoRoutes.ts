@@ -5,6 +5,7 @@ export type MenuKey =
   | "ruptura-comprador"
   | "ruptura-base-comprador"
   | "ruptura-curto-prazo"
+  | "ruptura-medio-prazo"
   | "ruptura-gestao"
   | "ruptura-importacao"
   | "admin-usuarios"
@@ -17,6 +18,7 @@ export const MENU_ROUTE: Record<MenuKey, string> = {
   "ruptura-comprador": "/loja/ruptura/dashboard-comprador",
   "ruptura-base-comprador": "/loja/ruptura/base-comprador",
   "ruptura-curto-prazo": "/loja/ruptura/curto-prazo",
+  "ruptura-medio-prazo": "/loja/ruptura/medio-prazo",
   "ruptura-gestao": "/loja/ruptura/gestao",
   "ruptura-importacao": "/loja/ruptura/importacao-drive",
   "admin-usuarios": "/administracao/usuarios",
