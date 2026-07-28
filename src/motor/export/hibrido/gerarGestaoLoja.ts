@@ -56,31 +56,35 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     modCurtoPrazo: item.modCurtoPrazo,
     ncurtoPrazo: item.ncurtoPrazo,
     modalidadeCd: item.modalidadeCd,
+    // CDs com ESTOQUE > 0 — usado na coluna CD da Tela Curto Prazo.
     cdFisicosAtivos: (() => {
-      // Usa campos flat primeiroCd..quintoCd + estoqueCd1..5 + diasRecebtoCd1..5,
-      // populados pelo BRE/legadoCentralizacao (diferente de cds[].codigoFisico).
-      // Inclui CDs com estoque > 0 OU recebimento operacional aplicável.
-      const posicoes: Array<{
-        codigo: number | null;
-        estoque: number | null;
-        diasRecebimento: number | null;
-      }> = [
-        { codigo: item.primeiroCd, estoque: item.estoqueCd1, diasRecebimento: item.diasRecebtoCd1 },
-        { codigo: item.segundoCd, estoque: item.estoqueCd2, diasRecebimento: item.diasRecebtoCd2 },
-        { codigo: item.terceiroCd, estoque: item.estoqueCd3, diasRecebimento: item.diasRecebtoCd3 },
-        { codigo: item.quartoCd, estoque: item.estoqueCd4, diasRecebimento: item.diasRecebtoCd4 },
-        { codigo: item.quintoCd, estoque: item.estoqueCd5, diasRecebimento: item.diasRecebtoCd5 },
+      const posicoes: Array<{ codigo: number | null; estoque: number | null }> = [
+        { codigo: item.primeiroCd, estoque: item.estoqueCd1 },
+        { codigo: item.segundoCd, estoque: item.estoqueCd2 },
+        { codigo: item.terceiroCd, estoque: item.estoqueCd3 },
+        { codigo: item.quartoCd, estoque: item.estoqueCd4 },
+        { codigo: item.quintoCd, estoque: item.estoqueCd5 },
       ];
       const ativos = posicoes
-        .filter(
-          (p) =>
-            p.codigo != null &&
-            ((p.estoque != null && p.estoque > 0) ||
-              (p.diasRecebimento != null && p.diasRecebimento > 0)),
-        )
+        .filter((p) => p.codigo != null && p.estoque != null && p.estoque > 0)
         .map((p) => p.codigo!)
         .sort((a, b) => a - b);
       return ativos.length > 0 ? ativos : null;
+    })(),
+    // CDs com DIAS RECEBIMENTO > 0 (mas sem estoque) — complementar para auditoria.
+    cdFisicosComRecebimento: (() => {
+      const posicoes: Array<{ codigo: number | null; dias: number | null }> = [
+        { codigo: item.primeiroCd, dias: item.diasRecebtoCd1 },
+        { codigo: item.segundoCd, dias: item.diasRecebtoCd2 },
+        { codigo: item.terceiroCd, dias: item.diasRecebtoCd3 },
+        { codigo: item.quartoCd, dias: item.diasRecebtoCd4 },
+        { codigo: item.quintoCd, dias: item.diasRecebtoCd5 },
+      ];
+      const receb = posicoes
+        .filter((p) => p.codigo != null && p.dias != null && p.dias > 0)
+        .map((p) => p.codigo!)
+        .sort((a, b) => a - b);
+      return receb.length > 0 ? receb : null;
     })(),
     curtoPrazo: item.curtoPrazo,
     medioPrazo: item.medioPrazo,

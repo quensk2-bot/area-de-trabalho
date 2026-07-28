@@ -122,6 +122,7 @@ function mapProduto(p: HibridoProdutoGestao, ctx: RupturaFiltrosProdutos): Ruptu
     est_selec_inv_cd4: p.estSelecInvCd4 ?? null,
     modalidade_cd: p.modalidadeCd ?? null,
     cd_fisicos_ativos: p.cdFisicosAtivos ?? null,
+    cd_fisicos_com_recebimento: p.cdFisicosComRecebimento ?? null,
   };
 }
 

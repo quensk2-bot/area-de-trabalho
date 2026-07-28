@@ -81,6 +81,8 @@ export type RupturaProdutoLoja = {
   modalidade_cd: string | null;
   /** Códigos físicos dos CDs ativos (com estoque), ordenados por código. Ex: [464, 753]. */
   cd_fisicos_ativos: number[] | null;
+  /** Códigos físicos dos CDs com recebimento (sem estoque), ordenados por código. Ex: [468]. */
+  cd_fisicos_com_recebimento: number[] | null;
 };
 
 export const LEGENDA_CLASSIFICACAO: Record<string, string> = {

@@ -56,8 +56,10 @@ export type HibridoProdutoGestao = {
   ncurtoPrazo: string | null;
   /** Modalidade oficial do Plan 6 CD.txt (ex: CD Armazenagem, ED Direto Loja). */
   modalidadeCd: string | null;
-  /** Codigos fisicos dos CDs ativos (com estoque ou status ativo), ordenados por posicao. */
+  /** Codigos fisicos dos CDs com ESTOQUE > 0, ordenados por codigo. Usado na coluna CD da Tela Curto Prazo. */
   cdFisicosAtivos: number[] | null;
+  /** Codigos fisicos dos CDs com DIAS RECEBIMENTO > 0 (mas sem estoque), ordenados por codigo. */
+  cdFisicosComRecebimento: number[] | null;
   curtoPrazo: number | null;
   medioPrazo: number | null;
   longoPrazo: number | null;
