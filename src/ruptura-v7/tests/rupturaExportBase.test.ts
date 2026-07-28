@@ -34,7 +34,7 @@ import { gerarCsvBaseRuptura } from "../utils/baseRupturaBrowserExport.ts";
 import { RUPTURA_EXPORT_BROWSER_MAX_ROWS } from "../types/rupturaFiltrosTypes.ts";
 import { assertEscopoHibrido } from "../services/hibrido/hibridoScope.ts";
 
-const produtoBase: HibridoProdutoGestao = {
+const produtoBase = {
   loja: 73,
   seqproduto: 1001,
   descricao: "Arroz Tio João 5kg",
@@ -83,6 +83,9 @@ const produtoBase: HibridoProdutoGestao = {
   acaoCurtoPrazo: "Pedido imediato",
   acaoMedioPrazo: null,
   textoProdutoCentralizado: "Arroz Tio João 5kg - 1001",
+  modalidadeCd: "ED Direto Loja",
+  cdFisicosAtivos: [464],
+  cdFisicosComRecebimento: null,
 };
 
 describe("ruptura export base — colunas oficiais", () => {
