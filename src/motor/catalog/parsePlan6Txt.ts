@@ -1,9 +1,9 @@
 /**
  * Parser INDEPENDENTE do Plan 6 CD.txt.
- * 
+ *
  * Lê o arquivo TSV do zero e retorna um Map<CODIGO, MODALIDADECD>.
  * Não compartilha código, tipos ou estado com a implementação existente (parsePlan6Produtos).
- * 
+ *
  * Uso:
  *   const mapa = parsePlan6Txt("C:/.../Plan 6 CD.txt");
  *   const modalidade = mapa.get(seqproduto) ?? "ED Direto Loja";
@@ -26,12 +26,12 @@ export type Plan6TxtResult = {
 
 /**
  * Lê o Plan 6 CD.txt e retorna um Map<CODIGO, MODALIDADECD>.
- * 
+ *
  * O arquivo usa:
  * - Delimitador ponto-e-vírgula (;)
  * - Encoding Windows-1252
  * - Cabeçalho na primeira linha
- * 
+ *
  * Regras:
  * - CODIGO vazio ou inválido → ignora a linha
  * - MODALIDADECD vazia → usa "ED Direto Loja"
