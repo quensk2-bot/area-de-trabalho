@@ -17,7 +17,8 @@ import {
   PRIORIDADE_LABEL_LP,
   PRIORIDADE_TONE_LP,
   explicarAcaoVisualLp,
-  formatarCentralizacao,
+  formatarCdAbastecimento,
+  formatarSituacaoAtivacao,
 } from "../utils/longoPrazoPresentation.ts";
 
 export type ColunaIdLp =
@@ -58,8 +59,8 @@ export const COLUNAS_LONGO_PRAZO: { id: ColunaIdLp; label: string; default: bool
   { id: "dias_ruptura", label: "Dias Ruptura", default: true },
   { id: "ultimo_pedido_loja", label: "Último Pedido Loja", default: true },
   { id: "pendencia_loja", label: "Pedido Loja", default: true },
-  { id: "centralizacao", label: "Centralização", default: true },
-  { id: "status_solicitacao_ativacao_cd", label: "Status Ativação CD", default: true },
+  { id: "centralizacao", label: "CD de abastecimento", default: true },
+  { id: "status_solicitacao_ativacao_cd", label: "Situação da ativação no CD", default: true },
   { id: "status_estoque_cds", label: "Status Estoque CD", default: true },
   { id: "acao_operacional", label: "Ação Operacional", default: true },
   { id: "par_max", label: "Parmax", default: false },
@@ -309,17 +310,21 @@ function renderCelula(
   }
 
   if (col === "centralizacao") {
+    const texto = formatarCdAbastecimento(p.produto_centralizado, p.modalidade_cd);
     return (
-      <span style={{ ...badgeStyle("neutral"), fontSize: 11 }}>
-        {formatarCentralizacao(p.produto_centralizado)}
-      </span>
+      <Tooltip text="Código do CD associado ao abastecimento do produto.">
+        <span style={{ ...badgeStyle("neutral"), fontSize: 11 }}>{texto}</span>
+      </Tooltip>
     );
   }
 
   if (col === "status_solicitacao_ativacao_cd") {
-    const val = p.status_solicitacao_ativacao_cd;
-    if (!val) return <span style={{ color: theme.colors.textMuted }}>Não informado</span>;
-    return <span style={{ ...badgeStyle("neutral"), fontSize: 11 }}>{val}</span>;
+    const texto = formatarSituacaoAtivacao(p.status_solicitacao_ativacao_cd, p.produto_centralizado, p.modalidade_cd);
+    return (
+      <Tooltip text="Indica se existe ativação ou solicitação de ativação do produto no CD.">
+        <span style={{ ...badgeStyle("neutral"), fontSize: 11 }}>{texto}</span>
+      </Tooltip>
+    );
   }
 
   if (col === "status_estoque_cds") {

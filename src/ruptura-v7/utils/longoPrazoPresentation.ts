@@ -7,6 +7,9 @@
  *
  * A ação visual é DERIVADA (não oficial) — orientação operacional V7.
  * Não altera longoPrazo nem cria campo oficial no Motor.
+ *
+ * Campos de CD de abastecimento e Situação da ativação são campos
+ * adicionais do V7, não reproduzidos do Power Query/planilha de validação.
  */
 
 // ---------------------------------------------------------------------------
@@ -57,13 +60,8 @@ export function contarCardsLp(
     const ativ = p.ativacaoRuptura30SemPedido;
     const ultPed = p.ultimoPedidoLojaPq;
 
-    // Card 2: Ativação >30 sem pedido
     if (ativ === 1 || ativ === true) counts.ativacao_30_sem_pedido++;
-
-    // Card 3: Sem pedido (999 ou null)
     if (ultPed === 999 || ultPed == null) counts.sem_pedido++;
-
-    // Card 4: Último pedido >60 (excluindo 999)
     if (ultPed != null && ultPed !== 999 && ultPed > 60) counts.ultimo_pedido_acima_60++;
   }
 
@@ -83,15 +81,6 @@ export type AcaoVisualLp =
 
 export type PrioridadeVisualLp = "critica" | "alerta_alta" | "alerta" | "neutra";
 
-/**
- * Determina a ação visual exclusiva de um produto LP.
- * Ordem de prioridade (primeira condição verdadeira vence):
- * 1. Revisar ativação CD: ativacaoRuptura30SemPedido = 1
- * 2. Produto sem pedido: ultimoPedidoLojaPq = 999 ou null
- * 3. Último pedido antigo: ultimoPedidoLojaPq > 60 (e < 999)
- * 4. Ruptura antiga: diasRuptura > 30
- * 5. Sem ação definida
- */
 export function acaoVisualLp(p: {
   ativacaoRuptura30SemPedido?: number | boolean | null;
   ultimoPedidoLojaPq?: number | null;
@@ -169,31 +158,83 @@ export function explicarAcaoVisualLp(acao: AcaoVisualLp): string {
 // 4. Modalidade oficial — reexport da regra do Plan 6
 // ---------------------------------------------------------------------------
 
-/** Reexport da regra de modalidade do Medio Prazo (Plan 6 CD.txt). */
 export { formatarModalidade } from "./medioPrazoPresentation.ts";
 
 // ---------------------------------------------------------------------------
-// 5. Formatação de centralização
+// 5. CD de abastecimento (coluna Centralização renomeada)
 // ---------------------------------------------------------------------------
 
 /**
- * produtoCentralizado pode conter o código do CD (ex: 905, 464) ou null.
- * - valor numérico válido → "Centralizado no CD <código>"
- * - null → "Não centralizado"
+ * Apresenta o CD de abastecimento do produto.
+ *
+ * produtoCentralizado contém o código FÍSICO do CD (ex: 464, 468, 905)
+ * que tem o menor recebimento para o produto — ou null quando não há
+ * CD definido para abastecimento direto.
+ *
+ * Regra visual (campo adicional V7, não reproduzido do Power Query):
+ *
+ * produtoCentralizado > 0   → "CD 464", "CD 468"
+ * null/0  + ED Direto Loja → "Direto Loja"
+ * null/0  + outra modalidade → "CD não definido"
+ *
+ * Tooltip: "Código do CD associado ao abastecimento do produto."
  */
-export function formatarCentralizacao(
+export function formatarCdAbastecimento(
   produtoCentralizado: number | boolean | null | undefined,
+  modalidadeCd: string | null | undefined,
 ): string {
-  if (produtoCentralizado == null) return "Não centralizado";
-  const num = Number(produtoCentralizado);
-  if (Number.isFinite(num) && num > 0) {
-    return `Centralizado no CD ${num}`;
+  const cdNum = produtoCentralizado != null ? Number(produtoCentralizado) : 0;
+  if (Number.isFinite(cdNum) && cdNum > 0) {
+    return `CD ${cdNum}`;
   }
-  return "Não informado";
+  // Sem CD definido — null não é "ED Direto Loja", cai em "CD não definido"
+  if (modalidadeCd === "ED Direto Loja") {
+    return "Direto Loja";
+  }
+  return "CD não definido";
 }
 
 // ---------------------------------------------------------------------------
-// 6. Extrair ações únicas para filtro
+// 6. Situação da ativação no CD (coluna Status Ativação CD renomeada)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apresenta a situação da ativação no CD para o produto.
+ *
+ * statusSolicitacaoAtivacaoCd indica se existe ativação ou solicitação
+ * de ativação do produto no CD.
+ *
+ * Regra visual (campo adicional V7, não reproduzido do Power Query):
+ *
+ * "Ativo no CD"          → "Ativo"
+ * "Não Centralizado" + CD (produtoCentralizado > 0) → "Sem solicitação de ativação"
+ * "Não Centralizado" + ED Direto Loja                 → "Não se aplica"
+ * null                  → "Não informado"
+ *
+ * Tooltip: "Indica se existe ativação ou solicitação de ativação do produto no CD."
+ */
+export function formatarSituacaoAtivacao(
+  statusSolicitacaoAtivacaoCd: string | null | undefined,
+  produtoCentralizado: number | boolean | null | undefined,
+  modalidadeCd: string | null | undefined,
+): string {
+  if (!statusSolicitacaoAtivacaoCd) return "Não informado";
+  if (statusSolicitacaoAtivacaoCd === "Ativo no CD") return "Ativo";
+
+  if (statusSolicitacaoAtivacaoCd === "Não Centralizado") {
+    const cdNum = produtoCentralizado != null ? Number(produtoCentralizado) : 0;
+    const temCd = Number.isFinite(cdNum) && cdNum > 0;
+    if (temCd) return "Sem solicitação de ativação";
+    if (modalidadeCd === "ED Direto Loja") return "Não se aplica";
+    return "Não informado";
+  }
+
+  // Valor oficial não mapeado → preserva original
+  return statusSolicitacaoAtivacaoCd;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Extrair ações únicas para filtro
 // ---------------------------------------------------------------------------
 
 export function extrairAcoesVisuaisUnicasLp(
@@ -218,7 +259,7 @@ export function extrairAcoesVisuaisUnicasLp(
 }
 
 // ---------------------------------------------------------------------------
-// 7. Contar ação visual exclusiva para cards agrupados
+// 8. Contar ação visual exclusiva para cards agrupados
 // ---------------------------------------------------------------------------
 
 export type CardCountsAcaoExclusiva = Record<AcaoVisualLp, number>;

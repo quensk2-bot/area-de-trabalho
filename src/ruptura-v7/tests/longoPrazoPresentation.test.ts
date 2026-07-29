@@ -5,7 +5,8 @@ import {
   acaoVisualLp,
   contarAcaoExclusiva,
   extrairAcoesVisuaisUnicasLp,
-  formatarCentralizacao,
+  formatarCdAbastecimento,
+  formatarSituacaoAtivacao,
   explicarAcaoVisualLp,
   ACAO_VISUAL_LABEL,
 } from "../utils/longoPrazoPresentation.ts";
@@ -248,11 +249,22 @@ describe("extrairAcoesVisuaisUnicasLp", () => {
   });
 });
 
-describe("formatarCentralizacao", () => {
-  it("905 → Centralizado no CD 905", () => assert.strictEqual(formatarCentralizacao(905), "Centralizado no CD 905"));
-  it("null → Não centralizado", () => assert.strictEqual(formatarCentralizacao(null), "Não centralizado"));
-  it("undefined → Não centralizado", () => assert.strictEqual(formatarCentralizacao(undefined), "Não centralizado"));
-  it("zero → Não informado", () => assert.strictEqual(formatarCentralizacao(0), "Não informado"));
+describe("formatarCdAbastecimento", () => {
+  it("CD 464 com ED Direto Loja → CD 464", () => assert.strictEqual(formatarCdAbastecimento(464, "ED Direto Loja"), "CD 464"));
+  it("CD 468 com CD Armazenagem → CD 468", () => assert.strictEqual(formatarCdAbastecimento(468, "CD Armazenagem"), "CD 468"));
+  it("null + ED Direto Loja → Direto Loja", () => assert.strictEqual(formatarCdAbastecimento(null, "ED Direto Loja"), "Direto Loja"));
+  it("null + CD Armazenagem → CD não definido", () => assert.strictEqual(formatarCdAbastecimento(null, "CD Armazenagem"), "CD não definido"));
+  it("null + null → CD não definido", () => assert.strictEqual(formatarCdAbastecimento(null, null), "CD não definido"));
+  it("undefined + undefined → CD não definido", () => assert.strictEqual(formatarCdAbastecimento(undefined, undefined), "CD não definido"));
+  it("0 + CD Cross Docking → CD não definido", () => assert.strictEqual(formatarCdAbastecimento(0, "CD Cross Docking"), "CD não definido"));
+});
+
+describe("formatarSituacaoAtivacao", () => {
+  it("Ativo no CD + 464 → Ativo", () => assert.strictEqual(formatarSituacaoAtivacao("Ativo no CD", 464, "CD Armazenagem"), "Ativo"));
+  it("Não Centralizado + 464 → Sem solicitação", () => assert.strictEqual(formatarSituacaoAtivacao("Não Centralizado", 464, "CD Armazenagem"), "Sem solicitação de ativação"));
+  it("Não Centralizado + null + ED Direto → Não se aplica", () => assert.strictEqual(formatarSituacaoAtivacao("Não Centralizado", null, "ED Direto Loja"), "Não se aplica"));
+  it("null + qualquer → Não informado", () => assert.strictEqual(formatarSituacaoAtivacao(null, 464, "CD Armazenagem"), "Não informado"));
+  it("undefined → Não informado", () => assert.strictEqual(formatarSituacaoAtivacao(undefined, null, null), "Não informado"));
 });
 
 describe("explicarAcaoVisualLp", () => {
