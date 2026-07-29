@@ -1,9 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
+import path from "node:path";
 import { parsePlan6Txt, buscarModalidadePlan6 } from "../catalog/parsePlan6Txt.ts";
 import { parsePlan6Produtos } from "../catalog/parseProdutosExclusivos.ts";
 
-const PLAN_6_PATH = "C:/area-de-trabalho-v7/importar/RUPTURA/Plan 6 CD.txt";
+const PLAN_6_PATH = path.resolve(process.cwd(), "../importar/RUPTURA/Plan 6 CD.txt");
 
 describe("parsePlan6Produtos — parser de produção (Motor pipeline)", () => {
   it("Carrega o arquivo real sem erros", () => {
