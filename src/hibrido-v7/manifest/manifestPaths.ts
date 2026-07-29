@@ -11,14 +11,20 @@ export function manifestRootPath(input: {
   regional: string;
   bandeira: string;
   competencia: string;
+  versao?: number;
 }): string {
-  return `${input.regional}/${input.bandeira}/${input.competencia}`;
+  const base = `${input.regional}/${input.bandeira}/${input.competencia}`;
+  if (input.versao != null && input.versao > 1) {
+    return `${base}/v${input.versao}`;
+  }
+  return base;
 }
 
 export function manifestFilePath(input: {
   regional: string;
   bandeira: string;
   competencia: string;
+  versao?: number;
 }): string {
   return `${manifestRootPath(input)}/manifest.json`;
 }
@@ -97,6 +103,7 @@ export function lojaGestaoChunkPath(input: {
   competencia: string;
   loja: number;
   parte: number;
+  versao?: number;
 }): string {
   const n = String(input.parte).padStart(3, "0");
   return `${manifestRootPath(input)}/lojas/${input.loja}/gestao/parte-${n}.json`;
@@ -110,6 +117,21 @@ export function lojaGestaoIndexPath(input: {
 }): string {
   return `${manifestRootPath(input)}/lojas/${input.loja}/gestao/index.json`;
 }
+
+/** Path do ponteiro de versão ativa (ativo.json). */
+export function ativoPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+}): string {
+  return `${input.regional}/${input.bandeira}/${input.competencia}/ativo.json`;
+}
+
+export type AtivoJson = {
+  versao: number;
+  manifestEm: string;
+  ativadoEm: string;
+};
 
 /** Índice PQ de compradores (rede|setor|…) para resolver ** Não Identificado no frontend. */
 export function catalogoCompradoresPath(input: {
@@ -132,7 +154,8 @@ export function isRelativeStoragePath(path: string): boolean {
 
 export function isPilotoPath(path: string): boolean {
   const prefix = `${HIBRIDO_PILOTO.regional}/${HIBRIDO_PILOTO.bandeira}/${HIBRIDO_PILOTO.competencia}`;
-  return path.startsWith(prefix);
+  const v1Prefix = `${prefix}/v1`;
+  return path.startsWith(prefix) || path.startsWith(v1Prefix);
 }
 
 export { COMPETENCIA_RE, DATE_RE };

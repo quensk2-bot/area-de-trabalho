@@ -180,7 +180,7 @@ export function consolidarProdutoLoja(
     fontesAusentes.push("bre");
   }
 
-  const redeJoin = joinRede(produto.codFornecedor, indexes, diagnosticosJoin);
+  const redeJoin = joinRede(produto.codFornecedor, produto.fornecedor, indexes, diagnosticosJoin);
   alertas.push(...redeJoin.alertas);
   if (!redeJoin.rede) {
     incrementarMetrica(metricasParciais, "semRede");

@@ -1,5 +1,10 @@
 import XLSX from "xlsx";
-import type { CatalogoComprador, CatalogoCompradorConflito, CatalogoLoadResult } from "./catalogTypes.ts";
+import type {
+  CatalogoComprador,
+  CatalogoCompradorConflito,
+  CatalogoLoadResult,
+  CatalogoRedeFornecedor,
+} from "./catalogTypes.ts";
 import { deduplicar } from "./catalogUtils.ts";
 
 type SheetRow = Record<string, unknown>;
@@ -8,27 +13,49 @@ function chaveComprador(c: { rede: string; secao: string; nivel2: string; nivel3
   return `${c.rede}|${c.secao}|${c.nivel2}|${c.nivel3}`;
 }
 
-function parseCompradoresPrincipal(rows: SheetRow[]): CatalogoComprador[] {
+function texto(row: SheetRow, ...chaves: string[]): string {
+  for (const chave of chaves) {
+    const valor = row[chave];
+    if (valor != null && String(valor).trim() !== "") return String(valor).trim();
+  }
+  return "";
+}
+
+function parseCompradoresPrincipal(
+  rows: SheetRow[],
+  redeFornecedores: readonly CatalogoRedeFornecedor[],
+): CatalogoComprador[] {
+  const redePorFornecedor = new Map(redeFornecedores.map((item) => [item.seqPessoa, item]));
   return rows
-    .map((r) => ({
-      rede: String(r.REDE ?? "").trim(),
-      secao: String(r["SEÇÃO"] ?? r.SECAO ?? "").trim(),
-      nivel2: String(r["NIVEL 2"] ?? "").trim(),
-      nivel3: String(r["NIVEL 3"] ?? "").trim(),
-      comprador: String(r.COMPRADOR ?? "").trim(),
-      origem: "principal" as const,
-    }))
+    .map((r) => {
+      const codFornecedor = Number(texto(r, "CODFORNEC"));
+      const cadastroRede = Number.isFinite(codFornecedor) ? redePorFornecedor.get(codFornecedor) : undefined;
+      const rede =
+        texto(r, "REDE") ||
+        cadastroRede?.nomeRede?.trim() ||
+        texto(r, "RAZÃO", "RAZAO") ||
+        cadastroRede?.razao?.trim() ||
+        "";
+      return {
+        rede,
+        secao: texto(r, "SEÇÃO", "SECAO"),
+        nivel2: texto(r, "NIVEL 2"),
+        nivel3: texto(r, "NIVEL 3"),
+        comprador: texto(r, "COMPRADOR"),
+        origem: "principal" as const,
+      };
+    })
     .filter((c) => c.rede !== "" && c.comprador !== "");
 }
 
 function parseCompradoresCorrecao(rows: SheetRow[]): CatalogoComprador[] {
   return rows
     .map((r) => ({
-      rede: String(r.Rede ?? r.REDE ?? "").trim(),
-      secao: String(r.SETOR ?? r["SEÇÃO"] ?? "").trim(),
-      nivel2: String(r.SETOR2 ?? r["NIVEL 2"] ?? "").trim(),
-      nivel3: String(r.CATEGORIA ?? r["NIVEL 3"] ?? "").trim(),
-      comprador: String(r.COMPRADOR ?? "").trim(),
+      rede: texto(r, "Rede", "REDE"),
+      secao: texto(r, "SETOR", "SEÇÃO", "SECAO"),
+      nivel2: texto(r, "SETOR2", "NIVEL 2"),
+      nivel3: texto(r, "CATEGORIA", "NIVEL 3"),
+      comprador: texto(r, "COMPRADOR"),
       origem: "correcao" as const,
     }))
     .filter((c) => c.rede !== "" && c.comprador !== "");
@@ -75,7 +102,10 @@ export function mergeCompradores(
   return { itens, conflitos, alertas };
 }
 
-export function parseCompradores(filePath: string): CatalogoLoadResult<CatalogoComprador> & {
+export function parseCompradores(
+  filePath: string,
+  redeFornecedores: readonly CatalogoRedeFornecedor[] = [],
+): CatalogoLoadResult<CatalogoComprador> & {
   conflitos: CatalogoCompradorConflito[];
 } {
   const workbook = XLSX.readFile(filePath);
@@ -89,7 +119,10 @@ export function parseCompradores(filePath: string): CatalogoLoadResult<CatalogoC
     ? XLSX.utils.sheet_to_json<SheetRow>(workbook.Sheets[correcaoSheet], { defval: null })
     : [];
 
-  const merged = mergeCompradores(parseCompradoresPrincipal(principalRows), parseCompradoresCorrecao(correcaoRows));
+  const merged = mergeCompradores(
+    parseCompradoresPrincipal(principalRows, redeFornecedores),
+    parseCompradoresCorrecao(correcaoRows),
+  );
   const dedup = deduplicar(merged.itens, chaveComprador);
 
   return {
@@ -134,23 +167,6 @@ export function resolverComprador(
     };
   }
 
-  const compradoresRede = [
-    ...new Set(
-      catalogo
-        .filter((item) => item.rede === rede && item.comprador.trim() !== "")
-        .map((item) => item.comprador.trim()),
-    ),
-  ];
-  if (compradoresRede.length === 1) {
-    return {
-      comprador: compradoresRede[0]!,
-      origemComprador: "rede_unica",
-      chaveComprador: `rede:${rede}`,
-      fallbackComprador: true,
-      alertas: [`Comprador resolvido por rede com comprador único: ${rede}`],
-    };
-  }
-
   const motivo = hierarquiaCompleta
     ? "Comprador não encontrado para hierarquia informada"
     : "Hierarquia incompleta para resolução de comprador";
@@ -159,11 +175,6 @@ export function resolverComprador(
     origemComprador: null,
     chaveComprador: chaveHierarquia,
     fallbackComprador: false,
-    alertas: [
-      motivo,
-      ...(compradoresRede.length > 1
-        ? [`Fallback por rede bloqueado: ${rede} possui ${compradoresRede.length} compradores distintos`]
-        : []),
-    ],
+    alertas: [motivo],
   };
 }

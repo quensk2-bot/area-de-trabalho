@@ -183,13 +183,14 @@ describe("consolidador rede e comprador", () => {
     assert.equal(r.itens[0].rede, "REDE ALPHA");
   });
 
-  it("15. rede usa RAZAO quando NOME_REC está ausente", () => {
+  it("15. rede usa RAZAO quando NOME_REC está ausente e comprador exato existe", () => {
     const catalogos = loadFixturesCatalogos();
+    // O produto padrão tem hierarquia: MERCEARIA | BEBIDAS | REFRIGERANTES
     catalogos.compradores.push({
       rede: "FORN B",
-      secao: "OUTRA SECAO",
-      nivel2: "OUTRO NIVEL",
-      nivel3: "OUTRA CATEGORIA",
+      secao: "MERCEARIA",
+      nivel2: "BEBIDAS",
+      nivel3: "REFRIGERANTES",
       comprador: "LUCIMARY",
       origem: "principal",
     });
@@ -199,7 +200,46 @@ describe("consolidador rede e comprador", () => {
     const r = consolidarLote(entrada);
     assert.equal(r.itens[0].rede, "FORN B");
     assert.equal(r.itens[0].comprador, "LUCIMARY");
-    assert.equal(r.itens[0].origemComprador, "rede_unica");
+    assert.equal(r.itens[0].origemComprador, "hierarquia_exata");
+    assert.equal(r.itens[0].fallbackComprador, false);
+    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "rede_fallback_razao"));
+  });
+
+  it("15b. fornecedor ausente no Rede.txt usa RAZAO do produto e resolve comprador exato", () => {
+    const catalogos = loadFixturesCatalogos();
+    catalogos.compradores.push({
+      rede: "AROSA PROD ALIM LTDA",
+      secao: "62-PERECIVEIS",
+      nivel2: "40-CONGELADOS",
+      nivel3: "SOBREMESAS CONGELADAS",
+      comprador: "ISABELA",
+      origem: "correcao",
+    });
+    const entrada = entradaConsolidadorBase(catalogos, {
+      produtosLoja: [
+        produtoConsolidadorBase({
+          codFornecedor: 725951,
+          fornecedor: "AROSA PROD ALIM LTDA",
+          hierarquia: {
+            categoriaOriginal:
+              "62-PERECIVEIS|40-CONGELADOS|SOBREMESAS CONGELADAS|SOBREMESAS CONGELADAS|OUTRAS SOBREMESAS CONG.",
+            divisao: "62-PERECIVEIS",
+            setorN2: "40-CONGELADOS",
+            grupoN3: "SOBREMESAS CONGELADAS",
+            subgrupoN4: "SOBREMESAS CONGELADAS",
+            tipoN5: "OUTRAS SOBREMESAS CONG.",
+            niveisEncontrados: 5,
+            ambiguidade: null,
+          },
+        }),
+      ],
+    });
+
+    const r = consolidarLote(entrada);
+    assert.equal(r.itens[0].rede, "AROSA PROD ALIM LTDA");
+    assert.equal(r.itens[0].comprador, "ISABELA");
+    assert.equal(r.itens[0].origemComprador, "correcao_exata");
+    assert.equal(r.itens[0].fallbackComprador, false);
     assert.ok(r.itens[0].alertas.some((a) => a.codigo === "rede_fallback_razao"));
   });
 
@@ -219,15 +259,14 @@ describe("consolidador rede e comprador", () => {
     assert.ok(r.itens[0].alertas.some((a) => a.codigo === "comprador_ausente"));
   });
 
-  it("18. hierarquia incompleta usa fallback somente para rede de comprador único", () => {
+  it("18. hierarquia incompleta não recebe comprador sem fallback", () => {
     const catalogos = loadFixturesCatalogos();
     const p = produtoConsolidadorBase();
     p.hierarquia = { ...p.hierarquia, setorN2: null, niveisEncontrados: 3 };
     const r = consolidarLote(entradaConsolidadorBase(catalogos, { produtosLoja: [p] }));
-    assert.equal(r.itens[0].comprador, "JOAO_CORR");
-    assert.equal(r.itens[0].origemComprador, "rede_unica");
-    assert.equal(r.itens[0].fallbackComprador, true);
-    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "comprador_fallback_rede_unica"));
+    assert.equal(r.itens[0].comprador, null);
+    assert.equal(r.itens[0].origemComprador, null);
+    assert.equal(r.itens[0].fallbackComprador, false);
   });
 });
 

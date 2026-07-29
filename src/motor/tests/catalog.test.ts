@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
+import XLSX from "xlsx";
 import { loadCatalogos } from "../catalog/catalogService.ts";
-import { mergeCompradores, resolverComprador } from "../catalog/parseCompradores.ts";
+import { mergeCompradores, parseCompradores, resolverComprador } from "../catalog/parseCompradores.ts";
 import { parseRede, resolverRedeFornecedor } from "../catalog/parseRede.ts";
 import { parseOrdemCd } from "../catalog/parseOrdemCds.ts";
 import { isProdutoExclusivo, getModCurtoPrazo } from "../catalog/parseProdutosExclusivos.ts";
@@ -95,10 +99,9 @@ describe("catalog", () => {
     const res = resolverComprador(catalogo, "REDE MULTI", null, "BEBIDAS", "REFRIGERANTES");
     assert.equal(res.comprador, null);
     assert.ok(res.alertas.some((a) => a.includes("Hierarquia incompleta")));
-    assert.ok(res.alertas.some((a) => a.includes("fallback") || a.includes("Fallback")));
   });
 
-  it("26. 3M resolve LUCIMARY somente porque a rede possui comprador único", () => {
+  it("26. hierarquia incompleta sem fallback retorna null", () => {
     const catalogo = [
       {
         rede: "3M DO BRASIL",
@@ -118,10 +121,8 @@ describe("catalog", () => {
       },
     ];
     const res = resolverComprador(catalogo, "3M DO BRASIL", "60-MERCEARIA", "34-PERFUMARIA", null);
-    assert.equal(res.comprador, "LUCIMARY");
-    assert.equal(res.origemComprador, "rede_unica");
-    assert.equal(res.chaveComprador, "rede:3M DO BRASIL");
-    assert.equal(res.fallbackComprador, true);
+    assert.equal(res.comprador, null);
+    assert.equal(res.fallbackComprador, false);
   });
 
   it("27. rede com compradores distintos nunca recebe fallback", () => {
@@ -132,5 +133,42 @@ describe("catalog", () => {
     const res = resolverComprador(catalogo, "R", "D9", "S9", "C9");
     assert.equal(res.comprador, null);
     assert.equal(res.fallbackComprador, false);
+  });
+
+  it("28. planilha oficial deriva REDE por CODFORNEC e preserva cabeçalhos acentuados", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "motor-compradores-"));
+    const workbookPath = path.join(tempDir, "compradores-oficial.xlsx");
+    try {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet([
+          {
+            CODFORNEC: 1001,
+            RAZÃO: "FORN A",
+            SEÇÃO: "60-MERCEARIA",
+            "NIVEL 2": "34-PERFUMARIA",
+            "NIVEL 3": "CUIDADOS FEMININOS",
+            COMPRADOR: "LUCIMARY",
+          },
+        ]),
+        "COMPRADORES",
+      );
+      XLSX.writeFile(wb, workbookPath);
+
+      const rede = parseRede(fixtures.rede);
+      const parsed = parseCompradores(workbookPath, rede.itens);
+      assert.equal(parsed.itens.length, 1);
+      assert.deepEqual(parsed.itens[0], {
+        rede: "REDE ALPHA",
+        secao: "60-MERCEARIA",
+        nivel2: "34-PERFUMARIA",
+        nivel3: "CUIDADOS FEMININOS",
+        comprador: "LUCIMARY",
+        origem: "principal",
+      });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

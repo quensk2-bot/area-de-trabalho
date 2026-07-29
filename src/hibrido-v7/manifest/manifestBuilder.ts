@@ -38,6 +38,7 @@ export function buildManifest(input: ManifestBuilderInput): RupturaManifest {
     regional: input.regional,
     bandeira: input.bandeira,
     competencia: input.competencia,
+    versao: input.versao,
   };
 
   const lojas: Record<string, ManifestLojaPaths> = {};
@@ -80,5 +81,6 @@ export function manifestStoragePath(manifest: RupturaManifest): string {
     regional: manifest.regional,
     bandeira: manifest.bandeira,
     competencia: manifest.competencia,
+    versao: manifest.versao,
   });
 }

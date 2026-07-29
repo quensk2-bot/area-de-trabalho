@@ -79,7 +79,7 @@ export function loadCatalogos(paths: CatalogPaths): CatalogServiceResult {
 
   let compradores: CatalogoServiceResult["catalogos"]["compradores"] = [];
   if (paths.compradores && fileExists(paths.compradores)) {
-    const parsed = parseCompradores(paths.compradores);
+    const parsed = parseCompradores(paths.compradores, rede.itens);
     compradores = parsed.itens;
     conflitosComprador.push(...parsed.conflitos);
     alertas.push(...parsed.alertas);

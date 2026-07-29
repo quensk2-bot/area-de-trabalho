@@ -6,6 +6,7 @@ import {
   dashboardRegionalOficialPath,
   dashboardRegionalPath,
   lojaCdsPath,
+  lojaGestaoChunkPath,
   lojaGestaoPath,
   lojaResumoOficialPath,
   lojaResumoPath,
@@ -33,6 +34,7 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     regional: input.regional,
     bandeira: input.bandeira,
     competencia: input.competencia,
+    versao: input.versao,
   };
 
   const artefatos: PublicacaoHibridaArtefato[] = [];
@@ -99,8 +101,9 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     });
 
     if (gestaoGen.chunked && gestaoGen.partes) {
-      for (const parte of gestaoGen.partes) {
-        const chunkPath = `${scope.regional}/${scope.bandeira}/${scope.competencia}/lojas/${loja}/${parte.pathSuffix}`;
+      for (let idx = 0; idx < gestaoGen.partes.length; idx++) {
+        const parte = gestaoGen.partes[idx];
+        const chunkPath = lojaGestaoChunkPath({ ...scope, loja, parte: idx + 1 });
         artefatos.push({
           path: chunkPath,
           json: { produtos: parte.produtos },

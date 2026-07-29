@@ -1,6 +1,7 @@
 import type { MotorProdutoLojaConsolidado } from "../../consolidar/consolidacaoTypes.ts";
 import type { GestaoJson, HibridoProdutoGestao } from "./hibridoTypes.ts";
 import { HIBRIDO_GESTAO_CHUNK_MAX_BYTES } from "../../../hibrido-v7/constants.ts";
+import { calcItensVdaPendencia } from "./calcCapaCamposPq.ts";
 
 function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
   return {
@@ -59,7 +60,7 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     rupDiasRecebtoMaiorData: null,
     ultimoPedidoLoja: null,
     ativacaoRuptura30SemPedido: null,
-    itensVdaPendencia: null,
+    itensVdaPendencia: calcItensVdaPendencia(item),
     rupSemPendenciaVda: null,
     rupInventarioPct: null,
     rupSemInventarioPct: null,

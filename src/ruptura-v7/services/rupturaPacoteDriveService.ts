@@ -1,8 +1,6 @@
 import { supabase } from "../../lib/supabaseClient.ts";
 import { isModoHibrido } from "../../lib/env.ts";
 import { consumoDb } from "./rupturaDb.ts";
-
-const infraDb = () => supabase.schema("infra_v7");
 import {
   VERSAO_CATALOGO_MT,
   VERSAO_MOTOR_PADRAO,
@@ -16,6 +14,8 @@ import {
   type ResumoPacoteDrive,
 } from "../../motor/drive/validacaoPacoteDrive.ts";
 import type { ArquivoDriveRemoto, ListarDriveResponse } from "./rupturaDriveListService.ts";
+
+const infraDb = () => supabase.schema("infra_v7");
 
 export type DrivePastaMotorAtiva = {
   id: string;

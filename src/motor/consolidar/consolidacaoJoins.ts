@@ -235,6 +235,7 @@ export function joinValidacao(
 
 export function joinRede(
   codFornecedor: number | null,
+  razaoFallback: string | null,
   indexes: MotorConsolidacaoIndexes,
   diagnosticos: MotorJoinDiagnostico[],
 ): MotorJoinRedeResultado {
@@ -286,6 +287,22 @@ export function joinRede(
     );
     diagnosticos.push(diagnostico);
     return { rede: nomes[0], alertas, diagnostico };
+  }
+
+  const razaoProduto = razaoFallback?.trim() ?? "";
+  if (razaoProduto !== "") {
+    const diagnostico = criarJoinDiagnostico(
+      "rede",
+      chave,
+      1,
+      true,
+      "rede_razao_produto",
+      "info",
+      `Rede resolvida via RAZAO do produto: ${razaoProduto}`,
+    );
+    diagnosticos.push(diagnostico);
+    alertas.push(alerta("rede_fallback_razao", diagnostico.mensagem));
+    return { rede: razaoProduto, alertas, diagnostico };
   }
 
   const razoes = [...new Set(indexes.razaoPorFornecedor.get(codFornecedor) ?? [])];
