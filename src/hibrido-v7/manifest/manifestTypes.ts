@@ -2,6 +2,8 @@ export type ManifestStatus = "rascunho" | "validando" | "publicando" | "concluid
 
 export type ManifestLojaPaths = {
   resumo: string;
+  /** KPIs modo OFICIAL_COMPATIVEL (Base Limpa). */
+  resumoOficial?: string;
   gestao: string;
   cds: string;
 };
@@ -20,6 +22,9 @@ export type RupturaManifest = {
   baseCsvDriveFileId?: string | null;
   dashboardRegional: string;
   dashboardLojas: string;
+  /** Dashboard agregado modo OFICIAL_COMPATIVEL (opcional — manifests legados). */
+  dashboardRegionalOficial?: string;
+  dashboardLojasOficial?: string;
   lojas: Record<string, ManifestLojaPaths>;
 };
 
@@ -55,6 +60,8 @@ export type ResumoLojaJson = {
   regional: string;
   bandeira: string;
   dataReferencia: string;
+  /** V7_INTEGRAL | OFICIAL_COMPATIVEL */
+  modoUniverso?: "V7_INTEGRAL" | "OFICIAL_COMPATIVEL";
   totalProdutos: number;
   /** Operacional CP+MP+LP+bloqueados — alias legado de totalRupturaGeral */
   ruptura: number;
@@ -76,7 +83,25 @@ export type ResumoLojaJson = {
   totalNaoCentralizados: number;
   totalCentralizacaoSemInfo?: number;
   atualizadoEm: string;
-  setores?: Array<{ setor: string; totalRuptura: number }>;
+  setores?: Array<{
+    setor: string;
+    totalRuptura: number;
+    totalBaseLimpa?: number;
+    percentualRuptura?: number | null;
+    curtoPrazo?: number;
+    medioPrazo?: number;
+    longoPrazo?: number;
+  }>;
+  /** Agregação por divisão (ex.: 60-MERCEARIA) — ruptura classificada e base limpa por grupo. */
+  divisoes?: Array<{
+    divisao: string;
+    totalRuptura: number;
+    totalBaseLimpa: number;
+    percentualRuptura: number | null;
+    curtoPrazo?: number;
+    medioPrazo?: number;
+    longoPrazo?: number;
+  }>;
   fornecedores?: Array<{ fornecedor: string; comprador: string | null; totalRuptura: number }>;
   compradores?: Array<{ comprador: string; totalRuptura: number }>;
   estoquePorCd?: Array<{ codigoFisico: number | null; posicaoLogica: number; totalEstoque: number }>;

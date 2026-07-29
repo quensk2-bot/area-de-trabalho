@@ -9,6 +9,8 @@ export type RupturaFiltrosContexto = {
   loja: number;
   /** Lojas selecionadas. Vazio = Todas no escopo. */
   lojas: number[];
+  /** Compradores selecionados. Vazio = todos no escopo. */
+  compradores?: string[];
 };
 
 export type RupturaFiltrosProdutos = RupturaFiltrosContexto & {

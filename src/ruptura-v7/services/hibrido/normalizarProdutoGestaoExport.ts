@@ -45,6 +45,9 @@ export function normalizarProdutoGestaoExport(raw: LegacyGestaoRaw): HibridoProd
     razaoFornecedor: pick<string>(raw, "razaoFornecedor", "razao_fornecedor") ?? null,
     rede: pick<string>(raw, "rede") ?? null,
     comprador: pick<string>(raw, "comprador") ?? null,
+    origemComprador: pick(raw, "origemComprador", "origem_comprador") ?? null,
+    chaveComprador: pick<string>(raw, "chaveComprador", "chave_comprador") ?? null,
+    fallbackComprador: pick<boolean>(raw, "fallbackComprador", "fallback_comprador") ?? false,
     estoqueLoja: pick<number>(raw, "estoqueLoja", "estoque_loja") ?? null,
     mediaVendaDia: pick<number>(raw, "mediaVendaDia", "media_venda_dia") ?? null,
     parMin: pick<number>(raw, "parMin", "par_min") ?? null,
@@ -62,6 +65,7 @@ export function normalizarProdutoGestaoExport(raw: LegacyGestaoRaw): HibridoProd
     qualidadeDados: pick(raw, "qualidadeDados", "qualidade_dados") ?? null,
     setorN2: pick<string>(raw, "setorN2", "setor_n2") ?? null,
     divisao: pick<string>(raw, "divisao") ?? null,
+    grupoN3: pick<string>(raw, "grupoN3", "grupo_n3") ?? null,
     categoriaN1: pick<string>(raw, "categoriaN1", "categoria_n1") ?? null,
     embalagemCompra: pick<string>(raw, "embalagemCompra", "embalagem_compra") ?? null,
     ruptura104c: pick<boolean>(raw, "ruptura104c", "ruptura_104c") ?? null,
@@ -87,6 +91,14 @@ export function normalizarProdutoGestaoExport(raw: LegacyGestaoRaw): HibridoProd
     acaoCurtoPrazo,
     acaoMedioPrazo,
     textoProdutoCentralizado: pick<string>(raw, "textoProdutoCentralizado", "texto_produto_centralizado") ?? null,
+    rupDiasRecebtoMaiorData: pick<number>(raw, "rupDiasRecebtoMaiorData", "rup_dias_recebto_maior_data") ?? null,
+    ultimoPedidoLoja: pick<number>(raw, "ultimoPedidoLoja", "ultimo_pedido_loja") ?? null,
+    ativacaoRuptura30SemPedido:
+      pick<number>(raw, "ativacaoRuptura30SemPedido", "ativacao_ruptura_30_sem_pedido") ?? null,
+    itensVdaPendencia: pick<number>(raw, "itensVdaPendencia", "itens_vda_pendencia") ?? null,
+    rupSemPendenciaVda: pick<number>(raw, "rupSemPendenciaVda", "rup_sem_pendencia_vda") ?? null,
+    rupInventarioPct: pick<number>(raw, "rupInventarioPct", "rup_inventario_pct") ?? null,
+    rupSemInventarioPct: pick<number>(raw, "rupSemInventarioPct", "rup_sem_inventario_pct") ?? null,
   };
 }
 

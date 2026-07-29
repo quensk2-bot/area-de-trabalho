@@ -113,7 +113,11 @@ export type DmValidacaoResultado = {
 export type DmPipelineEntrada = {
   consolidado: readonly MotorProdutoLojaConsolidado[];
   incluirExportacao?: boolean;
+  incluirDiagnostico?: boolean;
+  incluirMetricas?: boolean;
   catalogoPorPosicao?: ReadonlyMap<number, number | null>;
+  incluirValidacaoCompleta?: boolean;
+  onProgresso?: (fase: string, extra?: Record<string, unknown>) => void;
 };
 
 export type DmExportacaoProduto = {

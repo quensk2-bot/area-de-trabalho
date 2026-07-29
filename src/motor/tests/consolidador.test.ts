@@ -209,13 +209,15 @@ describe("consolidador rede e comprador", () => {
     assert.ok(r.itens[0].alertas.some((a) => a.codigo === "comprador_ausente"));
   });
 
-  it("18. comprador ausente hierarquia incompleta", () => {
+  it("18. hierarquia incompleta usa fallback somente para rede de comprador único", () => {
     const catalogos = loadFixturesCatalogos();
     const p = produtoConsolidadorBase();
     p.hierarquia = { ...p.hierarquia, setorN2: null, niveisEncontrados: 3 };
     const r = consolidarLote(entradaConsolidadorBase(catalogos, { produtosLoja: [p] }));
-    assert.equal(r.itens[0].comprador, null);
-    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "comprador_ausente"));
+    assert.equal(r.itens[0].comprador, "JOAO_CORR");
+    assert.equal(r.itens[0].origemComprador, "rede_unica");
+    assert.equal(r.itens[0].fallbackComprador, true);
+    assert.ok(r.itens[0].alertas.some((a) => a.codigo === "comprador_fallback_rede_unica"));
   });
 });
 

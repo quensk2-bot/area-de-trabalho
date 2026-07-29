@@ -11,6 +11,9 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     razaoFornecedor: item.fornecedor,
     rede: item.rede,
     comprador: item.comprador,
+    origemComprador: item.origemComprador ?? null,
+    chaveComprador: item.chaveComprador ?? null,
+    fallbackComprador: item.fallbackComprador ?? false,
     estoqueLoja: item.estoqueLoja,
     mediaVendaDia: item.mediaVendaUnDia,
     parMin: item.parMin,
@@ -28,6 +31,7 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     qualidadeDados: item.qualidadeDados,
     setorN2: item.setorN2,
     divisao: item.divisao,
+    grupoN3: item.grupoN3,
     categoriaN1: item.categoriaN1,
     embalagemCompra: item.embalagemCompra,
     ruptura104c: item.ruptura104c,
@@ -52,6 +56,13 @@ function mapProduto(item: MotorProdutoLojaConsolidado): HibridoProdutoGestao {
     acaoCurtoPrazo: item.acaoCurtoPrazo,
     acaoMedioPrazo: item.acaoMedioPrazo,
     textoProdutoCentralizado: item.textoProdutoCentralizado,
+    rupDiasRecebtoMaiorData: null,
+    ultimoPedidoLoja: null,
+    ativacaoRuptura30SemPedido: null,
+    itensVdaPendencia: null,
+    rupSemPendenciaVda: null,
+    rupInventarioPct: null,
+    rupSemInventarioPct: null,
   };
 }
 

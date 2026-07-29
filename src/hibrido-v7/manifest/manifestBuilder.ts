@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import type { ManifestLojaPaths, RupturaManifest } from "./manifestTypes.ts";
 import {
+  dashboardLojasOficialPath,
   dashboardLojasPath,
+  dashboardRegionalOficialPath,
   dashboardRegionalPath,
   lojaCdsPath,
   lojaGestaoPath,
+  lojaResumoOficialPath,
   lojaResumoPath,
   manifestFilePath,
 } from "./manifestPaths.ts";
@@ -42,6 +45,7 @@ export function buildManifest(input: ManifestBuilderInput): RupturaManifest {
     const withLoja = { ...scope, loja };
     lojas[String(loja)] = {
       resumo: lojaResumoPath(withLoja),
+      resumoOficial: lojaResumoOficialPath(withLoja),
       gestao: lojaGestaoPath(withLoja),
       cds: lojaCdsPath(withLoja),
     };
@@ -61,6 +65,8 @@ export function buildManifest(input: ManifestBuilderInput): RupturaManifest {
     baseCsvDriveFileId: input.baseCsvDriveFileId ?? null,
     dashboardRegional: dashboardRegionalPath(scope),
     dashboardLojas: dashboardLojasPath(scope),
+    dashboardRegionalOficial: dashboardRegionalOficialPath(scope),
+    dashboardLojasOficial: dashboardLojasOficialPath(scope),
     lojas,
   };
 

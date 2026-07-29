@@ -111,6 +111,7 @@ export function RupturaGestaoPage() {
   );
   const [configColunasAberto, setConfigColunasAberto] = useState(false);
   const [hybridState, setHybridState] = useState<HybridServiceError | null>(null);
+  const [visaoOficial, setVisaoOficial] = useState(true);
 
   const filtrosCompletos = useMemo((): RupturaFiltrosProdutos => {
     const termo = buscaDebounced.trim();
@@ -132,6 +133,7 @@ export function RupturaGestaoPage() {
         pagina,
         tamanho,
         authCtx: permCtx,
+        visaoOficial,
         onProgress: (p) => setLoadProgress(`Carregando loja ${p.atual} de ${p.total}…`),
       });
       setLoadProgress(null);
@@ -152,7 +154,7 @@ export function RupturaGestaoPage() {
     setDados(r.dados);
     setTotal(r.total);
     setLoading(false);
-  }, [filtrosCompletos, pagina, tamanho, permCtx]);
+  }, [filtrosCompletos, pagina, tamanho, permCtx, visaoOficial]);
 
   useEffect(() => {
     void carregar();
@@ -160,7 +162,7 @@ export function RupturaGestaoPage() {
 
   useEffect(() => {
     setPagina(1);
-  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, ctx.lojas, buscaDebounced, filtros.classificacao]);
+  }, [ctx.regional, ctx.bandeira, ctx.dataReferencia, ctx.loja, ctx.lojas, buscaDebounced, filtros.classificacao, visaoOficial]);
 
   useEffect(() => {
     if (isModoHibrido()) invalidateGestaoCache();
@@ -205,6 +207,24 @@ export function RupturaGestaoPage() {
       ) : null}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {isModoHibrido() ? (
+          <>
+            <button
+              type="button"
+              style={visaoOficial ? buttonStyle : buttonGhostStyle}
+              onClick={() => setVisaoOficial(true)}
+            >
+              Visão Oficial
+            </button>
+            <button
+              type="button"
+              style={!visaoOficial ? buttonStyle : buttonGhostStyle}
+              onClick={() => setVisaoOficial(false)}
+            >
+              Universo Integral V7
+            </button>
+          </>
+        ) : null}
         <input
           style={{ ...inputStyle, minWidth: 220 }}
           placeholder="Buscar produto/descrição (mín. 2 caracteres)"

@@ -132,6 +132,9 @@ export type MotorProdutoLojaConsolidado = {
   fornecedor: string | null;
   rede: string | null;
   comprador: string | null;
+  origemComprador?: "hierarquia_exata" | "correcao_exata" | "rede_unica" | null;
+  chaveComprador?: string | null;
+  fallbackComprador?: boolean;
   statusProduto: string | null;
   familia: number | null;
   divisao: string | null;

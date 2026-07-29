@@ -71,7 +71,7 @@ export function validarLotePersistencia(
     }
   }
 
-  const produtosComFilhas = new Set(lote.cds.map((c) => chaveDmTexto(c)));
+  const produtosComFilhas = new Set(cdsPorProduto.keys());
   for (const produto of lote.produtos) {
     const chave = chaveDmTexto(produto);
     const qtdFilhas = cdsPorProduto.get(chave) ?? 0;

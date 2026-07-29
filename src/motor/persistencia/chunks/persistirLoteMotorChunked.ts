@@ -12,6 +12,7 @@ import {
 } from "./chunkRpc.ts";
 import type {
   ChunkProgressoCallback,
+  ChunkPlanejado,
   PersistirLoteChunkedEntrada,
   PersistirLoteChunkedResultado,
 } from "./chunkTypes.ts";
@@ -24,6 +25,34 @@ export type PersistirLoteChunkedOpcoes = {
 
 function assertNaoCancelado(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error("Operacao cancelada");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isErroRetentavel(erro: unknown): boolean {
+  const msg = erro instanceof Error ? erro.message : String(erro);
+  return /timeout|timed out|ECONNRESET|fetch failed|502|503|504/i.test(msg);
+}
+
+async function persistirChunkComRetry(
+  db: MotorV7Db,
+  execucaoId: string,
+  chunk: ChunkPlanejado,
+  maxRetries = 8,
+): Promise<Record<string, unknown>> {
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+    try {
+      return await rpcPersistirChunk(db, execucaoId, chunk);
+    } catch (erro) {
+      ultimoErro = erro;
+      if (!isErroRetentavel(erro) || tentativa >= maxRetries) throw erro;
+      await sleep(5000 * tentativa);
+    }
+  }
+  throw ultimoErro;
 }
 
 export async function persistirLoteMotorChunked(
@@ -54,13 +83,23 @@ export async function persistirLoteMotorChunked(
   });
   emitirProgresso(opcoes.callbackProgresso, progresso);
 
+  progresso = atualizarProgresso(progresso, {
+    etapa: "planejando_chunks",
+    mensagem: "Planejando chunks",
+    duracaoMs: Date.now() - inicioMs,
+  });
+  emitirProgresso(opcoes.callbackProgresso, progresso);
+
   const chunks = planejarChunks(entrada.lote, {
     tamanhoChunk: entrada.tamanhoChunk,
     limiteBytes: entrada.limiteBytesPayload,
   });
   const totais = totalizarChunks(chunks);
-  const rpcFull = mapearChunkParaRpc(entrada.lote.produtos, entrada.lote.cds);
-  const hashPacote = entrada.hashPacote || hashPacoteLote(rpcFull.produtos, rpcFull.cds);
+  let hashPacote = entrada.hashPacote;
+  if (!hashPacote) {
+    const rpcFull = mapearChunkParaRpc(entrada.lote.produtos, entrada.lote.cds);
+    hashPacote = hashPacoteLote(rpcFull.produtos, rpcFull.cds);
+  }
 
   progresso = atualizarProgresso(progresso, {
     etapa: "planejando_chunks",
@@ -146,7 +185,7 @@ export async function persistirLoteMotorChunked(
     }
 
     try {
-      await rpcPersistirChunk(db, execucaoId, chunk);
+      await persistirChunkComRetry(db, execucaoId, chunk);
     } catch (erro) {
       retries += 1;
       throw erro;

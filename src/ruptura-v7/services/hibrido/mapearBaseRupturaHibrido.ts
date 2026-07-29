@@ -205,8 +205,8 @@ function valorColunaHibrido(
       return produto.estoqueLoja;
     case "parMax":
       return produto.parMax;
-    case "pendenciaCpaCd":
-      return produto.pendenciaCpaCd;
+    case "pendenciaLoja":
+      return produto.pendenciaLoja;
     case "embalagemCompra":
       return produto.embalagemCompra;
     case "setorNome":
@@ -214,7 +214,7 @@ function valorColunaHibrido(
     case "setorN2":
       return produto.setorN2;
     case "categoriaN1":
-      return produto.categoriaN1;
+      return produto.grupoN3 ?? produto.categoriaN1;
     case "ruptura104cTexto":
       return formatRuptura104cTexto(produto.ruptura104c);
     case "flagRuptura104c":

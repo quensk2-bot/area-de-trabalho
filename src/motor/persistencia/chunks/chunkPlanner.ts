@@ -4,70 +4,88 @@ import { estimarBytesPayload, hashChunkPayload, mapearChunkParaRpc } from "./chu
 import type { ChunkPlanejado } from "./chunkTypes.ts";
 import { CHUNK_LIMITE_BYTES_PADRAO, CHUNK_TAMANHO_PADRAO } from "./chunkTypes.ts";
 
-function ordenarProdutos(lote: DmLote): DmLote["produtos"] {
-  return [...lote.produtos].sort((a, b) => a.loja - b.loja || a.seqproduto - b.seqproduto);
-}
-
-function cdsDoProduto(lote: DmLote, produto: DmLote["produtos"][number]): DmLote["cds"] {
-  const chave = chaveProdutoTemporaria(produto.regional, produto.loja, produto.seqproduto);
-  return lote.cds
-    .filter((c) => chaveProdutoTemporaria(c.regional, c.loja, c.seqproduto) === chave)
-    .sort((a, b) => a.posicaoLogica - b.posicaoLogica);
-}
-
 export type PlanejarChunksOpcoes = {
   tamanhoChunk?: number;
   limiteBytes?: number;
 };
 
+function ordenarProdutos(lote: DmLote): DmLote["produtos"] {
+  return [...lote.produtos].sort((a, b) => a.loja - b.loja || a.seqproduto - b.seqproduto);
+}
+
+function indexarCdsPorProduto(lote: DmLote): Map<string, DmLote["cds"]> {
+  const map = new Map<string, DmLote["cds"]>();
+  for (const cd of lote.cds) {
+    const chave = chaveProdutoTemporaria(cd.regional, cd.loja, cd.seqproduto);
+    const grupo = map.get(chave);
+    if (grupo) grupo.push(cd);
+    else map.set(chave, [cd]);
+  }
+  for (const grupo of map.values()) {
+    grupo.sort((a, b) => a.posicaoLogica - b.posicaoLogica);
+  }
+  return map;
+}
+
+function montarChunk(
+  numeroChunk: number,
+  produtos: DmLote["produtos"],
+  cds: DmLote["cds"],
+): ChunkPlanejado {
+  const rpc = mapearChunkParaRpc(produtos, cds);
+  return {
+    numeroChunk,
+    produtos,
+    cds,
+    hashChunk: hashChunkPayload(rpc.produtos, rpc.cds),
+    tamanhoBytesAprox: estimarBytesPayload(rpc.produtos, rpc.cds),
+  };
+}
+
+/**
+ * Planeja chunks O(n): indexa CDs uma vez, fatia produtos em lotes fixos,
+ * serializa JSON apenas por chunk (não por produto).
+ */
 export function planejarChunks(lote: DmLote, opcoes: PlanejarChunksOpcoes = {}): ChunkPlanejado[] {
-  let tamanhoChunk = opcoes.tamanhoChunk ?? CHUNK_TAMANHO_PADRAO;
+  const tamanhoChunk = opcoes.tamanhoChunk ?? CHUNK_TAMANHO_PADRAO;
   const limiteBytes = opcoes.limiteBytes ?? CHUNK_LIMITE_BYTES_PADRAO;
   const produtos = ordenarProdutos(lote);
+  const cdsPorProduto = indexarCdsPorProduto(lote);
   const chunks: ChunkPlanejado[] = [];
+
   let bufferProdutos: DmLote["produtos"] = [];
   let bufferCds: DmLote["cds"] = [];
 
   const flush = (): void => {
     if (bufferProdutos.length === 0) return;
-    const rpc = mapearChunkParaRpc(bufferProdutos, bufferCds);
-    chunks.push({
-      numeroChunk: chunks.length + 1,
-      produtos: [...bufferProdutos],
-      cds: [...bufferCds],
-      hashChunk: hashChunkPayload(rpc.produtos, rpc.cds),
-      tamanhoBytesAprox: estimarBytesPayload(rpc.produtos, rpc.cds),
-    });
+    chunks.push(montarChunk(chunks.length + 1, bufferProdutos, bufferCds));
     bufferProdutos = [];
     bufferCds = [];
   };
 
   for (const produto of produtos) {
-    const filhos = cdsDoProduto(lote, produto);
-    const candidatoProdutos = [...bufferProdutos, produto];
-    const candidatoCds = [...bufferCds, ...filhos];
-    const rpc = mapearChunkParaRpc(candidatoProdutos, candidatoCds);
-    const bytes = estimarBytesPayload(rpc.produtos, rpc.cds);
+    const filhos = cdsPorProduto.get(
+      chaveProdutoTemporaria(produto.regional, produto.loja, produto.seqproduto),
+    ) ?? [];
 
-    if (
-      bufferProdutos.length > 0 &&
-      (candidatoProdutos.length > tamanhoChunk || bytes > limiteBytes)
-    ) {
-      flush();
-      const solo = mapearChunkParaRpc([produto], filhos);
-      const soloBytes = estimarBytesPayload(solo.produtos, solo.cds);
-      if (soloBytes > limiteBytes && tamanhoChunk > 1) {
-        tamanhoChunk = Math.max(1, Math.floor(tamanhoChunk / 2));
-      }
-      bufferProdutos = [produto];
-      bufferCds = [...filhos];
-    } else {
-      bufferProdutos = candidatoProdutos;
-      bufferCds = candidatoCds;
-    }
+    bufferProdutos.push(produto);
+    if (filhos.length > 0) bufferCds.push(...filhos);
 
     if (bufferProdutos.length >= tamanhoChunk) {
-      flush();
+      const candidato = montarChunk(0, bufferProdutos, bufferCds);
+      if (candidato.tamanhoBytesAprox > limiteBytes && bufferProdutos.length > 1) {
+        const ultimo = bufferProdutos.pop()!;
+        const ultimoFilhos =
+          cdsPorProduto.get(
+            chaveProdutoTemporaria(ultimo.regional, ultimo.loja, ultimo.seqproduto),
+          ) ?? [];
+        bufferCds = bufferCds.slice(0, bufferCds.length - ultimoFilhos.length);
+        flush();
+        bufferProdutos = [ultimo];
+        bufferCds = [...ultimoFilhos];
+      } else {
+        flush();
+      }
     }
   }
 

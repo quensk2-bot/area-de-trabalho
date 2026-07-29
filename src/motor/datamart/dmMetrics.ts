@@ -44,6 +44,12 @@ function contarNaoNulos(obj: Record<string, unknown>): number {
   return Object.values(obj).filter((v) => v != null && v !== "").length;
 }
 
+function estimarVolumeBytesLote(lote: DmLote): number {
+  const amostraProd = lote.produtos.length > 0 ? JSON.stringify(lote.produtos[0]).length : 0;
+  const amostraCd = lote.cds.length > 0 ? JSON.stringify(lote.cds[0]).length : 0;
+  return amostraProd * lote.produtos.length + amostraCd * lote.cds.length;
+}
+
 export function calcularMetricasDm(lote: DmLote, duracaoMs: number): DmMetricas {
   const produtos = lote.produtos;
   const cds = lote.cds;
@@ -59,15 +65,25 @@ export function calcularMetricasDm(lote: DmLote, duracaoMs: number): DmMetricas 
     if (q > 0) comCds++;
   }
 
-  const posicoes = new Set(cds.map((c) => c.posicaoLogica));
-  const semCodigoFisico = cds.filter((c) => c.codigoFisico == null).length;
+  const posicoes = new Set<number>();
+  let semCodigoFisico = 0;
+  for (const c of cds) {
+    posicoes.add(c.posicaoLogica);
+    if (c.codigoFisico == null) semCodigoFisico++;
+  }
 
   const qualidade: DmMetricasQualidade = {
-    completo: produtos.filter((p) => p.qualidadeDados === "completo").length,
-    completoComAlertas: produtos.filter((p) => p.qualidadeDados === "completo_com_alertas").length,
-    incompleto: produtos.filter((p) => p.qualidadeDados === "incompleto").length,
-    invalido: produtos.filter((p) => p.qualidadeDados === "invalido").length,
+    completo: 0,
+    completoComAlertas: 0,
+    incompleto: 0,
+    invalido: 0,
   };
+  for (const p of produtos) {
+    if (p.qualidadeDados === "completo") qualidade.completo++;
+    else if (p.qualidadeDados === "completo_com_alertas") qualidade.completoComAlertas++;
+    else if (p.qualidadeDados === "incompleto") qualidade.incompleto++;
+    else if (p.qualidadeDados === "invalido") qualidade.invalido++;
+  }
 
   let produtoPreenchidos = 0;
   let produtoTotal = 0;
@@ -86,7 +102,7 @@ export function calcularMetricasDm(lote: DmLote, duracaoMs: number): DmMetricas 
     cdPreenchidos += contarNaoNulos(c as unknown as Record<string, unknown>);
   }
 
-  const volumeBytesEstimado = JSON.stringify(lote).length;
+  const volumeBytesEstimado = estimarVolumeBytesLote(lote);
 
   return {
     produtos: {

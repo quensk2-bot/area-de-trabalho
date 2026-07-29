@@ -1,16 +1,19 @@
 import type { MotorProdutoLojaConsolidado } from "../../consolidar/consolidacaoTypes.ts";
 import { buildManifest, computeHashConteudo, manifestStoragePath } from "../../../hibrido-v7/manifest/manifestBuilder.ts";
 import {
+  dashboardLojasOficialPath,
   dashboardLojasPath,
+  dashboardRegionalOficialPath,
   dashboardRegionalPath,
   lojaCdsPath,
   lojaGestaoPath,
+  lojaResumoOficialPath,
   lojaResumoPath,
 } from "../../../hibrido-v7/manifest/manifestPaths.ts";
 import type { RupturaManifest } from "../../../hibrido-v7/manifest/manifestTypes.ts";
 import { gerarCdsLoja } from "./gerarCdsLoja.ts";
 import { gerarGestaoLoja } from "./gerarGestaoLoja.ts";
-import { gerarResumoLoja, gerarResumoLojas, gerarResumoRegional } from "./gerarResumoLoja.ts";
+import { gerarResumoLoja, gerarResumoLojaOficialCompativel, gerarResumoLojas, gerarResumoRegional } from "./gerarResumoLoja.ts";
 import type { PublicacaoHibridaArtefato, PublicacaoHibridaResultado } from "./hibridoTypes.ts";
 
 export type GerarManifestHibridoInput = {
@@ -33,7 +36,8 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
   };
 
   const artefatos: PublicacaoHibridaArtefato[] = [];
-  const resumos = [];
+  const resumosIntegral: import("./hibridoTypes.ts").ResumoLojaJson[] = [];
+  const resumosOficial: import("./hibridoTypes.ts").ResumoLojaJson[] = [];
 
   let resumoPrincipal = gerarResumoLoja([], {
     regional: input.regional,
@@ -60,11 +64,26 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
       bandeira: input.bandeira,
       loja,
       dataReferencia: input.dataReferencia,
+      modoUniverso: "V7_INTEGRAL",
     });
-    resumos.push(resumo);
+    const resumoOficial = gerarResumoLojaOficialCompativel(itens, {
+      regional: input.regional,
+      bandeira: input.bandeira,
+      loja,
+      dataReferencia: input.dataReferencia,
+    });
+    resumosIntegral.push(resumo);
+    resumosOficial.push(resumoOficial);
 
     const resumoPath = lojaResumoPath({ ...scope, loja });
     artefatos.push({ path: resumoPath, json: resumo, bytes: Buffer.byteLength(JSON.stringify(resumo)) });
+
+    const resumoOficialPath = lojaResumoOficialPath({ ...scope, loja });
+    artefatos.push({
+      path: resumoOficialPath,
+      json: resumoOficial,
+      bytes: Buffer.byteLength(JSON.stringify(resumoOficial)),
+    });
 
     const gestaoGen = gerarGestaoLoja(itens, {
       ...scope,
@@ -104,12 +123,18 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     }
   }
 
-  const dashboardRegional = gerarResumoRegional(resumos, {
+  const dashboardRegional = gerarResumoRegional(resumosIntegral, {
     ...scope,
     dataReferencia: input.dataReferencia,
     versao: input.versao,
   });
-  const dashboardLojas = gerarResumoLojas(resumos, scope);
+  const dashboardLojas = gerarResumoLojas(resumosIntegral, scope);
+  const dashboardRegionalOficial = gerarResumoRegional(resumosOficial, {
+    ...scope,
+    dataReferencia: input.dataReferencia,
+    versao: input.versao,
+  });
+  const dashboardLojasOficial = gerarResumoLojas(resumosOficial, scope);
 
   artefatos.push({
     path: dashboardRegionalPath(scope),
@@ -120,6 +145,16 @@ export function gerarArtefatosHibridos(input: GerarManifestHibridoInput): Public
     path: dashboardLojasPath(scope),
     json: dashboardLojas,
     bytes: Buffer.byteLength(JSON.stringify(dashboardLojas)),
+  });
+  artefatos.push({
+    path: dashboardRegionalOficialPath(scope),
+    json: dashboardRegionalOficial,
+    bytes: Buffer.byteLength(JSON.stringify(dashboardRegionalOficial)),
+  });
+  artefatos.push({
+    path: dashboardLojasOficialPath(scope),
+    json: dashboardLojasOficial,
+    bytes: Buffer.byteLength(JSON.stringify(dashboardLojasOficial)),
   });
 
   const hashConteudo = computeHashConteudo(artefatos.map((a) => JSON.stringify(a.json)));

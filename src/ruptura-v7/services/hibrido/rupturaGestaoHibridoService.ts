@@ -20,6 +20,8 @@ import { assertEscopoHibrido, assertLojasSelecionadas, HIBRIDO_BANDEIRA_DEFAULT 
 import { isOrdenacaoGestaoDefault, ordenarProdutosGestaoDefault } from "./gestaoOrdering.ts";
 import { filtrarProdutos } from "./gestaoFilters.ts";
 import type { CdsPorProduto } from "./mapearBaseRupturaHibrido.ts";
+import { normalizarProdutosGestaoExport } from "./normalizarProdutoGestaoExport.ts";
+import { filtrarUniversoOficialCompativel } from "../../../motor/export/hibrido/filtrarUniversoOficialCompativel.ts";
 
 export { ordenarProdutosGestaoDefault, prioridadeClassificacaoGestao, isOrdenacaoGestaoDefault } from "./gestaoOrdering.ts";
 export { filtrarProdutos } from "./gestaoFilters.ts";
@@ -83,13 +85,13 @@ function mapProduto(p: HibridoProdutoGestao, ctx: RupturaFiltrosProdutos): Ruptu
     par_min: p.parMin,
     par_max: p.parMax,
     media_venda_dia: p.mediaVendaDia,
-    pendencia_loja: null,
+    pendencia_loja: p.pendenciaLoja,
     inventario_unidades: null,
     classificacao_prazo: p.classificacaoPrazo,
     curto_prazo: null,
     medio_prazo: null,
     longo_prazo: null,
-    base_limpa: null,
+    base_limpa: p.baseLimpa,
     flag_ruptura: null,
     ruptura_com_inventario: null,
     ruptura_sem_inventario: null,
@@ -145,11 +147,11 @@ async function carregarChunkGestao(
   if (chunk.erro) return chunk.erro;
 
   entry.chunksLoaded.add(partePath);
-  entry.produtos.push(...(chunk.data?.produtos ?? []));
+  entry.produtos.push(...normalizarProdutosGestaoExport(chunk.data?.produtos ?? []));
   return null;
 }
 
-async function ensureGestaoLoja(
+export async function ensureGestaoLoja(
   manifest: NonNullable<Awaited<ReturnType<typeof carregarManifest>>["manifest"]>,
   loja: number,
 ): Promise<{ produtos: HibridoProdutoGestao[]; erro: HybridServiceError | null }> {
@@ -169,7 +171,7 @@ async function ensureGestaoLoja(
       meta: data!,
       gestaoPath: paths.gestao,
       chunksLoaded: new Set(),
-      produtos: (data!.produtos ?? []) as HibridoProdutoGestao[],
+      produtos: normalizarProdutosGestaoExport(data!.produtos ?? []),
       complete: !data!.meta.chunked,
       loadPromise: null,
     };
@@ -301,11 +303,15 @@ export async function consultarProdutosPaginadosHibrido(input: {
   authCtx: PermissionContext | null;
   ordenacao?: { coluna: string; direcao: "asc" | "desc" };
   onProgress?: (p: GestaoLoadProgress) => void;
+  /** Visão Oficial (default) filtra Base Limpa; integral lista todos produtos gestao.json. */
+  visaoOficial?: boolean;
 }): Promise<{ dados: RupturaProdutoLoja[]; total: number; erro: HybridServiceError | null }> {
   const { produtos, erro } = await ensureGestaoProdutos(input.filtros, input.authCtx, input.onProgress);
   if (erro) return { dados: [], total: 0, erro };
 
-  const filtrados = filtrarProdutos(produtos, input.filtros);
+  const universo =
+    input.visaoOficial !== false ? filtrarUniversoOficialCompativel(produtos) : produtos;
+  const filtrados = filtrarProdutos(universo, input.filtros);
   const ordenados = ordenarProdutos(filtrados, input.ordenacao);
 
   const offset = Math.max(0, input.pagina - 1) * input.tamanho;

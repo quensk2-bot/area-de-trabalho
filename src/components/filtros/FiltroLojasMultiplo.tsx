@@ -50,12 +50,9 @@ export function FiltroLojasMultiplo({
   const totalEscopo = lojasCatalogo.length;
   const naoPublicadasSet = useMemo(() => new Set(lojasNaoPublicadas), [lojasNaoPublicadas]);
 
-  const draftEfetivo = useMemo(() => {
-    if (draft.length === 0 || todasLojasSelecionadas(draft, totalEscopo)) {
-      return lojasCatalogo.map((l) => l.loja);
-    }
-    return draft;
-  }, [draft, lojasCatalogo, totalEscopo]);
+  // Ao abrir, o contexto vazio é expandido para todas as lojas em syncDraftOnOpen.
+  // Depois disso, draft=[] significa explicitamente "nenhuma marcada" dentro do painel.
+  const draftEfetivo = draft;
 
   const labelFechado = formatLojasSelecionadasLabel(
     lojasSelecionadas.length === 0 ? [] : lojasSelecionadas,
@@ -107,12 +104,8 @@ export function FiltroLojasMultiplo({
 
   function toggleLoja(loja: number) {
     setDraft((prev) => {
-      const base =
-        prev.length === 0 || todasLojasSelecionadas(prev, totalEscopo)
-          ? lojasCatalogo.map((l) => l.loja)
-          : prev;
-      if (base.includes(loja)) return base.filter((l) => l !== loja);
-      return [...base, loja].sort((a, b) => a - b);
+      if (prev.includes(loja)) return prev.filter((l) => l !== loja);
+      return [...prev, loja].sort((a, b) => a - b);
     });
   }
 
@@ -199,6 +192,15 @@ export function FiltroLojasMultiplo({
             Selecionar todas
           </label>
 
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" style={buttonGhostStyle} onClick={() => toggleTodas(true)}>
+              Marcar todas
+            </button>
+            <button type="button" style={buttonGhostStyle} onClick={handleClear}>
+              Desmarcar todas
+            </button>
+          </div>
+
           <div style={{ fontSize: 11, color: theme.colors.textMuted }}>
             {selecionadasCount} de {totalEscopo} lojas selecionadas
           </div>
@@ -242,9 +244,6 @@ export function FiltroLojasMultiplo({
           )}
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button type="button" style={buttonGhostStyle} onClick={handleClear}>
-              Limpar
-            </button>
             <button type="button" style={buttonGhostStyle} onClick={handleApply}>
               Aplicar
             </button>

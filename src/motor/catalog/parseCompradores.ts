@@ -109,15 +109,61 @@ export function resolverComprador(
   secao: string | null,
   nivel2: string | null,
   nivel3: string | null,
-): { comprador: string | null; alertas: string[] } {
-  if (!secao || !nivel2 || !nivel3) {
-    return { comprador: null, alertas: ["Hierarquia incompleta para resolução de comprador"] };
+): {
+  comprador: string | null;
+  origemComprador: "hierarquia_exata" | "correcao_exata" | "rede_unica" | null;
+  chaveComprador: string;
+  fallbackComprador: boolean;
+  alertas: string[];
+} {
+  const hierarquiaCompleta = Boolean(secao && nivel2 && nivel3);
+  const chaveHierarquia = `${rede}|${secao ?? ""}|${nivel2 ?? ""}|${nivel3 ?? ""}`;
+  const found = hierarquiaCompleta
+    ? catalogo.find(
+        (c) => c.rede === rede && c.secao === secao && c.nivel2 === nivel2 && c.nivel3 === nivel3,
+      )
+    : undefined;
+
+  if (found) {
+    return {
+      comprador: found.comprador,
+      origemComprador: found.origem === "correcao" ? "correcao_exata" : "hierarquia_exata",
+      chaveComprador: chaveHierarquia,
+      fallbackComprador: false,
+      alertas: [],
+    };
   }
-  const found = catalogo.find(
-    (c) => c.rede === rede && c.secao === secao && c.nivel2 === nivel2 && c.nivel3 === nivel3,
-  );
+
+  const compradoresRede = [
+    ...new Set(
+      catalogo
+        .filter((item) => item.rede === rede && item.comprador.trim() !== "")
+        .map((item) => item.comprador.trim()),
+    ),
+  ];
+  if (compradoresRede.length === 1) {
+    return {
+      comprador: compradoresRede[0]!,
+      origemComprador: "rede_unica",
+      chaveComprador: `rede:${rede}`,
+      fallbackComprador: true,
+      alertas: [`Comprador resolvido por rede com comprador único: ${rede}`],
+    };
+  }
+
+  const motivo = hierarquiaCompleta
+    ? "Comprador não encontrado para hierarquia informada"
+    : "Hierarquia incompleta para resolução de comprador";
   return {
-    comprador: found?.comprador ?? null,
-    alertas: found ? [] : ["Comprador não encontrado para hierarquia informada"],
+    comprador: null,
+    origemComprador: null,
+    chaveComprador: chaveHierarquia,
+    fallbackComprador: false,
+    alertas: [
+      motivo,
+      ...(compradoresRede.length > 1
+        ? [`Fallback por rede bloqueado: ${rede} possui ${compradoresRede.length} compradores distintos`]
+        : []),
+    ],
   };
 }

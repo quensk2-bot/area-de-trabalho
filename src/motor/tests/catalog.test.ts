@@ -27,6 +27,8 @@ describe("catalog", () => {
     const loaded = loadCatalogos({ compradores: fixtures.compradores });
     const res = resolverComprador(loaded.catalogos.compradores, "REDE GAMMA", "PERFUMARIA", "HIGIENE", "SABONETE");
     assert.equal(res.comprador, "MARIA");
+    assert.equal(res.origemComprador, "hierarquia_exata");
+    assert.equal(res.fallbackComprador, false);
     assert.equal(res.alertas.length, 0);
   });
 
@@ -86,9 +88,49 @@ describe("catalog", () => {
   });
 
   it("25. hierarquia incompleta no comprador", () => {
-    const loaded = loadCatalogos({ compradores: fixtures.compradores });
-    const res = resolverComprador(loaded.catalogos.compradores, "REDE ALPHA", null, "BEBIDAS", "REFRIGERANTES");
+    const catalogo = [
+      { rede: "REDE MULTI", secao: "D1", nivel2: "S1", nivel3: "C1", comprador: "ANA", origem: "principal" as const },
+      { rede: "REDE MULTI", secao: "D2", nivel2: "S2", nivel3: "C2", comprador: "JOAO", origem: "principal" as const },
+    ];
+    const res = resolverComprador(catalogo, "REDE MULTI", null, "BEBIDAS", "REFRIGERANTES");
     assert.equal(res.comprador, null);
     assert.ok(res.alertas.some((a) => a.includes("Hierarquia incompleta")));
+    assert.ok(res.alertas.some((a) => a.includes("fallback") || a.includes("Fallback")));
+  });
+
+  it("26. 3M resolve LUCIMARY somente porque a rede possui comprador único", () => {
+    const catalogo = [
+      {
+        rede: "3M DO BRASIL",
+        secao: "63-BAZAR",
+        nivel2: "47-UTILIDADES DOMESTICAS",
+        nivel3: "LIMPEZA BAZAR",
+        comprador: "LUCIMARY",
+        origem: "correcao" as const,
+      },
+      {
+        rede: "3M DO BRASIL",
+        secao: "63-BAZAR",
+        nivel2: "51-BASICO BAZAR",
+        nivel3: "PAPELARIA",
+        comprador: "LUCIMARY",
+        origem: "correcao" as const,
+      },
+    ];
+    const res = resolverComprador(catalogo, "3M DO BRASIL", "60-MERCEARIA", "34-PERFUMARIA", null);
+    assert.equal(res.comprador, "LUCIMARY");
+    assert.equal(res.origemComprador, "rede_unica");
+    assert.equal(res.chaveComprador, "rede:3M DO BRASIL");
+    assert.equal(res.fallbackComprador, true);
+  });
+
+  it("27. rede com compradores distintos nunca recebe fallback", () => {
+    const catalogo = [
+      { rede: "R", secao: "D1", nivel2: "S1", nivel3: "C1", comprador: "ANA", origem: "principal" as const },
+      { rede: "R", secao: "D2", nivel2: "S2", nivel3: "C2", comprador: "JOAO", origem: "principal" as const },
+    ];
+    const res = resolverComprador(catalogo, "R", "D9", "S9", "C9");
+    assert.equal(res.comprador, null);
+    assert.equal(res.fallbackComprador, false);
   });
 });

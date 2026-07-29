@@ -19,17 +19,14 @@ import {
 } from "../utils/baseRupturaBrowserExport.ts";
 import { carregarManifest } from "./hibrido/manifestService.ts";
 import { carregarDadosExportBaseHibrido } from "./hibrido/rupturaGestaoHibridoService.ts";
-import {
-  filtrarLinhasUniversoOficial,
-  mapearBaseRupturaHibrido,
-} from "./hibrido/mapearBaseRupturaHibrido.ts";
+import { filtrarUniversoOficialCompativel } from "../../motor/export/hibrido/filtrarUniversoOficialCompativel.ts";
+import { mapearBaseRupturaHibrido } from "./hibrido/mapearBaseRupturaHibrido.ts";
 import {
   baixarBaseRupturaDrive,
   baixarBaseRupturaStorage,
   dispararDownloadBlob,
 } from "./hibrido/rupturaExportDriveService.ts";
 import { assertEscopoHibrido, HIBRIDO_BANDEIRA_DEFAULT } from "./hibrido/hibridoScope.ts";
-import { carregarChavesOficiaisConferencia } from "./hibrido/chavesOficiaisConferencia.ts";
 
 import type { ModoExportBaseRuptura, ExportBaseRupturaInput, ExportBaseRupturaResultado, EstrategiaExportGrande } from "./rupturaExportBaseUtils.ts";
 import {
@@ -40,6 +37,7 @@ import {
   LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL,
   maxLojasExportBrowser,
   nomeArquivoExportRuptura,
+  resolverModoUniversoExport,
   resumirEscopoExport,
 } from "./rupturaExportBaseUtils.ts";
 
@@ -52,6 +50,7 @@ export {
   LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL,
   maxLojasExportBrowser,
   nomeArquivoExportRuptura,
+  resolverModoUniversoExport,
   resumirEscopoExport,
 };
 
@@ -290,8 +289,7 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
 
   const bandeira = input.ctx.bandeira ?? HIBRIDO_BANDEIRA_DEFAULT;
   const estrategia = input.estrategia ?? "auto";
-  const universo =
-    input.universo ?? (estrategia === "oficial_compativel" ? "oficial_compativel" : "integral");
+  const universo = resolverModoUniversoExport(estrategia, input.universo);
   const escopoSlug = escopoArquivoExport({ modo: input.modo, lojas: lojasAlvo, totalEscopo });
   const filename = nomeArquivoExportRuptura({
     regional: input.ctx.regional,
@@ -372,6 +370,7 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
   const linhas: BaseRupturaLinha[] = [];
   const cdsDinamicos: Record<string, string | number | null>[] = [];
   const camposAusentesSet = new Set<string>();
+  let linhasIntegral = 0;
   const lojasSelecionadas: LojaSelecionadaExport[] = lojas.map((l) => ({
     loja: l.loja,
     bandeira: l.bandeira,
@@ -380,8 +379,13 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
 
   for (const bloco of lojas) {
     if (!bloco.publicada || !bloco.produtos.length) continue;
+    linhasIntegral += bloco.produtos.length;
+    const produtosExport =
+      universo === "oficial_compativel"
+        ? filtrarUniversoOficialCompativel(bloco.produtos)
+        : bloco.produtos;
     const mapped = mapearBaseRupturaHibrido({
-      produtos: bloco.produtos,
+      produtos: produtosExport,
       cdsPorProduto: bloco.cdsPorProduto,
       bandeira: bloco.bandeira,
       regional: input.ctx.regional,
@@ -393,16 +397,6 @@ export async function exportarBaseRupturaOficial(input: ExportBaseRupturaInput):
   }
 
   const camposAusentes = [...camposAusentesSet];
-  const linhasIntegral = linhas.length;
-
-  if (universo === "oficial_compativel") {
-    const chavesOficiais = carregarChavesOficiaisConferencia();
-    if (chavesOficiais.size > 0) {
-      const filtradas = filtrarLinhasUniversoOficial(linhas, chavesOficiais);
-      linhas.length = 0;
-      linhas.push(...filtradas);
-    }
-  }
 
   const { manifest } = await carregarManifest({
     regional: input.ctx.regional,

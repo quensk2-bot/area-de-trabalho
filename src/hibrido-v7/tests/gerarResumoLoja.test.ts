@@ -196,9 +196,9 @@ describe("gerarResumoLoja — piloto loja 73", () => {
     assert.equal(resumo.totalProdutos, 10873);
     assert.equal(resumo.totalRupturaGeral, 3398);
     assert.equal(resumo.totalRupturaClassificada, 799);
-    assert.equal(resumo.curtoPrazo, 103);
-    assert.equal(resumo.medioPrazo, 624);
-    assert.equal(resumo.longoPrazo, 72);
+    assert.equal(resumo.curtoPrazo, 149);
+    assert.equal(resumo.medioPrazo, 580);
+    assert.equal(resumo.longoPrazo, 70);
     assert.equal(resumo.bloqueados, 2599);
     assert.equal(resumo.totalBaseLimpaElegivel, 8274);
     assert.equal(resumo.comEstoqueCd, 359);

@@ -86,7 +86,7 @@ export const COLUNAS_BASE_RUPTURA_V7: readonly BaseRupturaColunaDef[] = [
   { cabecalho: "RAZAO", fonte: "fornecedor" },
   { cabecalho: "ESTOQUE", fonte: "estoqueLoja" },
   { cabecalho: "PARMAX", fonte: "parMax" },
-  { cabecalho: "PENDCPA", fonte: "pendenciaCpaCd" },
+  { cabecalho: "PENDCPA", fonte: "pendenciaLoja" },
   { cabecalho: "EMBCPA", fonte: "embalagemCompra" },
   { cabecalho: "SETOR", fonte: "setorNome" },
   { cabecalho: "SETOR2", fonte: "setorN2" },

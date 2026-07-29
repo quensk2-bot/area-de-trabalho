@@ -1,7 +1,7 @@
 import type { MotorCatalogos } from "../../catalog/catalogTypes.ts";
 import { resolverRedeFornecedor } from "../../catalog/parseRede.ts";
 import type { MotorBreItemInput } from "../breTypes.ts";
-import { calcularFlagsOrdemCd, construirLookupFlagsCentralizados, obterFlagsOrdemCd } from "./calcularFlagsOrdemCd.ts";
+import { construirLookupFlagsCentralizados, obterFlagsOrdemCd } from "./calcularFlagsOrdemCd.ts";
 import { calcularMenorRecebimento } from "./calcularMenorRecebimento.ts";
 import { calcularProdutoCentralizado } from "./calcularProdutoCentralizado.ts";
 import { calcularStatusAtivacaoCd } from "./calcularStatusAtivacaoCd.ts";

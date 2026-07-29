@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FiltroRegionalBandeiraLoja } from "../../components/filtros/FiltroRegionalBandeiraLoja.tsx";
+import { FiltroCompradoresMultiplo } from "../../components/filtros/FiltroCompradoresMultiplo.tsx";
 import type { RupturaFiltrosContexto } from "../types/rupturaFiltrosTypes.ts";
 import { FILTRO_LOJA_TODAS } from "../../auth-v7/catalogoLojasTypes.ts";
 import { buttonGhostStyle, inputStyle } from "./rupturaSharedStyles.ts";
@@ -15,10 +16,13 @@ type Props = {
   permitirTodasLoja?: boolean;
   multiSelectLoja?: boolean;
   lojasNaoPublicadas?: number[];
+  mostrarFiltroComprador?: boolean;
+  compradoresCatalogo?: string[];
   readonlyFields?: {
     regional?: boolean;
     bandeira?: boolean;
     loja?: boolean;
+    comprador?: boolean;
     dataReferencia?: boolean;
   };
 };
@@ -33,6 +37,8 @@ export function RupturaContextoBar({
   permitirTodasLoja,
   multiSelectLoja = true,
   lojasNaoPublicadas,
+  mostrarFiltroComprador,
+  compradoresCatalogo = [],
   readonlyFields,
 }: Props) {
   const readOnlyStyle = { opacity: 0.72, cursor: "not-allowed" as const };
@@ -54,6 +60,15 @@ export function RupturaContextoBar({
         multiSelectLoja={multiSelectLoja && !ocultarLoja}
         lojasNaoPublicadas={lojasNaoPublicadas}
       />
+
+      {mostrarFiltroComprador ? (
+        <FiltroCompradoresMultiplo
+          compradoresCatalogo={compradoresCatalogo}
+          compradoresSelecionados={ctx.compradores ?? []}
+          onApply={(compradores) => onChange({ compradores })}
+          readonly={readonlyFields?.comprador}
+        />
+      ) : null}
 
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
         Data referência

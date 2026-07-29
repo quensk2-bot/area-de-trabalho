@@ -205,8 +205,9 @@ describe("FiltroLojasMultiplo — contrato UI", () => {
       "utf8",
     );
     assert.match(src, /Selecionar todas/);
+    assert.match(src, /Marcar todas/);
+    assert.match(src, /Desmarcar todas/);
     assert.match(src, /lojas selecionadas/);
-    assert.match(src, /Limpar/);
     assert.match(src, /Aplicar/);
     assert.match(src, /formatLojasSelecionadasLabel/);
     assert.match(src, /role="listbox"/);

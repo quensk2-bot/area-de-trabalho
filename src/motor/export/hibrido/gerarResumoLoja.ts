@@ -1,5 +1,6 @@
 import type { MotorProdutoLojaConsolidado } from "../../consolidar/consolidacaoTypes.ts";
 import type { ResumoLojaJson } from "./hibridoTypes.ts";
+import { filtrarUniversoOficialCompativel } from "./filtrarUniversoOficialCompativel.ts";
 
 function pct(n: number, d: number): number | null {
   if (!d) return null;
@@ -31,7 +32,13 @@ function classificarCentralizacao(item: MotorProdutoLojaConsolidado): "centraliz
 
 export function gerarResumoLoja(
   itens: readonly MotorProdutoLojaConsolidado[],
-  input: { regional: string; bandeira: string; loja: number; dataReferencia: string },
+  input: {
+    regional: string;
+    bandeira: string;
+    loja: number;
+    dataReferencia: string;
+    modoUniverso?: ResumoLojaJson["modoUniverso"];
+  },
 ): ResumoLojaJson {
   let curto = 0;
   let medio = 0;
@@ -109,6 +116,7 @@ export function gerarResumoLoja(
     regional: input.regional,
     bandeira: input.bandeira,
     dataReferencia: input.dataReferencia,
+    modoUniverso: input.modoUniverso,
     totalProdutos: itens.length,
     ruptura: totalRupturaGeral,
     totalRupturaGeral,
@@ -180,3 +188,12 @@ export function gerarResumoLojas(
 // re-export aliases per spec file names
 export { gerarResumoRegional as gerarResumoRegionalJson };
 export { gerarResumoLojas as gerarResumoLojasJson };
+
+/** Resumo KPIs no universo oficial PQ (Base Limpa apenas). */
+export function gerarResumoLojaOficialCompativel(
+  itens: readonly MotorProdutoLojaConsolidado[],
+  input: { regional: string; bandeira: string; loja: number; dataReferencia: string },
+): ResumoLojaJson {
+  const filtrados = filtrarUniversoOficialCompativel(itens);
+  return gerarResumoLoja(filtrados, { ...input, modoUniverso: "OFICIAL_COMPATIVEL" });
+}

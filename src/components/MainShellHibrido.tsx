@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { theme } from "../styles";
 import {
   useAuthV7,
@@ -11,20 +11,20 @@ import {
   toPermissionContext,
 } from "../auth-v7";
 import {
+  RupturaBaseCompradorPage,
+  RupturaCompradorPage,
   RupturaDashboardPage,
   RupturaGestaoPage,
   RupturaImportacaoDrivePage,
+  RupturaLojaPage,
 } from "../ruptura-v7/RupturaPages";
 import { MeuPerfilHibridoPage } from "./MeuPerfilHibridoPage";
 import { AdminUsuariosHibridoPlaceholder } from "./AdminUsuariosHibridoPlaceholder";
-
-type MenuKey =
-  | "inicio"
-  | "ruptura-dashboard"
-  | "ruptura-gestao"
-  | "ruptura-importacao"
-  | "admin-usuarios"
-  | "meu-perfil";
+import {
+  menuFromPathname,
+  routeFromMenu,
+  type MenuKey,
+} from "./mainShellHibridoRoutes.ts";
 
 const shellStyles: Record<string, CSSProperties> = {
   root: {
@@ -77,6 +77,11 @@ const shellStyles: Record<string, CSSProperties> = {
     cursor: "pointer",
     fontSize: 13,
     border: "1px solid transparent",
+    background: "transparent",
+    color: "inherit",
+    fontFamily: "inherit",
+    textAlign: "left",
+    width: "100%",
   },
   menuItemActive: {
     background: "rgba(34,197,94,0.12)",
@@ -87,6 +92,86 @@ const shellStyles: Record<string, CSSProperties> = {
   menuItemDisabled: {
     opacity: 0.45,
     cursor: "not-allowed",
+  },
+  menuGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    paddingTop: 4,
+  },
+  menuGroupTitle: {
+    marginTop: 4,
+    marginBottom: 4,
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: `1px solid ${theme.colors.borderSoft ?? "#1f2937"}`,
+    background: "rgba(15,23,42,0.72)",
+    color: theme.colors.neonOrange ?? "#fb923c",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  menuSubGroupTitle: {
+    marginTop: 4,
+    marginBottom: 4,
+    marginLeft: 8,
+    padding: "5px 10px",
+    borderRadius: 8,
+    border: `1px solid ${theme.colors.borderSoft ?? "#1f2937"}`,
+    background: "rgba(2,6,23,0.72)",
+    color: theme.colors.neonOrange ?? "#fb923c",
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "calc(100% - 8px)",
+    boxSizing: "border-box",
+  },
+  menuGroupIcon: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    border: `1px solid ${theme.colors.borderSoft ?? "#1f2937"}`,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: theme.colors.neonGreen ?? "#22c55e",
+    fontSize: 14,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  menuSubItem: {
+    padding: "8px 12px 8px 22px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontSize: 13,
+    border: "1px solid transparent",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "transparent",
+    color: "inherit",
+    fontFamily: "inherit",
+    textAlign: "left",
+    width: "100%",
+  },
+  menuBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    background: theme.colors.neonOrange ?? "#fb923c",
+    flexShrink: 0,
   },
   main: {
     flex: 1,
@@ -139,13 +224,56 @@ export function MainShellHibrido() {
     [auth],
   );
 
-  const [menu, setMenu] = useState<MenuKey>("inicio");
+  const [menu, setMenu] = useState<MenuKey>(() => menuFromPathname(window.location.pathname));
+  const [gruposMenuAbertos, setGruposMenuAbertos] = useState({
+    loja: true,
+    lojaRuptura: true,
+  });
 
   const showRuptura = ctx ? canViewRuptura(ctx) : false;
   const showDrive = ctx ? canViewDrive(ctx) : false;
   const showGestao = showRuptura;
   const showProcessar = ctx ? canProcessRuptura(ctx) || canProcessDrive(ctx) : false;
   const showAdmin = ctx ? canAdminUsuarios(ctx) : false;
+  const showLoja = showRuptura || showDrive;
+
+  const lojaRupturaItems = useMemo(
+    () =>
+      [
+        ["ruptura-dashboard", "Dashboard Capa", showRuptura],
+        ["ruptura-loja", "Dashboard Loja", showRuptura],
+        ["ruptura-comprador", "Dashboard Comprador", showRuptura],
+        ["ruptura-base-comprador", "Base Comprador", showRuptura],
+        ["ruptura-gestao", "Gestão", showGestao],
+        ["ruptura-importacao", "Importação Drive", showDrive],
+      ] as const,
+    [showRuptura, showGestao, showDrive],
+  );
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextMenu = menuFromPathname(window.location.pathname);
+      setMenu(nextMenu);
+      if (nextMenu.startsWith("ruptura-")) {
+        setGruposMenuAbertos({ loja: true, lojaRuptura: true });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const toggleGrupoMenu = (grupo: "loja" | "lojaRuptura") => {
+    setGruposMenuAbertos((prev) => ({ ...prev, [grupo]: !prev[grupo] }));
+  };
+
+  const navegarMenu = (key: MenuKey) => {
+    const route = routeFromMenu(key);
+    if (window.location.pathname !== route) window.history.pushState({}, "", route);
+    setMenu(key);
+    if (key.startsWith("ruptura-")) {
+      setGruposMenuAbertos({ loja: true, lojaRuptura: true });
+    }
+  };
 
   const renderContent = () => {
     if (menu === "inicio") {
@@ -173,7 +301,25 @@ export function MainShellHibrido() {
 
     if (menu === "ruptura-dashboard" && showRuptura) {
       return (
-        <RupturaDashboardPage onAbrirGestao={() => setMenu("ruptura-gestao")} />
+        <RupturaDashboardPage onAbrirGestao={() => navegarMenu("ruptura-gestao")} />
+      );
+    }
+
+    if (menu === "ruptura-loja" && showRuptura) {
+      return (
+        <RupturaLojaPage onAbrirGestao={() => navegarMenu("ruptura-gestao")} />
+      );
+    }
+
+    if (menu === "ruptura-comprador" && showRuptura) {
+      return (
+        <RupturaCompradorPage onAbrirGestao={() => navegarMenu("ruptura-gestao")} />
+      );
+    }
+
+    if (menu === "ruptura-base-comprador" && showRuptura) {
+      return (
+        <RupturaBaseCompradorPage onAbrirGestao={() => navegarMenu("ruptura-gestao")} />
       );
     }
 
@@ -220,22 +366,36 @@ export function MainShellHibrido() {
   };
 
   const menuButton = (key: MenuKey, label: string, enabled: boolean) => (
-    <div
+      <button
+        type="button"
+        key={key}
+        disabled={!enabled}
+        style={{
+          ...shellStyles.menuItem,
+          ...(menu === key ? shellStyles.menuItemActive : {}),
+          ...(!enabled ? shellStyles.menuItemDisabled : {}),
+        }}
+        onClick={() => enabled && navegarMenu(key)}
+      >
+        {label}
+      </button>
+  );
+
+  const menuSubButton = (key: MenuKey, label: string, enabled: boolean) => (
+    <button
+      type="button"
       key={key}
-      role="button"
-      tabIndex={enabled ? 0 : -1}
+      disabled={!enabled}
       style={{
-        ...shellStyles.menuItem,
+        ...shellStyles.menuSubItem,
         ...(menu === key ? shellStyles.menuItemActive : {}),
         ...(!enabled ? shellStyles.menuItemDisabled : {}),
       }}
-      onClick={() => enabled && setMenu(key)}
-      onKeyDown={(e) => {
-        if (enabled && (e.key === "Enter" || e.key === " ")) setMenu(key);
-      }}
+      onClick={() => enabled && navegarMenu(key)}
     >
+      <span style={shellStyles.menuBullet} aria-hidden />
       {label}
-    </div>
+    </button>
   );
 
   return (
@@ -254,9 +414,37 @@ export function MainShellHibrido() {
 
         <nav style={shellStyles.menuList}>
           {menuButton("inicio", "Início", true)}
-          {menuButton("ruptura-dashboard", "Ruptura — Dashboard", showRuptura)}
-          {menuButton("ruptura-gestao", "Ruptura — Gestão", showGestao)}
-          {menuButton("ruptura-importacao", "Importação Drive", showDrive)}
+          {showLoja ? (
+            <div style={shellStyles.menuGroup}>
+              <button
+                type="button"
+                onClick={() => toggleGrupoMenu("loja")}
+                style={shellStyles.menuGroupTitle}
+              >
+                <span>Loja</span>
+                <span style={shellStyles.menuGroupIcon}>{gruposMenuAbertos.loja ? "−" : "+"}</span>
+              </button>
+              {gruposMenuAbertos.loja ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupoMenu("lojaRuptura")}
+                    style={shellStyles.menuSubGroupTitle}
+                  >
+                    <span>Ruptura</span>
+                    <span style={shellStyles.menuGroupIcon}>
+                      {gruposMenuAbertos.lojaRuptura ? "−" : "+"}
+                    </span>
+                  </button>
+                  {gruposMenuAbertos.lojaRuptura
+                    ? lojaRupturaItems.map(([key, label, enabled]) =>
+                        menuSubButton(key, label, enabled),
+                      )
+                    : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {menuButton("admin-usuarios", "Administração de usuários", showAdmin)}
           {menuButton("meu-perfil", "Meu Perfil", true)}
         </nav>

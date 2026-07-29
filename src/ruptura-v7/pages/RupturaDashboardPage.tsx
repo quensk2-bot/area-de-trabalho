@@ -8,6 +8,7 @@ import { RupturaContextoBar } from "../components/RupturaContextoBar.tsx";
 import { DonutChartSvg, HorizontalBarChartSvg, BarChartSvg } from "../components/charts/RupturaCharts.tsx";
 import { RupturaContextHelp } from "../components/RupturaHelp.tsx";
 import { RupturaKpiCards, RupturaResumoTexto } from "../components/RupturaKpiCards.tsx";
+import { RupturaCapaTable } from "../components/RupturaCapaTable.tsx";
 import { buttonStyle, cardStyle } from "../components/rupturaSharedStyles.ts";
 import { useRupturaContextoScoped } from "../hooks/useRupturaContextoScoped.ts";
 import {
@@ -19,6 +20,7 @@ import {
   consultarExecucaoAtiva,
 } from "../services/rupturaDashboardService.ts";
 import {
+  consultarCapaDashboardHibrido,
   consultarCompradoresTopHibrido,
   consultarDashboardFornecedoresHibrido,
   consultarDashboardLojaHibrido,
@@ -28,7 +30,9 @@ import {
 } from "../services/hibrido/rupturaResumoHibridoService.ts";
 import type { HybridServiceError } from "../../hibrido-v7/hybridErrors.ts";
 import type { RupturaDashboardLoja } from "../types/rupturaDashboardTypes.ts";
+import type { RupturaCapaResultado } from "../utils/agregarCapaFromGestao.ts";
 import { RupturaExportMenu } from "../components/RupturaExportMenu.tsx";
+import { montarCapaExportContextProps } from "../utils/capaExportContext.ts";
 
 type Props = { onAbrirGestao?: () => void };
 
@@ -50,6 +54,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
 
   const [ctx, setCtx, { readonly, multiSelectLoja }] = useRupturaContextoScoped("dashboard");
   const [kpi, setKpi] = useState<RupturaDashboardLoja | null>(null);
+  const [capa, setCapa] = useState<RupturaCapaResultado | null>(null);
   const [setores, setSetores] = useState<Awaited<ReturnType<typeof consultarDashboardSetores>>["dados"]>([]);
   const [fornecedores, setFornecedores] = useState<Awaited<ReturnType<typeof consultarDashboardFornecedores>>["dados"]>([]);
   const [compradores, setCompradores] = useState<{ comprador: string; total_ruptura: number }[]>([]);
@@ -59,21 +64,33 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [hybridState, setHybridState] = useState<HybridServiceError | null>(null);
 
+  const capaExportProps = useMemo(
+    () =>
+      montarCapaExportContextProps({
+        ctx,
+        variant: "capa",
+        dataReferencia: ctx.dataReferencia,
+        totalLojasEscopo: ctx.lojas.length || 1,
+      }),
+    [ctx],
+  );
+
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
     setHybridState(null);
 
     if (isModoHibrido()) {
-      const [k, s, f, c, cd, ex] = await Promise.all([
+      const [k, s, f, c, cd, ex, capaRes] = await Promise.all([
         consultarDashboardLojaHibrido(ctx, permCtx),
         consultarDashboardSetoresHibrido(ctx, permCtx),
         consultarDashboardFornecedoresHibrido(ctx, permCtx, 10),
         consultarCompradoresTopHibrido(ctx, permCtx, 10),
         consultarEstoquePorCdHibrido(ctx, permCtx),
         consultarExecucaoAtivaHibrido(ctx, permCtx),
+        consultarCapaDashboardHibrido(ctx, permCtx),
       ]);
-      const firstErr = k.erro ?? s.erro ?? f.erro ?? c.erro ?? cd.erro ?? ex.erro;
+      const firstErr = k.erro ?? s.erro ?? f.erro ?? c.erro ?? cd.erro ?? ex.erro ?? capaRes.erro;
       if (firstErr) setHybridState(firstErr);
       setKpi(k.dado);
       setSetores(s.dados);
@@ -81,6 +98,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
       setCompradores(c.dados);
       setCds(cd.dados);
       setExecucao(ex.dado ?? null);
+      setCapa(capaRes.capa);
       setLoading(false);
       return;
     }
@@ -107,6 +125,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
     setCompradores(c.dados);
     setCds(cd.dados);
     setExecucao(ex.dado ?? null);
+    setCapa(null);
     setLoading(false);
   }, [ctx, permCtx]);
 
@@ -143,7 +162,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <header>
-        <h1 style={{ margin: 0, color: theme.colors.neonOrange, fontSize: 24, fontWeight: 800 }}>Gestão de Ruptura — Dashboard</h1>
+        <h1 style={{ margin: 0, color: theme.colors.neonOrange, fontSize: 24, fontWeight: 800 }}>Gestão de Ruptura — Dashboard Capa</h1>
         <p style={{ margin: "6px 0 0", color: theme.colors.textMuted, fontSize: 13 }}>
           Versão ativa {execucao?.versao ?? "—"} | Última atualização: {execucao?.finalizado_em ? new Date(execucao.finalizado_em).toLocaleString("pt-BR") : "—"}
           {isModoHibrido() ? " · Storage privado" : ""}
@@ -154,7 +173,7 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
         titulo="Leitura operacional"
         texto={
           isModoHibrido()
-            ? "Dashboard alimentado por JSON publicado no Storage privado (modo híbrido)."
+            ? "Dashboard alimentado por JSON publicado no Storage privado (modo híbrido). Tabela CAPA resumida por divisão e setor."
             : "O Dashboard apresenta somente a versão ativa do Motor para a regional, loja e data selecionadas."
         }
       />
@@ -182,6 +201,22 @@ export function RupturaDashboardPage({ onAbrirGestao }: Props) {
 
       <RupturaKpiCards kpi={kpi} loading={loading} />
       <RupturaResumoTexto kpi={kpi} />
+
+      <div>
+        <h2 style={{ margin: "0 0 10px", fontSize: 15, color: theme.colors.neonOrange }}>CAPA — Ruptura por setor</h2>
+        <RupturaCapaTable
+          capa={capa}
+          loading={loading}
+          dataReferencia={ctx.dataReferencia}
+          variant="capa"
+          exportContext={capaExportProps}
+          tooltipsPrazo={{
+            cp: kpi?.tooltip_curto_prazo,
+            mp: kpi?.tooltip_medio_prazo,
+            lp: kpi?.tooltip_longo_prazo,
+          }}
+        />
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
         <div style={cardStyle}>

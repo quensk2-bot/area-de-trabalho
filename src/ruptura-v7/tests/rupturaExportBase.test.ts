@@ -20,6 +20,7 @@ import {
   inferirModoExport,
   maxLojasExportBrowser,
   nomeArquivoExportRuptura,
+  resolverModoUniversoExport,
 } from "../services/rupturaExportBaseUtils.ts";
 import {
   estoquesCdOficiais,
@@ -274,7 +275,7 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
     assert.equal(formatBandeiraExportCompativel("MT", "COMPER"), "Comper MT");
   });
 
-  it("PENDCPA repassa pendenciaCpaCd agregada (contrato export atual)", () => {
+  it("PENDCPA usa somente a pendencia pura da loja", () => {
     const pendenciaLoja = 144;
     const pendenciaAgregada = 146;
     const { linhas } = mapearBaseRupturaHibrido({
@@ -284,8 +285,8 @@ describe("ruptura export base — bandeira e PENDCPA", () => {
       regional: "MT",
       modoUniverso: "oficial_compativel",
     });
-    assert.equal(linhas[0]!.PENDCPA, pendenciaAgregada);
-    assert.notEqual(linhas[0]!.PENDCPA, pendenciaLoja);
+    assert.equal(linhas[0]!.PENDCPA, pendenciaLoja);
+    assert.notEqual(linhas[0]!.PENDCPA, pendenciaAgregada);
   });
 
   it("PRODUTO usa descricao - seqproduto", () => {
@@ -533,10 +534,13 @@ describe("ruptura export base — roteamento tamanho", () => {
     assert.match(src, /gerarViaWorker/);
   });
 
-  it("auto default universo integral salvo estrategia oficial_compativel", async () => {
-    const fs = await import("node:fs/promises");
-    const src = await fs.readFile(new URL("../services/rupturaExportBaseService.ts", import.meta.url), "utf8");
-    assert.match(src, /estrategia === "oficial_compativel"\s*\?\s*"oficial_compativel"\s*:\s*"integral"/);
+  it("resolve o universo homologado por estrategia e preserva escolha explicita", () => {
+    assert.equal(resolverModoUniversoExport("auto"), "oficial_compativel");
+    assert.equal(resolverModoUniversoExport("oficial_compativel"), "oficial_compativel");
+    assert.equal(resolverModoUniversoExport("integral_worker"), "integral");
+    assert.equal(resolverModoUniversoExport("drive"), "integral");
+    assert.equal(resolverModoUniversoExport("auto", "integral"), "integral");
+    assert.equal(resolverModoUniversoExport("drive", "oficial_compativel"), "oficial_compativel");
   });
 });
 

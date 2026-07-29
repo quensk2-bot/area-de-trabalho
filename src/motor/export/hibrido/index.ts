@@ -7,4 +7,4 @@ export * from "./validarArtefatosHibridos.ts";
 export * from "./publicarStoragePrivado.ts";
 export * from "./registrarPacoteLeve.ts";
 export * from "./gerarResumoRegional.ts";
-export * from "./gerarResumoLojas.ts";
+export * from "./filtrarUniversoOficialCompativel.ts";

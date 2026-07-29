@@ -9,6 +9,14 @@ export type ModoExportBaseRuptura = "selecao" | "loja_unica" | "bandeira_complet
 
 export type EstrategiaExportGrande = "auto" | "drive" | "integral_worker" | "oficial_compativel";
 
+export function resolverModoUniversoExport(
+  estrategia: EstrategiaExportGrande,
+  universoExplicito?: ModoUniversoExport,
+): ModoUniversoExport {
+  if (universoExplicito) return universoExplicito;
+  return estrategia === "integral_worker" || estrategia === "drive" ? "integral" : "oficial_compativel";
+}
+
 /** Linhas típicas do universo oficial COMPER MT (interseção PQ). */
 export const LINHAS_ESTIMADAS_OFICIAL_COMPATIVEL = 129_828;
 

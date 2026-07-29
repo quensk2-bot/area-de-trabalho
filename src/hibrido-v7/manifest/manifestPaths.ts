@@ -39,6 +39,22 @@ export function dashboardLojasPath(input: {
   return `${manifestRootPath(input)}/dashboard/lojas.json`;
 }
 
+export function dashboardRegionalOficialPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+}): string {
+  return `${manifestRootPath(input)}/dashboard/regional-oficial.json`;
+}
+
+export function dashboardLojasOficialPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+}): string {
+  return `${manifestRootPath(input)}/dashboard/lojas-oficial.json`;
+}
+
 export function lojaResumoPath(input: {
   regional: string;
   bandeira: string;
@@ -46,6 +62,15 @@ export function lojaResumoPath(input: {
   loja: number;
 }): string {
   return `${manifestRootPath(input)}/lojas/${input.loja}/resumo.json`;
+}
+
+export function lojaResumoOficialPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+  loja: number;
+}): string {
+  return `${manifestRootPath(input)}/lojas/${input.loja}/resumo-oficial.json`;
 }
 
 export function lojaGestaoPath(input: {
@@ -84,6 +109,15 @@ export function lojaGestaoIndexPath(input: {
   loja: number;
 }): string {
   return `${manifestRootPath(input)}/lojas/${input.loja}/gestao/index.json`;
+}
+
+/** Índice PQ de compradores (rede|setor|…) para resolver ** Não Identificado no frontend. */
+export function catalogoCompradoresPath(input: {
+  regional: string;
+  bandeira: string;
+  competencia: string;
+}): string {
+  return `${manifestRootPath(input)}/catalogo-compradores.json`;
 }
 
 /** Valida path relativo Storage (sem .., URL ou caminho local). */

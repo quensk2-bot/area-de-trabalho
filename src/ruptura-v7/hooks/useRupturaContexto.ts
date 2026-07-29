@@ -7,7 +7,13 @@ import { RUPTURA_CONTEXTO_DEFAULT } from "../types/rupturaFiltrosTypes.ts";
 
 const STORAGE_PREFIX = "ruptura-v7-contexto";
 
-export type RupturaContextoTela = "dashboard" | "gestao" | "central-acoes" | "visao360" | "importacao";
+export type RupturaContextoTela =
+  | "dashboard"
+  | "base-comprador"
+  | "gestao"
+  | "central-acoes"
+  | "visao360"
+  | "importacao";
 
 function storageKey(userId: string | undefined, tela: RupturaContextoTela): string {
   return `${STORAGE_PREFIX}:${userId ?? "anon"}:${tela}`;

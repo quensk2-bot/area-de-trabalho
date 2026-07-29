@@ -102,13 +102,18 @@ export function validarLoteDm(lote: DmLote): DmValidacaoResultado {
   }
 
   const produtosPorChave = new Map(lote.produtos.map((p) => [chaveDmTexto(p), p]));
+  const cdsCountPorChave = new Map<string, number>();
+  for (const cd of lote.cds) {
+    const chave = chaveDmTexto(cd);
+    cdsCountPorChave.set(chave, (cdsCountPorChave.get(chave) ?? 0) + 1);
+  }
   for (const produto of lote.produtos) {
-    const linhasCd = lote.cds.filter((c) => chaveDmTexto(c) === chaveDmTexto(produto));
-    if (linhasCd.length !== produto.quantidadeCds) {
+    const linhasCd = cdsCountPorChave.get(chaveDmTexto(produto)) ?? 0;
+    if (linhasCd !== produto.quantidadeCds) {
       push(itens, {
         codigo: "quantidade_cds_inconsistente",
         severidade: "aviso",
-        mensagem: `quantidadeCds=${produto.quantidadeCds} mas filha tem ${linhasCd.length}`,
+        mensagem: `quantidadeCds=${produto.quantidadeCds} mas filha tem ${linhasCd}`,
         loja: produto.loja,
         seqproduto: produto.seqproduto,
       });
@@ -131,5 +136,38 @@ export function validarPipeline(
   const entrada = validarEntradaConsolidado(consolidado);
   const dm = validarLoteDm(lote);
   const itens = [...entrada.itens, ...dm.itens];
+  return { valido: itens.every((i) => i.severidade !== "erro"), itens };
+}
+
+/** Validação mínima para produção — O(n), sem re-varrer consolidado completo. */
+export function validarPipelineProducao(lote: DmLote): DmValidacaoResultado {
+  const itens: DmValidacaoItem[] = [];
+  if (lote.produtos.length === 0) {
+    itens.push({ codigo: "lote_vazio", severidade: "erro", mensagem: "Lote sem produtos" });
+    return { valido: false, itens };
+  }
+
+  const chavesProd = new Map<string, number>();
+  for (const p of lote.produtos) {
+    const k = chaveDmTexto(p);
+    chavesProd.set(k, (chavesProd.get(k) ?? 0) + 1);
+  }
+  for (const [k, q] of chavesProd) {
+    if (q > 1) {
+      itens.push({ codigo: "produto_duplicado", severidade: "erro", mensagem: `Chave duplicada: ${k} (${q}x)` });
+    }
+  }
+
+  const chavesCd = new Map<string, number>();
+  for (const cd of lote.cds) {
+    const k = chaveDmCd(cd, cd.posicaoLogica);
+    chavesCd.set(k, (chavesCd.get(k) ?? 0) + 1);
+  }
+  for (const [k, q] of chavesCd) {
+    if (q > 1) {
+      itens.push({ codigo: "cd_filha_duplicada", severidade: "erro", mensagem: `Linha CD duplicada: ${k}` });
+    }
+  }
+
   return { valido: itens.every((i) => i.severidade !== "erro"), itens };
 }

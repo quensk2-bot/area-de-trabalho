@@ -36,6 +36,9 @@ export type MotorJoinRedeResultado = {
 
 export type MotorJoinCompradorResultado = {
   comprador: string | null;
+  origemComprador: "hierarquia_exata" | "correcao_exata" | "rede_unica" | null;
+  chaveComprador: string;
+  fallbackComprador: boolean;
   alertas: MotorAlerta[];
   diagnostico: MotorJoinDiagnostico;
 };
@@ -397,7 +400,14 @@ export function joinComprador(
     );
     diagnosticos.push(diagnostico);
     alertas.push(alerta("comprador_ausente", diagnostico.mensagem));
-    return { comprador: null, alertas, diagnostico };
+    return {
+      comprador: null,
+      origemComprador: null,
+      chaveComprador: chaveHierarquia,
+      fallbackComprador: false,
+      alertas,
+      diagnostico,
+    };
   }
 
   const conflito = conflitosComprador.find((c) => c.chave === chaveHierarquia);
@@ -405,6 +415,15 @@ export function joinComprador(
   const res = resolverComprador(catalogoCompradores, rede, divisao, setorN2, grupoN3);
   if (res.comprador) {
     const alertasRes: MotorAlerta[] = [];
+    if (res.fallbackComprador) {
+      alertasRes.push(
+        alerta(
+          "comprador_fallback_rede_unica",
+          `Comprador ${res.comprador} resolvido por rede com comprador único: ${rede}`,
+          "info",
+        ),
+      );
+    }
     if (conflito) {
       alertasRes.push(
         alerta(
@@ -419,12 +438,19 @@ export function joinComprador(
       chaveHierarquia,
       1,
       true,
-      "comprador_encontrado",
+      res.fallbackComprador ? "comprador_fallback_rede_unica" : "comprador_encontrado",
       "info",
       `Comprador: ${res.comprador}`,
     );
     diagnosticos.push(diagnostico);
-    return { comprador: res.comprador, alertas: alertasRes, diagnostico };
+    return {
+      comprador: res.comprador,
+      origemComprador: res.origemComprador,
+      chaveComprador: res.chaveComprador,
+      fallbackComprador: res.fallbackComprador,
+      alertas: alertasRes,
+      diagnostico,
+    };
   }
 
   if (conflito) {
@@ -439,7 +465,14 @@ export function joinComprador(
     );
     diagnosticos.push(diagnostico);
     alertas.push(alerta("catalogo_duplicado", diagnostico.mensagem, "erro"));
-    return { comprador: null, alertas, diagnostico };
+    return {
+      comprador: null,
+      origemComprador: null,
+      chaveComprador: chaveHierarquia,
+      fallbackComprador: false,
+      alertas,
+      diagnostico,
+    };
   }
 
   const diagnostico = criarJoinDiagnostico(
@@ -453,7 +486,14 @@ export function joinComprador(
   );
   diagnosticos.push(diagnostico);
   alertas.push(alerta("comprador_ausente", res.alertas.join("; ")));
-  return { comprador: null, alertas, diagnostico };
+  return {
+    comprador: null,
+    origemComprador: null,
+    chaveComprador: res.chaveComprador,
+    fallbackComprador: false,
+    alertas,
+    diagnostico,
+  };
 }
 
 export function joinBre(

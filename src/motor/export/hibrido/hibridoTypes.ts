@@ -15,6 +15,9 @@ export type HibridoProdutoGestao = {
   razaoFornecedor: string | null;
   rede: string | null;
   comprador: string | null;
+  origemComprador?: "hierarquia_exata" | "correcao_exata" | "rede_unica" | null;
+  chaveComprador?: string | null;
+  fallbackComprador?: boolean;
   estoqueLoja: number | null;
   mediaVendaDia: number | null;
   parMin: number | null;
@@ -34,7 +37,8 @@ export type HibridoProdutoGestao = {
   qualidadeDados: QualidadeDadosConsumo | null;
   setorN2: string | null;
   divisao: string | null;
-  /** Campos adicionais publicados para export BASE (origem consolidado, sem recalcular BRE). */
+  /** Nível 3 da coluna CATEGORIA do TXT (Excel BASE_COMPRADOR / pivô). */
+  grupoN3: string | null;
   categoriaN1: string | null;
   embalagemCompra: string | null;
   ruptura104c: boolean | null;
@@ -59,6 +63,20 @@ export type HibridoProdutoGestao = {
   acaoCurtoPrazo: string | null;
   acaoMedioPrazo: string | null;
   textoProdutoCentralizado: string | null;
+  /** Excel `Rup (X) Dias Recebto Maior data` — média na CAPA Curto Prazo. */
+  rupDiasRecebtoMaiorData: number | null;
+  /** Excel `Último Pedido Loja` — média na CAPA Longo Prazo. */
+  ultimoPedidoLoja: number | null;
+  /** Excel `Ativação e Ruptura > 30 Dias Sem Pedido` — soma na CAPA. */
+  ativacaoRuptura30SemPedido: number | null;
+  /** Excel `Itens Vda Pendência` — soma na CAPA. */
+  itensVdaPendencia: number | null;
+  /** Excel `% Rup Sem Pendência Vda` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  rupSemPendenciaVda: number | null;
+  /** Excel `% Rup Inventário` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  rupInventarioPct: number | null;
+  /** Excel `% Ruptura Sem Inventário` — flag 0/1 por SKU (MÉDIA na CAPA). */
+  rupSemInventarioPct: number | null;
 };
 
 export type PublicacaoHibridaArtefato = {

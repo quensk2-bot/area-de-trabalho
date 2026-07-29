@@ -24,9 +24,12 @@ dist-ssr
 *.sw?
 src/ruptura/*.json
 src/motor/.tmp/
+src/motor/export/hibrido/.tmp/
+src/hibrido-v7/.tmp/
 src/motor/tests/fixtures/samples/
 src/motor/scripts/tests/
 src/motor/tests/fixtures/_tmp_*
 src/motor/tests/fixtures/_streaming_tmp/
 src/motor/tests/fixtures/validacao_ruptura_sample.xlsx
 .env
+scripts/.env.drive-secrets.tmp
